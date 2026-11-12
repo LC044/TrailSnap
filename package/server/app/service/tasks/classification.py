@@ -31,7 +31,7 @@ def get_tag_id(db: Session, tag_name: str, owner_id: Optional[UUID] = None) -> s
     key = (str(owner_id), tag_name)
     cache = db.info.setdefault("classification_tags", {})
     if key not in cache:
-        tag = crud_tag.get_tag_by_name(db, tag_name, owner_id)
+        tag = crud_tag.get_tag_by_name(db, tag_name, owner_id, tag_type="yolo")
         if not tag:
             tag = PhotoTag(tag_name=tag_name, type='yolo', owner_id=owner_id)
             db.add(tag)
@@ -195,16 +195,19 @@ class ClassifyImageStrategy(BaseTaskStrategy):
                 break
             photo_tag_data.append((task, photo, selected_tag))
 
-        db.query(PhotoTagRelation).filter(
-            PhotoTagRelation.photo_id.in_([p.id for p in valid_photos]),
-            PhotoTagRelation.tag_id.in_(db.query(PhotoTag.id).filter(PhotoTag.type == "yolo")),
-        ).delete(synchronize_session=False)
+        from app.service.clip_classification import publish_tag
+        # Each classifier owns distinct tag IDs. Only replace YOLO associations.
+        for photo in valid_photos:
+            existing = db.query(PhotoTagRelation).join(PhotoTag).filter(
+                PhotoTagRelation.photo_id == photo.id, PhotoTag.type == 'yolo').all()
+            for relation in existing:
+                publish_tag(db, photo.id, relation.tag_id)
 
         for task, photo, tag_data in photo_tag_data:
             if tag_data:
                 _, tag_name, confidence = tag_data
                 tag_id = get_tag_id(db, tag_name, photo.owner_id)
-                db.add(PhotoTagRelation(photo_id=photo.id, tag_id=tag_id, confidence=confidence))
+                publish_tag(db, photo.id, tag_id, confidence)
                 tags_found = 1
             else:
                 tags_found = 0

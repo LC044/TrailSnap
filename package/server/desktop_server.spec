@@ -17,6 +17,7 @@ hiddenimports = (
 )
 
 datas = [
+    (str(root / 'app' / 'service' / 'clip_catalog.json'), 'app/service'),
     (str(root / "resources"), "resources"),
     (str(root / "alembic_sqlite"), "alembic_sqlite"),
     (str(root / "railway" / "migrations"), "railway/migrations"),

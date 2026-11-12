@@ -29,6 +29,19 @@ const TAGS_RESPONSE = [
   { tag_name: '夜景', count: 8 },
 ]
 
+// /api/tags/clip/categories mock：一组人物 CLIP 类别 + 一个空分组，验证列表只显示大组
+const CLIP_CATEGORIES_RESPONSE = {
+  code: 0,
+  message: 'success',
+  data: {
+    groups: ['人物', '自然风景'],
+    categories: [
+      { id: 'cat-1', tag_id: 'tag-clip-1', name: '自拍', groups: ['人物'], enabled: false, revision: 1, descriptions: ['自拍照'], strictness: 'standard', thresholds: {}, builtin: true, count: 5, calibration: { status: 'reviewed' } },
+      { id: 'cat-2', tag_id: 'tag-clip-2', name: '多人合照', groups: ['人物'], enabled: false, revision: 1, descriptions: ['合影'], strictness: 'standard', thresholds: {}, builtin: true, count: 0, calibration: { status: 'limited' } },
+    ],
+  },
+}
+
 const TAG_PHOTOS_RESPONSE: any[] = []
 
 function mockTags(route: Route) {
@@ -36,6 +49,14 @@ function mockTags(route: Route) {
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({ code: 0, message: 'success', data: TAGS_RESPONSE }),
+  })
+}
+
+function mockClipCategories(route: Route) {
+  return route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(CLIP_CATEGORIES_RESPONSE),
   })
 }
 
@@ -81,42 +102,105 @@ test.describe('P1 - 智能分类 + 文件夹树 @classification-folder', () => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
 
-  test('进入 /album/classification -> 渲染 tag 列表 + 返回按钮可见', async ({ page }) => {
+  test('进入 /album/classification -> 渲染大组卡片 + 返回按钮不可见', async ({ page }) => {
     await page.route('**/api/tags**', (route) => {
       const u = new URL(route.request().url())
       // /api/tags/:name/photos 也命中；空 photos 也走 mock
       if (/\/photos$/.test(u.pathname)) return mockTagPhotos(route)
       return mockTags(route)
     })
+    await page.route('**/api/tags/clip/categories', mockClipCategories)
     await page.goto('/album/classification', { waitUntil: 'domcontentloaded' })
     await expect(page.locator('body')).toBeVisible()
     // 标题"智能分类"
     await expect(page.getByRole('heading', { name: '智能分类' })).toBeVisible({ timeout: 15_000 })
-    // 两个 tag 都出现
-    await expect(page.getByText('海边').first()).toBeVisible()
-    await expect(page.getByText('夜景').first()).toBeVisible()
+    // 列表只显示大组卡片：人物（CLIP 有计数类别）+ YOLO / 自定义分类（mock 的两个标签）
+    // 自然风景组的两个类别计数都为 0，不应出现
+    const groupGrid = page.locator('[data-testid="classification-group-grid"]')
+    await expect(groupGrid).toBeVisible({ timeout: 15_000 })
+    await expect(groupGrid.getByTestId('classification-group-人物')).toBeVisible()
+    await expect(groupGrid.getByTestId('classification-group-YOLO / 自定义分类')).toBeVisible()
+    await expect(groupGrid.getByTestId('classification-group-自然风景')).toHaveCount(0)
     // 智能分类是一级页面，不显示返回相册按钮。
     const backBtn = page.getByRole('button', { name: '返回相册', exact: true })
     await expect(backBtn).toHaveCount(0)
   })
 
-  test('点击 tag -> 跳 /album/classification/:name + 标题与副标题正确', async ({ page }) => {
+  test('点击大组 -> 跳 /album/classification/group/:group + 类别网格与标题正确', async ({ page }) => {
     await page.route('**/api/tags**', (route) => {
       const u = new URL(route.request().url())
       if (/\/photos$/.test(u.pathname)) return mockTagPhotos(route)
       return mockTags(route)
     })
+    await page.route('**/api/tags/clip/categories', mockClipCategories)
     await page.goto('/album/classification', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByText('海边').first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('classification-group-人物')).toBeVisible({ timeout: 15_000 })
 
-    // 点 tag
-    await page.getByText('海边').first().click()
-    // URL 会被 URL-encode，海边 -> %E6%B5%B7%E8%BE%B9
-    await expect(page).toHaveURL(/\/album\/classification\/(?:%E6%B5%B7%E8%BE%B9|海边)/, { timeout: 5_000 })
-    // 标题等于 tag_name（被 UnifiedPhotoPage 包成 title prop）
-    await expect(page.getByText('海边').first()).toBeVisible({ timeout: 5_000 })
-    // 副标题 0 个项目（mock 返回空）
+    // 点大组卡片
+    await page.getByTestId('classification-group-人物').click()
+    await expect(page).toHaveURL(/\/album\/classification\/group\//, { timeout: 5_000 })
+    // 分组详情页：标题等于分组名，类别网格显示该组的类别
+    await expect(page.getByText('人物').first()).toBeVisible({ timeout: 5_000 })
+    const strip = page.getByTestId('classification-category-strip')
+    await expect(strip).toBeVisible()
+    // 计数为 0 的「多人合照」不显示
+    await expect(strip.getByTestId('classification-category-自拍')).toBeVisible()
+    await expect(strip.getByTestId('classification-category-多人合照')).toHaveCount(0)
+    // 类别少（1 个，一行内），不出现折叠/展开按钮
+    await expect(page.getByTestId('classification-category-toggle')).toHaveCount(0)
+    // 副标题 0 个项目（mock 返回空照片）
     await expect(page.getByText('0 个项目')).toBeVisible()
+  })
+
+  test('类别超过一行 -> 折叠为一行 + 展开按钮控制', async ({ page }) => {
+    // 40 个类别（桌面 1280 宽、tile 68+8 ≈ 每行 14 个 → 3 行），必然超过折叠的一行
+    const manyCategories = Array.from({ length: 40 }, (_, i) => ({
+      id: `cat-${i + 1}`, tag_id: `tag-clip-${i + 1}`, name: `类别${String(i + 1).padStart(2, '0')}`,
+      groups: ['人物'], enabled: false, revision: 1, descriptions: ['x'], strictness: 'standard',
+      thresholds: {}, builtin: true, count: i + 1, calibration: { status: 'reviewed' },
+    }))
+    await page.route('**/api/tags**', (route) => {
+      const u = new URL(route.request().url())
+      if (/\/photos$/.test(u.pathname)) return mockTagPhotos(route)
+      return mockTags(route)
+    })
+    await page.route('**/api/tags/clip/categories', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 0, message: 'success', data: { groups: ['人物'], categories: manyCategories } }),
+      }),
+    )
+    await page.goto('/album/classification/group/人物', { waitUntil: 'domcontentloaded' })
+    const strip = page.getByTestId('classification-category-strip')
+    await expect(strip).toBeVisible({ timeout: 15_000 })
+    await expect(strip.locator('.category-tile')).toHaveCount(40, { timeout: 15_000 })
+
+    // 第二行首个 tile（1280 宽下每行约 16 个）是否被折叠高度裁剪（超出网格底边）
+    const isTileClipped = () => page.evaluate(() => {
+      const grid = document.querySelector('[data-testid="classification-category-strip"]')
+      const tile = document.querySelector('[data-testid="classification-category-类别20"]')
+      if (!grid || !tile) return false
+      return tile.getBoundingClientRect().top >= grid.getBoundingClientRect().bottom - 1
+    })
+
+    // 默认折叠：网格限高一行（overflow hidden + max-height 一行），第二行被裁剪
+    await expect(strip).toHaveClass(/is-collapsed/)
+    await expect(isTileClipped()).resolves.toBeTruthy()
+    // 展开按钮出现且显示总数
+    const toggle = page.getByTestId('classification-category-toggle')
+    await expect(toggle).toBeVisible()
+    await expect(toggle).toContainText('40 个类别')
+
+    // 点击展开：限高移除，最后一个 tile 可见
+    await toggle.click()
+    await expect(strip).not.toHaveClass(/is-collapsed/)
+    await expect(strip.getByTestId('classification-category-类别40')).toBeVisible()
+
+    // 再点收起：恢复折叠并重新裁剪
+    await toggle.click()
+    await expect(strip).toHaveClass(/is-collapsed/)
+    await expect(isTileClipped()).resolves.toBeTruthy()
   })
 
   test('进入文件夹布局 -> FolderTree 渲染 2 个子目录', async ({ page }) => {

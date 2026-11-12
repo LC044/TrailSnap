@@ -99,7 +99,7 @@ def test_grouped_status_counts_waits_and_uses_bounded_index_reads():
         assert group["completed"] == 0
         assert group["status"] == "paused"
         assert group["waiting_reason"] == WAIT_PREFIX + "A"
-        assert len(groups) == 10
+        assert len(groups) == 11
         assert all(row["category"] != TaskType.SCAN_FOLDER for row in groups)
         assert [row["priority"] for row in groups] == sorted((row["priority"] for row in groups), reverse=True)
         assert len(statements) == 2

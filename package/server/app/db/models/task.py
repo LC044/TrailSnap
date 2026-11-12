@@ -21,6 +21,7 @@ class TaskType(str, enum.Enum):
     GENERATE_THUMBNAIL = "GENERATE_THUMBNAIL"
     EXTRACT_METADATA = "EXTRACT_METADATA" # Heavy metadata, geolocation
     CLASSIFY_IMAGE = "CLASSIFY_IMAGE"
+    CLASSIFY_IMAGE_CLIP = "CLASSIFY_IMAGE_CLIP"
     RECOGNIZE_FACE = "RECOGNIZE_FACE"
     # Clustering is deliberately a separate type from RECOGNIZE_FACE: it is a
     # CPU-bound whole-library pass, so running it inline held the single 'face'
@@ -61,7 +62,8 @@ DEFAULT_PRIORITIES = {
     # in ClusterFacesStrategy.
     TaskType.CLUSTER_FACES: 6,
     TaskType.CLASSIFY_IMAGE: 10,
-    TaskType.IMAGE_EMBEDDING: 8,
+    TaskType.CLASSIFY_IMAGE_CLIP: 8,
+    TaskType.IMAGE_EMBEDDING: 9,
     TaskType.OCR: 5,
     TaskType.RECOGNIZE_TICKET: 4,
     TaskType.VISUAL_DESCRIPTION: 1,
@@ -87,6 +89,7 @@ CATEGORY_DESCRIPTION_MAP = {
     TaskType.CLUSTER_FACES: '用于将识别出的人脸聚合成人物',
     TaskType.RECOGNIZE_TICKET: '用于识别火车票、飞机票等',
     TaskType.CLASSIFY_IMAGE: '用于场景分类',
+    TaskType.CLASSIFY_IMAGE_CLIP: '使用可编辑描述进行 CLIP 多标签分类',
     TaskType.VISUAL_DESCRIPTION: '用于生成图片的视觉描述',
     TaskType.OCR: '用于识别图片中的文字',
     TaskType.SIMILAR_PHOTO_CLUSTERING: '用于相似照片聚类',
@@ -111,6 +114,7 @@ CATEGORY_NAME_MAP = {
     TaskType.CLUSTER_FACES: '人脸聚类',
     TaskType.RECOGNIZE_TICKET: '车票识别',
     TaskType.CLASSIFY_IMAGE: '场景识别',
+    TaskType.CLASSIFY_IMAGE_CLIP: 'CLIP 智能分类',
     TaskType.VISUAL_DESCRIPTION: '大模型智能分析',
     TaskType.OCR: '文字识别',
     TaskType.SIMILAR_PHOTO_CLUSTERING: '相似照片清理',

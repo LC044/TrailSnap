@@ -1,0 +1,7630 @@
+{
+  "version": 2,
+  "groups": [
+    "人物",
+    "自然风景",
+    "建筑 / 场所",
+    "美食饮品",
+    "动物",
+    "植物花卉",
+    "物品 / 静物",
+    "交通出行",
+    "活动 / 事件",
+    "文档 / 截图 / 资料",
+    "插画 / 漫画 / 表情包"
+  ],
+  "categories": [
+    {
+      "key": "builtin-001",
+      "name": "自拍",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张自拍的实拍照片",
+        "人物伸出手臂面向镜头自拍",
+        "镜子中映出人物拿手机自拍"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 7,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "99cff06cc1e06f9b119e1bf1124c3b8c219ef86f798b04d991e4f6659ceaf009",
+        "train_positive": 8,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-002",
+      "name": "单人肖像",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张单人肖像的实拍照片",
+        "一个人摆姿势拍摄半身人像",
+        "以一个人为主体的全身或侧面肖像"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.39
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "0dc2056daf8c9d93632531d095963f132360034f6284e4c7893ea898e8a229b0",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-003",
+      "name": "多人合照",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张多人合照的实拍照片",
+        "两人或多人一起面向镜头合影",
+        "几个人站成一排或围坐合照"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "3bc6ec7adb53d575bc0c077a6c9437ec65a3a034b6c8749740f81c8c393164fb",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 9,
+          "fp": 1,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-004",
+      "name": "人群",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张人群的实拍照片",
+        "公共场所聚集着大量人群",
+        "街头或活动现场密集的人群"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "166e36b515e697c9d9aa36428d07264e527662347680bc24d90b648939627fa4",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-005",
+      "name": "儿童",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张儿童的实拍照片",
+        "小孩子在室内或户外玩耍",
+        "以小朋友为主体的人物照片"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "a3e8c91f82d0cabc064958875cdf00bcea62097e574abe6d06575248010bf18c",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-006",
+      "name": "老人",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张老人的实拍照片",
+        "以老年人为主体的人物肖像",
+        "面部有明显年龄特征的老年人"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 9,
+        "uncertain": 4,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "398350432befc553513abe9f9a3c1da2dd18b8f04b76ab37c22e8e23a529fbb6",
+        "train_positive": 4,
+        "train_negative": 6,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 1,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-007",
+      "name": "人脸特写",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张人脸特写的实拍照片",
+        "近距离拍摄人物面部表情",
+        "人脸占据画面主要部分"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 12,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "8364a93d6dc3b179ab2156b12636a01e5bae3b14f13316165c655fa5d972656e",
+        "train_positive": 4,
+        "train_negative": 10,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-009",
+      "name": "办公场景",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张办公场景的实拍照片",
+        "办公室里的人坐在办公桌前工作",
+        "人物在工位上使用电脑或处理文件"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "baba6ebe6f31cb719cc3d665658f297030d11bdca8d4da27bfe7832cf6125bbc",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 3,
+          "fn": 1,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-010",
+      "name": "运动中的人",
+      "groups": [
+        "人物"
+      ],
+      "descriptions": [
+        "一张运动中的人的实拍照片",
+        "人物穿运动服进行体育锻炼",
+        "人物在运动场地健身或运动"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "661e4e91d5b3f13292d98d9cfb737a84abedce43e00cbbc619c42e6bdfba45f2",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 3,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 2,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-011",
+      "name": "夜景",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张夜景的实拍照片",
+        "夜晚拍摄的户外景色",
+        "深色夜空下的建筑或自然景观"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "11099e912e7e64ad763936296a5325f698a3105e350849385386e0d2fa363e18",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 2,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-012",
+      "name": "天空云彩",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张天空云彩的实拍照片",
+        "以天空和云层为主体",
+        "蓝天白云或阴天的厚重云层"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.385
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "0d01c9e028f5bca723f004aa5b207fb1f40193dc5f2a27a715b587339a668713",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-013",
+      "name": "日出日落",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张日出日落的实拍照片",
+        "太阳在地平线附近升起或落下",
+        "朝霞或晚霞映照天空"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ed7661a2713700ffc7e0b281ecbbe1d2f42e2fad2ccaabd262bf8a749c47a70d",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-014",
+      "name": "山",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张山的实拍照片",
+        "连绵山峦组成的自然风景",
+        "高耸山峰与起伏山脉"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.395
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "cca89555791876dace77cdff477f0a8710724fdbea40d870d40f769b86a405b4",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 2,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-015",
+      "name": "雪山",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张雪山的实拍照片",
+        "山峰和山坡覆盖积雪",
+        "白色雪峰与周围山脉"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "c326a23a883ed50881c2fe5e362f040cf7b8c847dbe0eb2fc1dd08e7b0ae3f08",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 4,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-016",
+      "name": "湖泊",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张湖泊的实拍照片",
+        "湖岸环绕着一片开阔水面",
+        "平静湖水中倒映山峦或树木"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.395
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 8,
+        "uncertain": 4,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "6821e1114cac3b2581d7501de817be28d8d367416e313dec31bb5c0f3024aeb7",
+        "train_positive": 5,
+        "train_negative": 6,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-017",
+      "name": "河流",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张河流的实拍照片",
+        "河流沿河道向远方延伸",
+        "两侧河岸之间蜿蜒流淌的河水"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 10,
+        "uncertain": 3,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "17a90bcdcd1fd8faf5092fd067ebf56f19fb1be4f0af99051651bea06c7873fd",
+        "train_positive": 5,
+        "train_negative": 7,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 2,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-018",
+      "name": "瀑布",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张瀑布的实拍照片",
+        "水流从山崖或岩壁高处倾泻",
+        "瀑布落入下方水潭溅起水花"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "c8b9035cd2c1a0aa18aa76d04ca32a496512cd41d6405d0967e2b810ab62787d",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 3,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 2,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-019",
+      "name": "海滩",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张海滩的实拍照片",
+        "沙滩与海水相接的海边风景",
+        "海浪拍打沙质海滩"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 6,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "83c2e32d9e3c93929f6dd27691dcb53aa88b66bb9779cd377d6cd35df36460a8",
+        "train_positive": 8,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 1,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 2,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-020",
+      "name": "海岸",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张海岸的实拍照片",
+        "海水与陆地交界的海岸线",
+        "海边礁石和岩岸"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 9,
+        "uncertain": 4,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "25f8febc6df594a1086fd5fed502ce69919bb1a23a69de5e29898e43e6401c05",
+        "train_positive": 5,
+        "train_negative": 6,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 3,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-021",
+      "name": "沙漠",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张沙漠的实拍照片",
+        "干旱沙漠中连绵起伏的沙丘",
+        "大片沙地与稀疏植被"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 8,
+        "uncertain": 3,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "37895c6a4f3ed3a678b91fa840cffb66f6c27fccb1a464240ccd2919a2ac6f83",
+        "train_positive": 6,
+        "train_negative": 6,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-022",
+      "name": "草原",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张草原的实拍照片",
+        "大片草原延伸至远方地平线",
+        "低矮草本植被为主的辽阔草原"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "95cd86901e8201baf5232cf6a788b2a33d37133c9e39bb3219a5d1cae2dddf35",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 0,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-023",
+      "name": "草地",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张草地的实拍照片",
+        "地面覆盖成片青草",
+        "户外一片绿色草地"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 7,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "661aaa249ba8884f87df30a36d137f6a9576fbd148a3bcd5b59af8d627b183ce",
+        "train_positive": 9,
+        "train_negative": 4,
+        "training": {
+          "tp": 9,
+          "fp": 1,
+          "fn": 0,
+          "tn": 3
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-024",
+      "name": "森林",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张森林的实拍照片",
+        "大量树木密集生长形成森林",
+        "林间树干与树冠组成树林"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "265e694a422bddee56d447f8283ab91016335a140978f913832123c36f1a406e",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-025",
+      "name": "公园",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张公园的实拍照片",
+        "公园中有绿地步道和休憩设施",
+        "树木与园林小路"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "adfa9754cf127ce5423e2d37b2040c136dc7566af947a947293d1ab204e062dd",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-026",
+      "name": "火山",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张火山的实拍照片",
+        "火山山体顶部可见火山口",
+        "火山喷发烟柱或熔岩"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 2,
+        "negative": 14,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "26bac131bd19f19f1cbec11b799f6d5d8756cd2247e9dcd7a29b3dae3d7e9b53",
+        "train_positive": 2,
+        "train_negative": 11,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-027",
+      "name": "开阔风景",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张开阔风景的实拍照片",
+        "视野开阔的自然山水风光",
+        "从远处拍摄广阔自然景观"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "f5b7b03a413d4ea5f236ee18ec64c6426f3a0f6ce1db141fb257c7621a63c3a6",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 0,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-028",
+      "name": "高楼大厦",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张高楼大厦的实拍照片",
+        "高耸现代建筑与城市天际线",
+        "玻璃幕墙办公楼和高层建筑"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "de23dfabe8b50638804edb9ca7703840cabe2a22d97a0869e99cf8602b3e5a56",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 3,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 2,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-029",
+      "name": "街道",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张街道的实拍照片",
+        "建筑沿街道两侧排列",
+        "街边店面人行道和道路"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d6a0d00f0f1d6af43de58ba89dd51acf81990146ce8f9f5ef69e1273fe50f914",
+        "train_positive": 8,
+        "train_negative": 5,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 2,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-030",
+      "name": "桥梁",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张桥梁的实拍照片",
+        "跨越河流或道路的桥梁",
+        "清楚展示桥面桥墩或桥塔"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "22ba64954619c7f98307e92b155698f96c7a08e19f8a71d9330453913759e160",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 1,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-031",
+      "name": "广场",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张广场的实拍照片",
+        "建筑前方宽阔的铺装广场",
+        "大片开放地面与周边建筑"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.455
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 14,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "c309e0da5c1eb409dab4767596dcc83e8492f923ca538c7d5770a5ad20f3c6e0",
+        "train_positive": 4,
+        "train_negative": 10,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-032",
+      "name": "教堂",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张教堂的实拍照片",
+        "带有十字架或钟楼的教堂",
+        "教堂内长椅彩色玻璃和祭坛"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "bf4715504eae22e9984559a6d57095fd7e712033d630e07efeada6281472832a",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-033",
+      "name": "寺庙",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张寺庙的实拍照片",
+        "寺庙的殿堂屋檐与院落",
+        "佛教寺院中的佛像香炉和殿宇"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "1032968a9f606ab88f2bd3d8e5df3a03107b6030035072357e69fc16c992aa19",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-034",
+      "name": "宫殿",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张宫殿的实拍照片",
+        "规模宏大的宫殿建筑群",
+        "宫殿殿堂台阶与中轴庭院"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 9,
+        "uncertain": 5,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "f536eb26f04c6073a1e0f9697c735e3c830e2a4a46f68280d2b949778cedeedc",
+        "train_positive": 3,
+        "train_negative": 7,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-035",
+      "name": "城堡",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张城堡的实拍照片",
+        "带有塔楼和城墙的城堡",
+        "石砌城堡及城垛和堡垒"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 12,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "a9f4601edcdc8a2ba7ac171631923e3fb1406bcba5b0017a2227136e808dd319",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 2,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-036",
+      "name": "遗迹",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张遗迹的实拍照片",
+        "残存的古代石墙石柱",
+        "风化破损的历史建筑遗址"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 2,
+        "negative": 13,
+        "uncertain": 3,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "c36fa4ffcaa3928d115b27139fc135c01c1c18e3a491fec395440f12f6f61eb9",
+        "train_positive": 2,
+        "train_negative": 9,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-037",
+      "name": "喷泉",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张喷泉的实拍照片",
+        "水池中的喷泉向上喷水柱",
+        "广场喷泉喷出多股水流"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 12,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "a4c93a4049ac32253198427c5cdcbf4d0138809415392000e94a83daf9f4ffbd",
+        "train_positive": 3,
+        "train_negative": 9,
+        "training": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 2,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-038",
+      "name": "机场",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张机场的实拍照片",
+        "机场航站楼的值机柜台和登机口",
+        "机场停机坪上停放客机"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 10,
+        "uncertain": 4,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "c8bc0bdefa76bc86b4fa84004a59502d731c21009a82564e2b0459b8f380394c",
+        "train_positive": 3,
+        "train_negative": 8,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-039",
+      "name": "车站",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张车站的实拍照片",
+        "火车站或地铁站大厅",
+        "车站内有检票口候车区和指示牌"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 9,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ef8afbdbfa01acb326efa35b9b3a0939ee244e5e757d10afe9157e10bf5b6f1e",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-040",
+      "name": "站台",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张站台的实拍照片",
+        "轨道旁供乘客候车的站台",
+        "列车停靠在车站站台旁"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 13,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "81cd20d683e9a1276926d82f724f9de96bc705422ecdef916068d6aa9c4f7e8a",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 0,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-041",
+      "name": "超市",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张超市的实拍照片",
+        "超市货架成排摆放食品日用品",
+        "超市购物通道与收银区"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 10,
+        "uncertain": 3,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "33a934ddef7adecfd5bb68e6c8aae9577f08d2293c2fddcf17b762c389d5dd5d",
+        "train_positive": 4,
+        "train_negative": 8,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-042",
+      "name": "商场",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张商场的实拍照片",
+        "商场内有多层商铺和自动扶梯",
+        "购物中心中庭与两侧店面"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 9,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "685c2331cab5ed741881298c8a09ec0cf3e5a94aaa5155e41526c400ad5f30a3",
+        "train_positive": 6,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 1,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-043",
+      "name": "体育场",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张体育场的实拍照片",
+        "看台围绕跑道或球场",
+        "大型运动场地与观众看台"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 11,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "e5ae9509720abaa375eb9835010b1ca26d4d81d1536796ef6cfd1aea2afd6708",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-044",
+      "name": "游乐场",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张游乐场的实拍照片",
+        "游乐园里的过山车和摩天轮",
+        "旋转木马等游乐设施"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 10,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "8221be2b74d1a3a2a10ffc79e9a5679eccbf74d059d95d89822796c716a3389a",
+        "train_positive": 6,
+        "train_negative": 7,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 1,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-045",
+      "name": "办公室",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张办公室的实拍照片",
+        "室内排列办公桌电脑和办公椅",
+        "办公室工位与会议空间"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "4920f12f6462b20606c999265eab9f2218d3e1a38f51f0d2219935efb1a052e4",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 3,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-046",
+      "name": "博物馆",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张博物馆的实拍照片",
+        "博物馆展厅陈列文物和展柜",
+        "游客参观历史或艺术展品"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 8,
+        "uncertain": 4,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "bdfe3b2b886090e8bc9c57f06545ba3d1a7b58824fa1748ea5436b1465a9f185",
+        "train_positive": 5,
+        "train_negative": 5,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 2,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-047",
+      "name": "展览馆",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张展览馆的实拍照片",
+        "大型展馆内排列展位和展台",
+        "展览场馆宽阔的室内展厅"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 12,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "6ba5f4b529b357f81beb3a06dba9d1499bed76669f225fa1c0b3997f65730b2d",
+        "train_positive": 4,
+        "train_negative": 10,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 2,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-048",
+      "name": "餐厅",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张餐厅的实拍照片",
+        "餐厅内摆放餐桌餐椅和餐具",
+        "餐馆用餐大厅与卡座"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 7,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "14f324c1786935b8ef53450455f2e51cfe4ec3027f26382cc6d4c6980c5b35b2",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 6,
+          "fp": 1,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 2,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-049",
+      "name": "店铺",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张店铺的实拍照片",
+        "临街店铺招牌橱窗和入口",
+        "小店柜台与陈列货架"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 10,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "5340e649353827c5d449f34cc2bf02ea16f9295ed27152f16af7081a906931e3",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 2,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-050",
+      "name": "城市夜景",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张城市夜景的实拍照片",
+        "夜晚城市建筑和街道灯光",
+        "灯火通明的城市天际线"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "545cfacd72ad941bdd5abf2def19aaec388d1d69eb3dc1a994856f15449642c3",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 4,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-051",
+      "name": "中餐",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张中餐的实拍照片",
+        "餐盘里盛中式炒菜和家常菜",
+        "多盘中式菜肴摆在餐桌上"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 7,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "979f645be4695fd98d8c6e5c3a22b1e11fd8612ff55406183c2076de6d99c493",
+        "train_positive": 8,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-052",
+      "name": "火锅",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张火锅的实拍照片",
+        "餐桌中央盛有汤底的火锅",
+        "火锅周围摆待涮肉片和蔬菜"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.45
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 10,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "1ade560c225ab4eea4c605cd7ee77adccf84e4fb8a4fecdd28af75f82861b94c",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 3,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-053",
+      "name": "烧烤",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张烧烤的实拍照片",
+        "烤架上烤制肉串或食物",
+        "盘中摆放烤熟肉串和烧烤食物"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 7,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "bf0993f4539fdb2ce2e9fa6717c6c16ccdf3d764d9a1b3412409c3e8e90fae63",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 2,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-054",
+      "name": "西餐",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张西餐的实拍照片",
+        "餐盘中摆牛排和配菜",
+        "西式意大利面或披萨"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ea48db48a97e3cc968b91f5079273f036e7a5073962a41d712fa866dd9931515",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-055",
+      "name": "小吃",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张小吃的实拍照片",
+        "小份地方小吃装在碗盘纸盒中",
+        "街边摊位的即食小吃"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 12,
+        "negative": 6,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "70d4f0ad41c5ec6787b6d63c85658286e7345eb516cbe6dfde3167758d3178d9",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 9,
+          "fp": 1,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 2,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-056",
+      "name": "甜点",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张甜点的实拍照片",
+        "盘中摆精致甜品和糕点",
+        "布丁冰淇淋等甜品近景"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 12,
+        "negative": 6,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "b543815e33746e9c36a72835c9f10cd2d2ce8e3f07bd87c04d5e4aa6341b7c2a",
+        "train_positive": 10,
+        "train_negative": 4,
+        "training": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-057",
+      "name": "蛋糕",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张蛋糕的实拍照片",
+        "带奶油装饰的烘焙蛋糕",
+        "切开蛋糕展示糕体和夹层"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "16cc70ae07e2b914b6573d47fe1712e9d6a44192f6c3d78bfc3c8edfe09717ce",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-058",
+      "name": "咖啡",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张咖啡的实拍照片",
+        "杯中咖啡表面有奶泡或拉花",
+        "玻璃杯中盛冰咖啡"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 10,
+        "uncertain": 4,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "8dddd3642c0310d35c56e7130068b5366167d17fdf5a2ca3dda0a85f5421327c",
+        "train_positive": 3,
+        "train_negative": 7,
+        "training": {
+          "tp": 2,
+          "fp": 1,
+          "fn": 1,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-059",
+      "name": "饮品",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张饮品的实拍照片",
+        "杯子或瓶子中盛饮料",
+        "茶饮果汁和奶茶"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "1f32b941dd9ff9c5a7d532196a9f53ca52ad6a573809edf0b4bce752c0ef1dc6",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 5,
+          "fp": 4,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-060",
+      "name": "酒水",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张酒水的实拍照片",
+        "酒杯中盛葡萄酒或啤酒",
+        "酒瓶与装酒的杯子"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.39
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 11,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "a9d58f53a1113398dee18d31f8892e71329a9abd07afd2855004ebaa51221f95",
+        "train_positive": 4,
+        "train_negative": 9,
+        "training": {
+          "tp": 4,
+          "fp": 6,
+          "fn": 0,
+          "tn": 3
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-061",
+      "name": "水果",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张水果的实拍照片",
+        "新鲜水果摆在盘子或篮子里",
+        "切开或完整的水果近景"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "5159e381a43c7be94a3d1cadff1ca3b82bf78e2deea4e0366590eb2a0d214e8b",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 6,
+          "fp": 1,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-062",
+      "name": "生鲜食材",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张生鲜食材的实拍照片",
+        "案板上摆未经烹饪的食材",
+        "摊位陈列新鲜蔬菜和生肉鱼类"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "01d7ecf9a531dd337507930d28fef50409b1281c4ff402c0cd2e78d09729e245",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 5,
+          "fp": 1,
+          "fn": 2,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-064",
+      "name": "聚餐",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张聚餐的实拍照片",
+        "几个人围坐餐桌一起吃饭",
+        "餐桌摆满菜肴和餐具的聚餐场景"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 9,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "7b843babaa120b840e9b51c918588c6d7f0ee9e42304314bda9aaa87b4a109cb",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-065",
+      "name": "零食",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张零食的实拍照片",
+        "袋装或盒装零食摆在一起",
+        "薯片饼干糖果等休闲食品"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 7,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "612cb3cc1877385a235e6a1ce0a2fab42b7de5c262f7c404da3526edcf49c7c8",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 2,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-066",
+      "name": "猫",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张猫的实拍照片",
+        "一只猫的近距离照片",
+        "猫的全身或趴卧姿态"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "e618dd005a56930714758c0d0d11761d573dcef03ad0c77d82431382efcc2af6",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-067",
+      "name": "狗",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张狗的实拍照片",
+        "一只狗的近距离照片",
+        "狗的全身或站立姿态"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 10,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "439e9f70f7202ed32d730058f1658acd632f3bed2ecb75a714a9e915ca111d8c",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-068",
+      "name": "熊猫",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张熊猫的实拍照片",
+        "黑白毛色的大熊猫",
+        "大熊猫圆脸上有黑色眼圈"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 9,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "1e01349a37649feaa4ed2631185a997d609e02e07c36f26f28226f695cb7d889",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-069",
+      "name": "猴子",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张猴子的实拍照片",
+        "猴子的面部和身体",
+        "猴子在地面或树枝上活动"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "2b1ee06e27f652773da7ecf6dcc0b67d1b18baf82d8b418f68bbde7fc09015f5",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-070",
+      "name": "老虎",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张老虎的实拍照片",
+        "橙黄皮毛上有黑色条纹的老虎",
+        "老虎的面部和全身"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "449277d4dd82765f8fd008810edeaa46014237cafcb50c1f5f95d9bfb55843de",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-071",
+      "name": "狮子",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张狮子的实拍照片",
+        "雄狮头部周围浓密的鬃毛",
+        "狮子在地面行走或趴卧"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.45
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 12,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d5c76f3191d7eef307e2e5ee0d2b7a7994ea48cfdc274c9ba51434c6379ba02f",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 4,
+          "fp": 1,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-072",
+      "name": "骆驼",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张骆驼的实拍照片",
+        "背部有驼峰的骆驼",
+        "骆驼长颈和长腿的全身"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 15,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "a750de7fb870f6d0b9ef058bbee6c60e65371f0f4f312a12152d64eceb593349",
+        "train_positive": 3,
+        "train_negative": 11,
+        "training": {
+          "tp": 3,
+          "fp": 1,
+          "fn": 0,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-073",
+      "name": "牛",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张牛的实拍照片",
+        "牛在草地站立或吃草",
+        "牛的头部和身体近景"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 12,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "7eed7bc649667e78d5162512f6c34919dd9936d5f6c083e330809a86557ce82f",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-074",
+      "name": "羊",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张羊的实拍照片",
+        "绵羊或山羊的全身照片",
+        "羊群在草地活动"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "888a651840b8091f24ab69b0252e21f2e89398aa9ffe68b56c620946d1d9b6fd",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 2,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-075",
+      "name": "兔子",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张兔子的实拍照片",
+        "长耳朵短尾巴的兔子",
+        "兔子蹲坐的近距离照片"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "eb9c51ed56685adc3244879db97161c425a717a3861bbbf0fd7c6ba0071d14a5",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 3,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-076",
+      "name": "鸟类",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张鸟类的实拍照片",
+        "鸟的羽毛翅膀和喙",
+        "鸟站在枝头或展翅飞翔"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.395
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "b8c39ba3c64ac4be7cc2b2dd50617fabc4fb1a6b908977fa1d49cfbfc6e8a585",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-077",
+      "name": "鱼类",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张鱼类的实拍照片",
+        "水中游动的鱼",
+        "鱼的鳞片鳍和尾部"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 12,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "bdf7b272e20101292f35a0c0ebba14fca6bd61e96f95e9f3fdd46569821ff78a",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 3,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-078",
+      "name": "昆虫",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张昆虫的实拍照片",
+        "昆虫身体和足部的近景",
+        "蝴蝶蜻蜓或甲虫"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 14,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "7a4f007572e73010f9f8b1c7d2ab9591bc852335dce4511798c17d4f6b41cd69",
+        "train_positive": 3,
+        "train_negative": 10,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-082",
+      "name": "动物园场景",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张动物园场景的实拍照片",
+        "动物园展区中的动物与围栏",
+        "游客隔着玻璃观看动物展舍"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "a285affed2c34c9659a602b23bdfd4076c3ca79ef05973a57e4011ca443f7101",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 6,
+          "fp": 1,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-083",
+      "name": "海洋动物",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张海洋动物的实拍照片",
+        "海豚鲸鱼海豹等海洋动物",
+        "海龟水母等海洋生物在水中活动"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 12,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "317c18e8d5cf2acf5a348eedd6a3298a58393a4c66fc004fdcee7431f0ea4051",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 4,
+          "fp": 1,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-084",
+      "name": "花卉",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张花卉的实拍照片",
+        "盛开的鲜花与成片花丛",
+        "多朵鲜花组成花卉景观"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 12,
+        "negative": 6,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "49ed515e0eac14b1a88d55381eb16a0527d3f2ca0c6e48ddf4203ac4a623676c",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-085",
+      "name": "花朵特写",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张花朵特写的实拍照片",
+        "一朵花的近距离特写",
+        "花瓣和花蕊清晰可见"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "c7ccd24941a28f7402205acd0a140b8666749f60088bb932d4e4e80f6c267bd6",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-086",
+      "name": "树木",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张树木的实拍照片",
+        "一棵树为主要主体",
+        "树干枝条与树冠组成树木全貌"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "2882ca9e90bc5324194f649f26d799c3838b74a8a9f5a0d902daa6d776e02b00",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 2,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-087",
+      "name": "树叶",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张树叶的实拍照片",
+        "树叶的形状和叶脉清晰可见",
+        "枝条上绿色或彩色树叶"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "bb2d5c25a5d9f517e366ac987dc02a2d4fde3df7f4b046fc4bdbc3d2983d8e86",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-088",
+      "name": "盆栽",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张盆栽的实拍照片",
+        "植物种在花盆或容器中",
+        "室内摆放盆栽绿植"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 7,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "eb02138a446dbabe2e59f3c132b5adb360f7da407fcbbcb79d950e3c99179deb",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 3,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-089",
+      "name": "多肉",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张多肉的实拍照片",
+        "叶片肥厚的多肉植物",
+        "呈莲座状生长的多肉植物"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 14,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "635dfe5990f15a0c35b2de6ad3fd41ea5b039888a5a991b2909b8d3eb7414ecc",
+        "train_positive": 4,
+        "train_negative": 10,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 2,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-090",
+      "name": "草坪",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张草坪的实拍照片",
+        "公园庭院修剪整齐的草坪",
+        "平整且高度均匀的人工草坪"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 10,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "11474cb507dec97d83d6132cf8e114677e7baa0a6bcab422a485fcc389f6193d",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-091",
+      "name": "水生植物",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张水生植物的实拍照片",
+        "水面生长荷叶和荷花",
+        "池塘中生长水生植物"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d01d82f5a694b261742c89798b33b77ed4623ad2dc58ec99342ec6262cb85cb4",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 2,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-092",
+      "name": "农作物",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张农作物的实拍照片",
+        "田间稻穗麦穗等农作物",
+        "成行种植的蔬菜或庄稼"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "2545ddeae1563a2d70de7c2d5fef9491a96a611375defa8645c068826b362778",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-093",
+      "name": "植物特写",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张植物特写的实拍照片",
+        "近距离拍摄植物叶茎细节",
+        "植物局部结构特写"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d62637c4b0d7cf30cbb0ea8cb793e4b2f11d242965efadafdfc8d1f5405071e4",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 3,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-094",
+      "name": "落叶 / 枯叶",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张落叶或枯叶的实拍照片",
+        "地面散落干枯或变黄树叶",
+        "卷曲干燥的落叶近景"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.45
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 13,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "3ffc946acdf0c0435bccf4d1b1bb63617f1399b668d6f224401d07e798b476bb",
+        "train_positive": 4,
+        "train_negative": 10,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 1,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-095",
+      "name": "电脑",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张电脑的实拍照片",
+        "笔记本电脑键盘和显示屏",
+        "台式电脑主机显示器和键盘"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 12,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "03b5ffb34fcb5cb9a3614f9574d2a12ae533f7749b3a5a3b1a9443bb6e246217",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 1,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-096",
+      "name": "屏幕",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张屏幕的实拍照片",
+        "实体显示器或电视屏幕",
+        "显示屏边框和设备外形"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "939dc651ce102e4e1a80a0a06a149ac4094d40fe5b858f5b613f5fab7fcadea5",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-097",
+      "name": "手机",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张手机的实拍照片",
+        "手机机身和屏幕实物",
+        "手中拿着智能手机"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "c64d097f7d8c66967d1a176224d65048bd1ceccf2de943c5edc39cadfc6883f5",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 1,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-098",
+      "name": "数码产品",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张数码产品的实拍照片",
+        "电子设备的按钮接口和机身",
+        "相机耳机平板等数码设备"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "2ef94d902f92c060e4a8e7d40fa24564a9ae5613faf6f47bc5040e104f9993dd",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-099",
+      "name": "无人机",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张无人机的实拍照片",
+        "带多个旋翼的无人机",
+        "无人机机身与螺旋桨"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 11,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "725ebc97e2b320681f404379c1b4a8435c1df51149b34dd4344ba12ae5c99169",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-100",
+      "name": "机器人",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张机器人的实拍照片",
+        "具有机械结构的机器人",
+        "机器人机身机械臂或移动底座"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "23885cc737bb77d25c97231573707c6cf770c4fe0a123386897a14bb667ac53a",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 2,
+          "fn": 1,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-101",
+      "name": "游戏机",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张游戏机的实拍照片",
+        "电子游戏主机与手柄",
+        "有屏幕按键的掌上游戏机"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.45
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 12,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "f7dc372abd466d4158dc37b701b9eb92c980473fb2e24e5e7753443ce6145f18",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 1,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-102",
+      "name": "商品陈列 / 购物展示",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张商品陈列或购物展示的实拍照片",
+        "包装商品整齐陈列",
+        "购物袋旁摆放购买的物品"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d62215902003744bb28523c5e096c766353a2ad626c8d2a311a91283942d8d48",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-104",
+      "name": "书籍",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张书籍的实拍照片",
+        "书本封面和书脊实物",
+        "摊开书本展示印刷页面"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "fc86413efb68ccdf3f9889f56effada0fbb07ee0cdf201ebd869b7e6dc787785",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-105",
+      "name": "旅游纪念品",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张旅游纪念品的实拍照片",
+        "旅游磁贴明信片和钥匙扣",
+        "带景点图案的纪念小物件"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 10,
+        "uncertain": 4,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ce495f064f77e5b5bcb4c47c559143b27c6ef1edd32a5bb3af58cc02069e2a06",
+        "train_positive": 3,
+        "train_negative": 7,
+        "training": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 2,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-106",
+      "name": "工具",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张工具的实拍照片",
+        "扳手螺丝刀钳子等工具",
+        "维修手工工具摆在一起"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d13f29ee2a2e251197e94e6db53c060df6a3a92be13da52580a8f842a6c9235c",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 3,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-107",
+      "name": "户外装备",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张户外装备的实拍照片",
+        "背包登山杖等户外装备",
+        "徒步露营装备摆在一起"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ba233b91043a12c38ae22a419fb97e19b4ec861ced5b8f159906b36a62376c8d",
+        "train_positive": 6,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-108",
+      "name": "家具",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张家具的实拍照片",
+        "桌椅沙发柜子等家具",
+        "室内家具外形和结构"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 7,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "f6173f63b7b1ed3059f38b07a7473aef80ae056f31fb7f171e90f459f2cf68b6",
+        "train_positive": 8,
+        "train_negative": 5,
+        "training": {
+          "tp": 7,
+          "fp": 2,
+          "fn": 1,
+          "tn": 3
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-109",
+      "name": "家居物品",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张家居物品的实拍照片",
+        "杯碗灯具等家居用品",
+        "生活用品摆在桌面或架子上"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "b0e1141df44a80708721ac155eac26c690f3ea9dcd1ae6df31bd5e17c1fa2993",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 2,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-110",
+      "name": "服饰",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张服饰的实拍照片",
+        "衣服裙子外套等服装",
+        "展示服装款式和布料"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "f7dd73cddfbb26c40a0029f1e0cb1c87165956908f20ccbc80c33806369dfb44",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 3,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-111",
+      "name": "箱包",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张箱包的实拍照片",
+        "背包手提包或行李箱",
+        "箱包提手拉链与包身"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 9,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "48aa8e14ead10a8cbeaef751d182a5421daea8a604a70a3b97c550b89939b3a4",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 2,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-112",
+      "name": "摆件",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张摆件的实拍照片",
+        "桌面或架子陈列装饰摆件",
+        "小型装饰雕像和工艺品"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 10,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "e77b4f4a27a3036c9232be9575cdd17837dc0dd40549c2c8cff679270b85b0f8",
+        "train_positive": 6,
+        "train_negative": 7,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 2,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-113",
+      "name": "静物特写",
+      "groups": [
+        "物品 / 静物"
+      ],
+      "descriptions": [
+        "一张静物特写的实拍照片",
+        "近距离拍摄静物细节",
+        "物品占画面主要部分的特写"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 12,
+        "negative": 6,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "3fc0dda2a5cec69d24dd6d419f5a6da4d2596b99637590d3bfb8fd5dd10fd016",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-114",
+      "name": "飞机",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张飞机的实拍照片",
+        "带固定机翼的飞机",
+        "客机机身机翼与尾翼"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 9,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "e8de3cb5aab3547e83f0fceb0d2a79e8cddc77d58156ee7740a08cad2c1661bc",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-115",
+      "name": "直升机",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张直升机的实拍照片",
+        "顶部有大型旋翼的直升机",
+        "直升机机身和尾部旋翼"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 13,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ca08bb2f5d9cfe6585014291207ba6e2eb94ab2dcb2e344b5cdaf2cf406fa192",
+        "train_positive": 4,
+        "train_negative": 10,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-116",
+      "name": "火车",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张火车的实拍照片",
+        "沿铁轨行驶或停靠的火车",
+        "多节车厢连接的列车"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "83ab9f1d7dbfb35e59a1673fd0189b4d794b4cb238509d8e156205dd553e6348",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 4,
+          "fp": 1,
+          "fn": 2,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-117",
+      "name": "公交车",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张公交车的实拍照片",
+        "城市道路上的公共汽车",
+        "有多排车窗和乘客车门的公交车"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 11,
+        "uncertain": 3,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "cd5f118b13305193407d470d882b5fa9d4b555f313c26172a4865154a19cd55b",
+        "train_positive": 4,
+        "train_negative": 9,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 1,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-118",
+      "name": "汽车",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张汽车的实拍照片",
+        "道路上停放或行驶的汽车",
+        "轿车或越野车车身和车轮"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 12,
+        "negative": 6,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "42a4e10ad061aa2beb7af2b348f2b9d92993153603179de48dee4911ccca0ed9",
+        "train_positive": 10,
+        "train_negative": 4,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 2,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-119",
+      "name": "赛车",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张赛车的实拍照片",
+        "赛道上带赛车涂装的汽车",
+        "赛车号码和空气动力套件"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.48
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 15,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "1e4c4bd949533052ae7a9f1883111e872c46f178b64da6f6becb46fb088fdfe3",
+        "train_positive": 3,
+        "train_negative": 11,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-120",
+      "name": "自行车",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张自行车的实拍照片",
+        "有脚踏板和两个车轮的自行车",
+        "自行车车架车把和车轮"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "32a62f5a918c372246051c4e356cd4b0dc207919f7e7c7750cb9bf3f135118f1",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 2,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-121",
+      "name": "摩托车",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张摩托车的实拍照片",
+        "带发动机的两轮摩托车",
+        "摩托车油箱座椅和车轮"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 11,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "03b9772ba8d38090e25a2d91b944a0adc6709ad7a4f7ba7d80531a9951e8c960",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 2,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-122",
+      "name": "船舶",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张船舶的实拍照片",
+        "水面航行或停泊的船只",
+        "船体甲板和驾驶舱"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.395
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ac719bdacf6315bd57cffa694dc4e97ba1b86afe96fac19ca2de2ba55a0065b2",
+        "train_positive": 8,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 2,
+          "fn": 0,
+          "tn": 3
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-123",
+      "name": "地铁",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张地铁的实拍照片",
+        "地铁列车停靠地下车站",
+        "地铁车厢座椅扶手和车门"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 14,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "02283e4ec4b79b5fa6ced2c53093bbdda29140bdd33e14237cb47ac8c4b1fd3e",
+        "train_positive": 3,
+        "train_negative": 11,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-124",
+      "name": "道路",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张道路的实拍照片",
+        "公路向远处延伸",
+        "道路车道线与路面标记"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "864fd84e49a6cc61022e6b1ede38b2100f0bac90d7001e810003f3777088d9dc",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 1,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-125",
+      "name": "停车场",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张停车场的实拍照片",
+        "汽车停放在划线车位中",
+        "地下停车库车位和车辆"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 8,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d99e0f4cd6e545bc99538ad3c8d59e7abbd7543ecb6edd0a435ac03ff3ec534c",
+        "train_positive": 8,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 1,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-127",
+      "name": "交通设施",
+      "groups": [
+        "交通出行"
+      ],
+      "descriptions": [
+        "一张交通设施的实拍照片",
+        "道路旁交通标志和信号灯",
+        "交通护栏路牌和道路指示设施"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.4
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 7,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d3e6c8de0509467a3169b4dca2daeb65a3fdf4b945bd265e4c308922082a2a69",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-128",
+      "name": "滑雪",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张滑雪的实拍照片",
+        "滑雪者踩滑雪板在雪道滑行",
+        "穿滑雪装备的人在滑雪场活动"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 9,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "b4ddb96f058c32150d0c5cc2662337c07cbe92e706a9981b172e52548d95b24d",
+        "train_positive": 6,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-129",
+      "name": "登山徒步",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张登山徒步的实拍照片",
+        "人们背背包在山间徒步",
+        "登山者沿山路行走"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 11,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "fd01ecf152366ab42e14f97bd5a9353a50f1e55972e430dfe139b490fb01ca4a",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-130",
+      "name": "跑步",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张跑步的实拍照片",
+        "人物迈开步伐跑步",
+        "跑步者在跑道或道路奔跑"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 13,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "6c25babfa61d4252610e16acd09d545e04bab79ea74e9190c7cd1347871dc400",
+        "train_positive": 3,
+        "train_negative": 10,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-131",
+      "name": "露营",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张露营的实拍照片",
+        "野外营地搭着帐篷天幕",
+        "草地上帐篷与露营桌椅"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 12,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "0bd9558f553f65241365338bd8a53d9e4ccf72d8fec434c276bbfa9df69b546a",
+        "train_positive": 3,
+        "train_negative": 9,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-132",
+      "name": "骑行",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张骑行的实拍照片",
+        "人物骑自行车在户外行进",
+        "骑行者戴头盔骑自行车运动"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 11,
+        "uncertain": 3,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "072f3a0d9eced03e8d2899e7ef483d40a31973d03172f8ee1aebc14074e894d0",
+        "train_positive": 3,
+        "train_negative": 9,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-133",
+      "name": "攀岩",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张攀岩的实拍照片",
+        "攀岩者手脚抓岩壁向上爬",
+        "人物在带彩色岩点的攀岩墙上攀爬"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.45
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 14,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "8363de7ea6d593517cec8c4d9de41604bc16a7acf39421dea81ae615676ee8f3",
+        "train_positive": 3,
+        "train_negative": 10,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-134",
+      "name": "演唱会",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张演唱会的实拍照片",
+        "歌手拿麦克风在舞台演唱",
+        "演唱会现场舞台灯光和观众"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 13,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "e8ab007a884de87f169d9b3872edcf3c38fd2fb159bb7ff850ac69c6d4dbf1b7",
+        "train_positive": 4,
+        "train_negative": 9,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 2,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-135",
+      "name": "演出",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张演出的实拍照片",
+        "演员在舞台上表演",
+        "舞台上的舞蹈戏剧文艺表演"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "789f18f0915b08e68b8b421b03d77e0b15c470c4702e7a9695b32abfd7863e9e",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-136",
+      "name": "展览",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张展览的实拍照片",
+        "展品与展板排列组成展览",
+        "观众在展台和展品之间参观"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.44
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 13,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "4a3a87e7bdf69fd225fc66d02e75cc7c7ce9f6806d4ea42ce517b629507e9a34",
+        "train_positive": 3,
+        "train_negative": 11,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 2,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-137",
+      "name": "购物",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张购物的实拍照片",
+        "顾客在店铺挑选商品",
+        "人物推购物车或在柜台结账"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.46
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 12,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "5268193dee8e09e59f6aec8e8883a7c2de1875c2d239f667971640c086f7d02b",
+        "train_positive": 3,
+        "train_negative": 10,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-138",
+      "name": "生日",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张生日的实拍照片",
+        "有人围着插蜡烛的蛋糕庆祝生日",
+        "生日装饰与蛋糕的庆祝场景"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 10,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "239df6a0a92e55fbd8e3669675138a1917f82aa56aa40eb241fbac617de0edfe",
+        "train_positive": 4,
+        "train_negative": 9,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 1,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-140",
+      "name": "烟花",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张烟花的实拍照片",
+        "夜空中绽放烟花",
+        "焰火爆炸形成彩色光芒和火花"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 7,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "b6cef459140ebd265738b7b60bdab3f9f1cbf323e1ff3233ac60dd637256f9d3",
+        "train_positive": 8,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 1,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-141",
+      "name": "婚礼",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张婚礼的实拍照片",
+        "新人穿婚纱礼服举行婚礼",
+        "婚礼现场新人和仪式布置"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 10,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "4261907fb7617a9e5f8009e7d387192ed2681322a7cf617e1945696a216070b0",
+        "train_positive": 6,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 2,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-142",
+      "name": "典礼活动",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张典礼活动的实拍照片",
+        "典礼现场舞台讲台和参加者",
+        "颁奖或毕业典礼仪式场面"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.45
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 2,
+        "negative": 16,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "7c232332806a8412fc8670cac731ecc332b1f9648f0a55745c9c262d51a96706",
+        "train_positive": 2,
+        "train_negative": 12,
+        "training": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 12
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-144",
+      "name": "体育比赛",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张体育比赛的实拍照片",
+        "运动员在体育场地比赛",
+        "球场上双方运动员对抗比赛"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "7ff42b73a1130250e3614012299cb77c39af43ac3b7886d08521c8b1868a46a2",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-145",
+      "name": "截图",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张截图的图片",
+        "手机或电脑界面截屏",
+        "应用窗口状态栏和文字组成界面"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "b14e3d332af628d967c8fe1af761e7328345cfdb8ea883c95dc433773e175cf7",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-146",
+      "name": "聊天 / 短信记录",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张聊天或短信记录的图片",
+        "即时通讯或短信对话界面截图",
+        "联系人头像旁排列左右对话气泡"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.435
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "99b6ccba149a46c4d4590bb8af00ff4041ef6faca7db09990642276e0a77228c",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 3,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-148",
+      "name": "通话记录",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张通话记录的图片",
+        "手机通话历史列表截图",
+        "按行显示联系人通话时间和电话图标"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.45
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 2,
+        "negative": 15,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "84e8f01c60e902d3835241a8283529ec225e8c42079ace2f361e5c3387ce71b6",
+        "train_positive": 2,
+        "train_negative": 12,
+        "training": {
+          "tp": 2,
+          "fp": 7,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-149",
+      "name": "邮件记录",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张邮件记录的图片",
+        "电子邮件收件箱列表截图",
+        "邮件发件人主题和正文"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.455
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 1,
+        "negative": 15,
+        "uncertain": 2,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ce1845529153b2a3556420dad2e85457b4518be9ec13bb2755fd66fac2ef75b1",
+        "train_positive": 1,
+        "train_negative": 12,
+        "training": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-150",
+      "name": "二维码",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张二维码的图片",
+        "清楚展示二维码图案",
+        "黑白方块和角部定位图案组成二维码"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "7773023251818482247fdab158348438a8a0ab5b3673cd43dfb302b2ec75921a",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-151",
+      "name": "地图导航",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张地图导航的图片",
+        "地图道路地名和位置标记",
+        "导航界面路线和方向指引"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "a68fc60ad7a72fd1331fc553a1ad76abf61181905363b88b13f6b4562613573a",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-152",
+      "name": "订单",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张订单的图片",
+        "购物订单商品价格和订单状态",
+        "订单详情列出商品和收货信息"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.46
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "8e39d5a9693ffc7d268334abc94b756601353cec951e8726d25b89e4ad7c4430",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 3,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-153",
+      "name": "转账记录",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张转账记录的图片",
+        "转账界面金额和收款人",
+        "支付凭证页面显示转账结果"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 5,
+        "negative": 13,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "8bf8b4cc51a0e724deb6f1990bf9e7ec9adf6dc218e106b96da9bcad85b438b1",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 5,
+          "fp": 4,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-154",
+      "name": "日程计划",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张日程计划的图片",
+        "日历界面日期和日程事项",
+        "按日期时间安排事项的计划表"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.45
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 4,
+        "negative": 14,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "94d49e83254823ef93315842016def92c4d6615557b478db3e5be4d0cb73ff79",
+        "train_positive": 4,
+        "train_negative": 10,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 2,
+          "tn": 10
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-155",
+      "name": "身份证",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张身份证的图片",
+        "中国居民身份证证件照片",
+        "卡片上证件人像和居民身份信息"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.48
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 15,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "2a5121860eda5e34a29a327635bca3ef61e7c574845028e2f8ad2c16c4f288e5",
+        "train_positive": 3,
+        "train_negative": 11,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-156",
+      "name": "证件",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张证件的图片",
+        "带人像和身份信息的证件",
+        "护照驾驶证等身份证明文件"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.465
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "52fa919917131888a7a6c02fc14c5ae590bb9effbd49aee440a2c07d0638f571",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-157",
+      "name": "票据 / 凭证",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张票据或凭证的图片",
+        "印有金额日期交易信息的票据",
+        "购物消费打印的收据和发票"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "392d89ef7930b4ce5a360c9030a71631f0decd6eff348ae19ce73c1e2ebfaf41",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 6,
+          "fp": 2,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-159",
+      "name": "金融理财",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张金融理财的图片",
+        "股票基金走势图和持仓列表",
+        "金融账户投资金额和收益"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 12,
+        "uncertain": 3,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "8687ea9d7fcb0826f45d010aaa4378c1678a1fe9a933cdef6318b96cf9934d44",
+        "train_positive": 3,
+        "train_negative": 9,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-160",
+      "name": "银行卡",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张银行卡的图片",
+        "银行卡片上银行标志和卡号",
+        "带芯片或磁条的银行卡实物"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 10,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "06666c03f1a47fd2c510b82c8636f3840201e05957fe55d57ff7fe0fa2443d6c",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-161",
+      "name": "表格",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张表格的图片",
+        "多行多列单元格组成表格",
+        "按行列排列文字数字的电子表格"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.445
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 11,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "870ace95a043eaaa7a4ff09977cdf0a3355e755b96af657361186f4fb25d5238",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 0,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-162",
+      "name": "文件",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张文件的图片",
+        "纸质文书或电子文档页面",
+        "印有多段正文标题的正式文件"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "bebfb571ca3d7d54ee783faded7724dec9b8e44268f07b7a13371ea5ec51a6f1",
+        "train_positive": 5,
+        "train_negative": 9,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 1,
+          "tn": 9
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-163",
+      "name": "证书",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张证书的图片",
+        "带标题印章姓名的证书",
+        "奖状或资格证书页面"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "a79d6562052c72a957d856f9f3716d64f39b71e188f2a9362863f728019b5f8f",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-164",
+      "name": "手写资料",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张手写资料的图片",
+        "纸张上手写笔记",
+        "笔记本手写文字和公式"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 8,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "ea738f33ab62c30700db9bacee62c2d86b2d0c0eb020e9ebfe73328cc879b0a4",
+        "train_positive": 7,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-165",
+      "name": "黑板",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张黑板的图片",
+        "黑板上粉笔文字和图示",
+        "教室里带粉笔字的黑板"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.46
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 15,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "bf4f477240c14fda99146bf72838256182e906d4ce1d46e91f698ed64e449d1d",
+        "train_positive": 3,
+        "train_negative": 11,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-166",
+      "name": "思维导图",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张思维导图的图片",
+        "中心主题向四周分支展开",
+        "文字节点由树状分支相连的导图"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.455
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 6,
+        "negative": 11,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "d44c393d28e7b30417822c9ac14106aee4e4313959e78126500e4f145407a4c1",
+        "train_positive": 5,
+        "train_negative": 8,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 3,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-167",
+      "name": "海报",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张海报的图片",
+        "图文排版宣传海报",
+        "醒目标题和宣传图案的海报"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 9,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "26307e27ce15a18526797e83b6f53e3c23d3b98f372662c9cd4122f272f498fd",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-168",
+      "name": "文字卡片",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张文字卡片的图片",
+        "以文字排版为主体的卡片",
+        "纯色背景排列短句或大段文字"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.455
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 10,
+        "negative": 8,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "b8d34ff56e272e1bec1b1a8d6da5404839d92200ee86a22aeda1726cdc867479",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 4,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 2,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-170",
+      "name": "表情包 / 梗图",
+      "groups": [
+        "插画 / 漫画 / 表情包"
+      ],
+      "descriptions": [
+        "一张表情包或梗图的图片",
+        "夸张表情与文字组成聊天表情包",
+        "搞笑文字配人物动物卡通图片"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "42536c258eb8d27851ad0e741bab9aef0e62bc4f4e6a3e9c987f6e5e475649f7",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 7,
+          "fp": 1,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-172",
+      "name": "影视截图",
+      "groups": [
+        "插画 / 漫画 / 表情包"
+      ],
+      "descriptions": [
+        "一张影视截图的图片",
+        "电影电视剧画面截图",
+        "带字幕的影视剧场景"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "1657ae5ebab49bef501cfdc624ebe816fd9f1a4bec4a7f3a31384d74429bc380",
+        "train_positive": 8,
+        "train_negative": 6,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 0,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-174",
+      "name": "漫画",
+      "groups": [
+        "插画 / 漫画 / 表情包"
+      ],
+      "descriptions": [
+        "一张漫画的图片",
+        "漫画人物和对白气泡",
+        "多个分格组成漫画页面"
+      ],
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.455
+      },
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 15,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "30379618f0a2bc64191c153e3c965748e4b54ae2cf10c599b78244a1331a1d75",
+        "train_positive": 3,
+        "train_negative": 11,
+        "training": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 1,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-175",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.39
+      },
+      "name": "海洋 / 海面",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张海洋或海面的实拍照片",
+        "开阔海面延伸至海平线",
+        "海上波浪与远方海天交界"
+      ],
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 6,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "e282d68ffeb5fde15104659ca5907498c89cab137c6f203fbb6290768641ed68",
+        "train_positive": 9,
+        "train_negative": 4,
+        "training": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-176",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "name": "雪景",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张雪景的实拍照片",
+        "地面树木覆盖积雪",
+        "城市街道或野外雪地景观"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 6,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "22a9615ace4dbb301c33c8db236394b02478cd7d9de3eaefaedb7789f61bb9d2",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 8,
+          "fp": 0,
+          "fn": 1,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 1
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-177",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "name": "田野 / 农田",
+      "groups": [
+        "自然风景"
+      ],
+      "descriptions": [
+        "一张田野或农田的实拍照片",
+        "成片田块田埂组成农业景观",
+        "梯田或大片庄稼地延伸至远方"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "17be50ab6bc3806b0ce030923e422248073bcc14d351cbd3e1835f0cc7c5e980",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 2,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 1,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-178",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "name": "室内空间 / 家居室内",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张室内空间或家居室内的实拍照片",
+        "客厅卧室等住宅室内空间",
+        "房间中床沙发和家居家具"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "086bbc81f2e66ae97af359e33c1bf7bcaafa71812246e006a3ee756e69c4f565",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 5,
+          "fp": 1,
+          "fn": 2,
+          "tn": 6
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-179",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "name": "古建筑 / 传统建筑",
+      "groups": [
+        "建筑 / 场所"
+      ],
+      "descriptions": [
+        "一张古建筑或传统建筑的实拍照片",
+        "传统民居屋顶院落和木结构",
+        "古建筑亭台牌楼和传统屋檐"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "0d5726a484b923fcdfce1f9f6066b87e96a134874ade8edd58e3fb1aaac8a4f3",
+        "train_positive": 9,
+        "train_negative": 5,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 2,
+          "tn": 5
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-180",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "name": "马",
+      "groups": [
+        "动物"
+      ],
+      "descriptions": [
+        "一张马的实拍照片",
+        "马的头部鬃毛和全身",
+        "马在草地站立或奔跑"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "4528f0d99148fde179122c0b3a6cba1d93d0a604b84445deffb27fc00a2df890",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-181",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.42
+      },
+      "name": "面食",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张面食的实拍照片",
+        "碗中面条和配料",
+        "包子饺子等面制主食"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 10,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "c6793192212ef98905191052fe2b0ef1e510c48755d552bc8b02fba830e764ba",
+        "train_positive": 6,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 3,
+          "fn": 0,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-182",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.41
+      },
+      "name": "米饭 / 饭类",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张米饭或饭类的实拍照片",
+        "碗或盘中盛米饭",
+        "炒饭盖饭等米饭主食"
+      ],
+      "calibration": {
+        "status": "reviewed",
+        "reviewed": 18,
+        "positive": 9,
+        "negative": 9,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "2d6dbdd656a8ef1af377c5a513cf92c83bc7758acf994167053c1cecd779d3cf",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 7,
+          "fp": 0,
+          "fn": 0,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-183",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.415
+      },
+      "name": "面包 / 烘焙",
+      "groups": [
+        "美食饮品"
+      ],
+      "descriptions": [
+        "一张面包或烘焙的实拍照片",
+        "面包切片或整只面包",
+        "可颂吐司和面包卷"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "f30accdb7fd24fac5d0363491910cb624d9196588e5748cf9a5bad0f93632058",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 1,
+          "fn": 1,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-184",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.405
+      },
+      "name": "插画 / 动漫",
+      "groups": [
+        "插画 / 漫画 / 表情包"
+      ],
+      "descriptions": [
+        "一张插画或动漫的图片",
+        "绘制的动漫角色插画人物",
+        "单幅数字插画卡通作品"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 11,
+        "negative": 7,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "688e0d04b66a204319c236ac67aabd44e9acedb7f0eb38387c5716d8b1c5703a",
+        "train_positive": 10,
+        "train_negative": 4,
+        "training": {
+          "tp": 9,
+          "fp": 0,
+          "fn": 1,
+          "tn": 4
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-185",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.455
+      },
+      "name": "游泳 / 水上运动",
+      "groups": [
+        "活动 / 事件"
+      ],
+      "descriptions": [
+        "一张游泳或水上运动的实拍照片",
+        "人物在泳池或水面游泳",
+        "人物穿泳装进行水上运动"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 3,
+        "negative": 14,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "243731e6686348a9afb1c34ff76a2551079042f70d4a6b0a7eda873baf9ed0f2",
+        "train_positive": 3,
+        "train_negative": 11,
+        "training": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "tn": 11
+        },
+        "validation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-186",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.43
+      },
+      "name": "枝干",
+      "groups": [
+        "植物花卉"
+      ],
+      "descriptions": [
+        "一张枝干的实拍照片",
+        "树木枝条树干的近景",
+        "树皮纹理和分叉树枝"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 7,
+        "negative": 11,
+        "uncertain": 0,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "80eaefd5c142b962c2f22c4677da59b64592bfb1dfd55ddb8e39b5a590f9667e",
+        "train_positive": 6,
+        "train_negative": 8,
+        "training": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 1,
+          "tn": 8
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 3
+        },
+        "no_positive_evidence": false
+      }
+    },
+    {
+      "key": "builtin-187",
+      "thresholds": {
+        "chinese-clip-ViT-B-16": 0.425
+      },
+      "name": "车票 / 门票",
+      "groups": [
+        "文档 / 截图 / 资料"
+      ],
+      "descriptions": [
+        "一张车票或门票的图片",
+        "印有场次日期座位信息的门票",
+        "火车票登机牌等出行票证"
+      ],
+      "calibration": {
+        "status": "limited",
+        "reviewed": 18,
+        "positive": 8,
+        "negative": 9,
+        "uncertain": 1,
+        "method": "visual-stratified-f0.5-grid0.005-v2",
+        "train_samples": 14,
+        "validation_samples": 4,
+        "date": "2026-11-12",
+        "model": "chinese-clip-ViT-B-16",
+        "photos_scored": 75041,
+        "description_sha256": "5243a48dfd8d0252facc0b03a735acbed01cd46ff115b71ce91839cc2c5e1094",
+        "train_positive": 7,
+        "train_negative": 7,
+        "training": {
+          "tp": 6,
+          "fp": 0,
+          "fn": 1,
+          "tn": 7
+        },
+        "validation": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "tn": 2
+        },
+        "no_positive_evidence": false
+      }
+    }
+  ]
+}

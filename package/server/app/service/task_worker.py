@@ -30,6 +30,7 @@ from app.service.task_runtime import await_owned
 from app.service.disk_budget import disk_budget
 # Import tasks to register strategies
 from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery, journey
+from app.service.tasks import clip_classification
 from app.service.tasks import daily_frame, panorama
 
 class CompletionContext:
@@ -152,6 +153,8 @@ def get_chunk_size(task_type):
         chunk_size = 16
     elif task_type == TaskType.CLASSIFY_IMAGE:
         chunk_size = 8
+    elif task_type == TaskType.CLASSIFY_IMAGE_CLIP:
+        chunk_size = 256
     elif task_type == TaskType.IMAGE_EMBEDDING:
         chunk_size = 8
     return chunk_size
@@ -325,6 +328,7 @@ class TaskWorker:
             # several at once would starve the rest of the pipeline.
             "face_cluster": 1,
             "embedding": 1,
+            "clip_classification": 1,
             "tickets": 1,
             "visual_llm": 1,
             "local_llm": 1,
@@ -443,7 +447,7 @@ class TaskWorker:
         else:
             chunk_size = max((get_chunk_size(t) for t in TaskStrategyFactory.get_tasks_by_category(category)), default=1)
         # Two batches per admission slot, with a hard cap on queued row count.
-        return min(128, max(2, concurrency * chunk_size * 2))
+        return min(512 if task_type == TaskType.CLASSIFY_IMAGE_CLIP else 128, max(2, concurrency * chunk_size * 2))
 
     def start(self):
         if self.running:
@@ -758,7 +762,8 @@ class TaskWorker:
                     query = query.filter(Task.priority >= INTERACTIVE_TASK_PRIORITY)
                 if reserved_task_ids:
                     query = query.filter(Task.id.notin_(list(reserved_task_ids)))
-                fetch_limit = min(FETCH_BATCH_SIZE, prefetch_limit - queued_items)
+                fetch_limit = min(512 if chosen_type == TaskType.CLASSIFY_IMAGE_CLIP else FETCH_BATCH_SIZE,
+                                  prefetch_limit - queued_items)
                 tasks = (query.order_by(Task.priority.desc(), Task.created_at.asc())
                               .limit(fetch_limit)
                               .all())
@@ -1010,7 +1015,7 @@ class TaskWorker:
                 self._publish_task_row(task)
             outcome = 'success'
             try:
-                if strategy.resource_key in {'classification', 'ocr', 'face', 'embedding'} and isinstance(db, Session):
+                if strategy.resource_key in {'classification', 'ocr', 'face', 'embedding', 'clip_classification'} and isinstance(db, Session):
                     from app.service.tasks.ai_runtime import run_ai_batch
                     results = run_ai_batch(db.get_bind(), strategy, self, [t.id for t in tasks])
                 else:
@@ -1034,6 +1039,12 @@ class TaskWorker:
                     retryable = self._is_retryable_error(error)
                     if retryable:
                         outcome = 'waiting_for_model' if self._is_model_preparing_error(error) else 'overload'
+                        if task is not None and self._is_model_preparing_error(error):
+                            from app.core.config_manager import config_manager
+                            from app.service.ai_model_state import invalidate_model_state
+                            api_url = (task.payload or {}).get('ai_api_url') or config_manager.get_user_config(
+                                task.owner_id, db).ai.ai_api_url
+                            invalidate_model_state(api_url)
                         if task is not None and self._schedule_retry(db, task, error, strategy.max_attempts):
                             continue
                     else:
@@ -1087,7 +1098,8 @@ class TaskWorker:
             '等待 ai 模型：' in text
             or 'model_status=downloading' in text
             or 'model_status=pending' in text
-            or ('model' in text and ('not ready' in text or '尚未就绪' in text))
+            or '尚未就绪' in text
+            or ('model' in text and 'not ready' in text)
         )
 
     def _schedule_retry(self, db: Session, task: Task, error: Any, max_attempts: int) -> bool:

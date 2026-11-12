@@ -310,7 +310,7 @@ def test_process_ai_results_picks_first_label_above_threshold_and_records_tag(mo
         "predictions": [{"label": "beach", "confidence": 0.9}, {"label": "sky", "confidence": 0.6}],
     }]
 
-    monkeypatch.setattr(cls_mod, "get_tag_id", lambda db, name, owner: "tag-id")
+    monkeypatch.setattr(cls_mod, "get_tag_id", lambda db, name, owner: str(uuid4()))
 
     db = MagicMock()
     results = _run(strategy._process_ai_results([task], [photo], ai_results, [str(photo_id)], db))
@@ -339,7 +339,7 @@ def test_process_ai_results_skips_low_confidence_label(monkeypatch):
         "predictions": [{"label": "beach", "confidence": 0.5}],
     }]
 
-    monkeypatch.setattr(cls_mod, "get_tag_id", lambda db, name, owner: "tag-id")
+    monkeypatch.setattr(cls_mod, "get_tag_id", lambda db, name, owner: str(uuid4()))
 
     db = MagicMock()
     results = _run(strategy._process_ai_results([task], [photo], ai_results, [str(photo_id)], db))
@@ -365,7 +365,7 @@ def test_process_ai_results_skips_others_label(monkeypatch):
         "predictions": [{"label": "others", "confidence": 0.95}],
     }]
 
-    monkeypatch.setattr(cls_mod, "get_tag_id", lambda db, name, owner: "tag-id")
+    monkeypatch.setattr(cls_mod, "get_tag_id", lambda db, name, owner: str(uuid4()))
 
     db = MagicMock()
     results = _run(strategy._process_ai_results([task], [photo], ai_results, [str(photo_id)], db))
@@ -390,7 +390,7 @@ def test_process_ai_results_enqueues_ticket_task_for_ticket_label(monkeypatch):
         "predictions": [{"label": "\u706b\u8f66\u7968", "confidence": 0.93}],
     }]
 
-    monkeypatch.setattr(cls_mod, "get_tag_id", lambda db, name, owner: "tag-id")
+    monkeypatch.setattr(cls_mod, "get_tag_id", lambda db, name, owner: str(uuid4()))
 
     db = MagicMock()
     _run(strategy._process_ai_results([task], [photo], ai_results, [str(photo_id)], db))

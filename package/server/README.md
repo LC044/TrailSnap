@@ -49,7 +49,7 @@ DB_URL=postgresql://msi:msi4090@localhost:5532/trailsnap
 RAILWAY_DB_URL=postgresql://msi:msi4090@localhost:5532/railway
 
 # AI 服务地址
-AI_API_URL=http://localhost:8001
+AI_API_URL=http://127.0.0.1:8001
 ```
 
 本地无 PostgreSQL 调试时可改为：
@@ -59,7 +59,7 @@ AI_API_URL=http://localhost:8001
 TS_DB_URL=sqlite:///./data/trailsnap.sqlite
 # Railway 仍有独立数据库配置
 RAILWAY_DB_URL=sqlite:///./data/railway.sqlite
-AI_API_URL=http://localhost:8001
+AI_API_URL=http://127.0.0.1:8001
 ```
 
 `start.py` 会根据 URL 方言自动选择迁移：PostgreSQL 使用 `alembic/`，SQLite

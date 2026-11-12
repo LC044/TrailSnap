@@ -10,6 +10,7 @@ export const TASK_CATEGORIES: { key: string; label: string }[] = [
   { key: 'RECOGNIZE_FACE', label: '人脸识别' },
   { key: 'OCR', label: '文字识别' },
   { key: 'IMAGE_EMBEDDING', label: '图片特征提取' },
+  { key: 'CLASSIFY_IMAGE_CLIP', label: 'CLIP 智能分类' },
   { key: 'GENERATE_THUMBNAIL', label: '生成缩略图' },
   { key: 'RECOGNIZE_TICKET', label: '车票识别' },
   { key: 'FIND_DUPLICATE_PHOTOS', label: '重复照片' },

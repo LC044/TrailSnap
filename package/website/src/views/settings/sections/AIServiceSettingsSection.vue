@@ -8,7 +8,7 @@
               <el-input
                 v-model="aiForm.ai_api_url"
                 class="min-w-0 flex-1"
-                placeholder="http://localhost:8001"
+                placeholder="http://127.0.0.1:8001"
                 aria-label="AI API 地址"
                 @input="resetAIServiceTest"
               />

@@ -282,6 +282,14 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
                         rewritten = changed[0] if changed else payload
                     db.execute("UPDATE tasks SET payload=? WHERE id=?", (json.dumps(rewritten, ensure_ascii=False), task_id))
         report_progress("database")
+        # Verify the copy preserved every previewed row count BEFORE the
+        # schema upgrade: migrating to clip_sqlite_0025 enqueues a CLIP
+        # classification task per photo-owning user, which is new work by
+        # design, not a copy defect.
+        with closing(sqlite3.connect(data / "data/trailsnap.sqlite")) as db:
+            for table, count in preview["counts"].items():
+                if db.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0] != count:
+                    raise ValueError(f"转换后 {table} 记录数量不一致")
         os.environ.update(TS_DESKTOP="1", TS_DESKTOP_PORTABLE="1", TS_DESKTOP_ROOT=str(data), TS_DATA_DIR=str(data / "data"))
         from desktop_entry import _prepare_desktop_database
         try:
@@ -319,10 +327,6 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
                     "activeBuild":build,"previousBuild":None,"dataRoot":{"kind":"relative","path":"userdata"},"serverPort":None,"fixedPort":False}
         write_json(stage / "instance.json", instance)
         write_json(stage / "portable.json", {"schemaVersion":1,"activeBuild":build})
-        with closing(sqlite3.connect(data / "data/trailsnap.sqlite")) as db:
-            for table,count in preview["counts"].items():
-                if db.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0] != count:
-                    raise ValueError(f"转换后 {table} 记录数量不一致")
         previous_data = os.getenv('TS_IMPORT_PREVIOUS_DATA')
         previous_entry = os.getenv('TS_IMPORT_ORIGIN') if previous_data else None
         write_json(stage / "conversion.json", {"source":str(source),"counts":preview["counts"],"externalCopied":copy_external,
