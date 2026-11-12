@@ -1,13 +1,13 @@
 <template>
   <section class="space-y-3">
+    <details :open="!!chosen || !!loadError">
+      <summary class="cursor-pointer py-3 text-sm">使用已有方案（可选）<span v-if="currentPreset"> · {{ currentPreset.name }}</span><span v-else-if="chosen === 'recent'"> · 上次使用</span></summary>
     <div class="flex flex-wrap items-center gap-2">
       <el-select v-model="chosen" clearable placeholder="选择保存的模板或整理方案" class="w-full sm:max-w-sm" @change="applyPreset">
         <el-option v-for="preset in visiblePresets" :key="preset.id" :value="preset.id"
           :label="preset.name + (store.preferences.default_rename_id === preset.id ? ' · 默认' : '')" />
         <el-option v-if="config.kind === 'rename' && recent" value="recent" label="上次使用的有效模板" />
       </el-select>
-      <el-button :disabled="store.busy || !!loadError" @click="openSave">保存为{{ config.kind === 'rename' ? '模板' : '方案' }}</el-button>
-      <el-button :disabled="!currentPreset || store.busy" @click="updatePreset">更新所选</el-button>
       <div class="relative">
         <button type="button" class="ts-icon-button" aria-label="模板管理" :aria-expanded="menu" @click="menu = !menu"><MoreHorizontal class="h-5 w-5" /></button>
         <AdaptiveMenu v-model="menu" title="模板管理" close-on-action>
@@ -20,9 +20,14 @@
       </div>
       <input ref="importInput" type="file" accept="application/json,.json" class="hidden" @change="importPresets" />
     </div>
-    <p class="ts-muted text-xs">输入不会覆盖已保存模板。{{ config.kind === 'rename' ? '有效执行后自动记住最近模板；默认模板优先。' : '方案只保存规则，不保存待处理影像。' }}</p>
     <p v-if="loadError" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ loadError }} <el-button link @click="load">重新载入</el-button></p>
 
+    </details>
+    <slot />
+    <div class="ts-divider flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+      <el-button :disabled="store.busy || !!loadError" @click="openSave">保存为{{ config.kind === 'rename' ? '模板' : '方案' }}</el-button>
+      <slot name="actions" />
+    </div>
     <ResponsiveDialog v-model="saveDialog" :title="renameOnly ? '重命名模板' : '保存常用方案'">
       <el-form label-position="top">
         <el-form-item label="名称"><el-input v-model="presetName" maxlength="30" show-word-limit placeholder="例如：旅行照片" /></el-form-item>
@@ -77,15 +82,16 @@ const applyPreset = (id: string) => {
   if (value) config.value = clone(value)
 }
 const persist = async (operation: () => Promise<unknown>) => {
-  try { await operation(); ElMessage.success('模板已保存'); saveDialog.value = false }
-  catch { loadError.value = '保存失败或版本已变化，请重新载入后重试' }
+  try { await operation(); ElMessage.success('模板已保存'); saveDialog.value = false; return true }
+  catch { loadError.value = '保存失败或版本已变化，请重新载入后重试'; return false }
 }
 const saveNew = async () => {
   const value = clone(store.preferences)
   const name = presetName.value.trim()
   if (value.presets.some(p => p.name === name && p.id !== (renameOnly.value ? chosen.value : ''))) {
-    ElMessage.warning('已有同名模板，请另起名称或更新所选模板'); return
+    ElMessage.warning('已有同名模板，请使用其他名称'); return
   }
+  let savedId = chosen.value
   if (renameOnly.value && currentPreset.value) {
     value.presets = value.presets.map(p => p.id === chosen.value ? { ...p, name } : p)
   } else {
@@ -93,15 +99,9 @@ const saveNew = async () => {
     value.presets.push({ id, name, config: clone(config.value) })
     if (value.presets.length > 20) { ElMessage.warning('最多保存 20 套，请先删除不用的模板'); return }
     if (makeDefault.value) value.default_rename_id = id
-    chosen.value = id
+    savedId = id
   }
-  await persist(() => store.save(value))
-  renameOnly.value = false
-}
-const updatePreset = () => {
-  const value = clone(store.preferences)
-  value.presets = value.presets.map(p => p.id === chosen.value ? { ...p, config: clone(config.value) } : p)
-  return persist(() => store.save(value))
+  if (await persist(() => store.save(value))) { chosen.value = savedId; renameOnly.value = false }
 }
 const renameDialog = () => { presetName.value = currentPreset.value?.name || ''; renameOnly.value = true; saveDialog.value = true }
 const setDefault = () => persist(() => store.save({ ...clone(store.preferences), default_rename_id: chosen.value }))

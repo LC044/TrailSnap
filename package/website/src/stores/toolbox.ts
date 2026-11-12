@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { workflowApi, type ToolboxPreferences } from '@/api/toolboxWorkflows'
 import { useUserStore } from '@/stores/user'
 
@@ -15,6 +15,11 @@ export const useToolboxStore = defineStore('toolbox', () => {
     loadedOwner.value = ''
   })
   const load = async () => {
+    if (!user.userInfo?.id && user.token) {
+      await user.getUserInfo()
+      // Account-reset watcher must finish before capturing this request's revision.
+      await nextTick()
+    }
     const version = ++loadVersion
     const owner = user.userInfo?.id || ''
     if (!owner) throw new Error('请先登录')

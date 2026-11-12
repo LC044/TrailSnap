@@ -395,10 +395,10 @@ test.describe('P1 - DuplicatePhotoCleanup 重复照片清理 @views-coverage', (
   test('重复照片入口加载预览计划工作流，首屏不触发删除', async ({ page }) => {
     await page.goto('/toolbox/duplicate')
 
-    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible()
+    await expect(page.locator('h1.ts-page-title', { hasText: '重复照片' })).toBeVisible({ timeout: 10_000 })
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled()
+    await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled()
     await expect(page.getByRole('button', { name: '选择冗余项' })).toHaveCount(0)
   })
 })
