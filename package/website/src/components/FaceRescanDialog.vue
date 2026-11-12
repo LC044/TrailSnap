@@ -1,30 +1,49 @@
 <template>
-  <el-dialog
+  <ResponsiveDialog
     :model-value="visible"
-    title="重新扫描确认"
-    :width="dialogWidth"
-    destroy-on-close
+    title="查找此人的更多照片"
+    description=""
+    max-width="55rem" mobile-mode="fullscreen" mobile-back
+    :before-close="() => !applying"
     @update:model-value="emit('update:visible', $event)"
   >
+    <div class="mb-4 space-y-2">
+      <div class="flex flex-wrap items-start gap-3">
+        <div class="space-y-2">
+          <div class="flex items-center gap-3">
+            <label for="person-search-threshold" class="text-sm font-medium">最大匹配距离</label>
+            <el-input-number :key="loading || applying ? 'busy' : 'ready'" id="person-search-threshold" v-model="threshold" :min="0" :max="1" :step="0.01" :disabled="loading || applying" />
+          </div>
+          <p class="ts-muted text-xs leading-5">数值越小越严格，数值越大候选越多</p>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center gap-3">
+            <label for="person-removal-threshold" class="text-sm font-medium">最小移出距离</label>
+            <el-input-number :key="loading || applying ? 'busy' : 'ready'" id="person-removal-threshold" v-model="removalThreshold" :min="0" :max="1" :step="0.01" :disabled="loading || applying" />
+          </div>
+          <p class="ts-muted text-xs leading-5">数值越小，待移出候选越多</p>
+        </div>
+        <button type="button" class="ts-button ts-button-secondary" :disabled="loading || applying || threshold == null || removalThreshold == null" @click="loadPreview">重新查找</button>
+      </div>
+      <p v-if="thresholdChanged" class="ts-muted text-xs" role="status">阈值已修改，请重新查找后再应用。</p>
+    </div>
     <div v-if="loading" class="flex min-h-72 flex-col items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
       <RefreshCwIcon class="h-7 w-7 animate-spin text-primary-600" />
-      <span>正在扫描全部人脸…</span>
+      <span>正在比对已识别的人脸…</span>
     </div>
 
     <div v-else-if="loadFailed" class="flex min-h-72 flex-col items-center justify-center gap-3 text-center">
-      <p class="text-gray-600 dark:text-gray-300">扫描预览失败，请稍后重试。</p>
+      <p class="text-gray-600 dark:text-gray-300">查找失败，请稍后重试。</p>
       <button type="button" class="rounded-lg bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="loadPreview">
-        重新扫描
+        重新查找
       </button>
     </div>
 
     <div v-else-if="preview" class="space-y-4">
       <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-800">
+        <p v-if="preview.reason === 'no_reference_faces'" class="mb-2 text-sm">此人物还没有可用于比对的人脸。请先在照片中标记一张清晰人脸。</p>
         <p class="font-medium text-gray-800 dark:text-gray-100">
           找到 {{ preview.summary.add_count }} 个待新增、{{ preview.summary.remove_count }} 个待移出人脸
-        </p>
-        <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-          高相似度且未归属的新增项已默认选中；普通候选、从其他人物改归属及移出项需手动勾选。人工确认过的人脸不会被自动移出或改归属。
         </p>
       </div>
 
@@ -39,6 +58,7 @@
           <CandidateGrid
             :items="preview.add_candidates"
             :selected-ids="selectedAddIds"
+            :disabled="applying || thresholdChanged"
             empty-text="没有发现可新增的人脸"
             @toggle="toggleSelection(selectedAddIds, $event)"
           />
@@ -54,6 +74,7 @@
           <CandidateGrid
             :items="preview.remove_candidates"
             :selected-ids="selectedRemoveIds"
+            :disabled="applying || thresholdChanged"
             empty-text="没有发现需要移出的人脸"
             @toggle="toggleSelection(selectedRemoveIds, $event)"
           />
@@ -63,24 +84,23 @@
 
     <template #footer>
       <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <el-button @click="emit('update:visible', false)">取消</el-button>
-        <el-button type="primary" :loading="applying" :disabled="loading || !preview || selectedCount === 0" @click="applySelection">
+        <el-button :disabled="applying" @click="emit('update:visible', false)">取消</el-button>
+        <el-button type="primary" :loading="applying" :disabled="loading || thresholdChanged || !preview || selectedCount === 0" @click="applySelection">
           应用选中项（{{ selectedCount }}）
         </el-button>
       </div>
     </template>
-  </el-dialog>
+  </ResponsiveDialog>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, ref, watch, type PropType } from 'vue'
-import { ElCheckbox, ElMessage } from 'element-plus'
-import { RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
+import { computed, defineComponent, h, onBeforeUnmount, ref, watch, type PropType } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Check as CheckIcon, RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
 import { faceApi, type FaceRescanCandidate, type FaceRescanPreview } from '@/api/face'
 import type { FaceIdentity } from '@/types/album'
-import { toServerUrl } from '@/config/server'
 import { thumbnailUrl } from '@/utils/mediaUrl'
-import { useWindowSize } from '@vueuse/core'
+import ResponsiveDialog from './ui/ResponsiveDialog.vue'
 
 const props = defineProps<{ visible: boolean; identity: FaceIdentity | null }>()
 const emit = defineEmits<{
@@ -88,14 +108,18 @@ const emit = defineEmits<{
   (event: 'applied', result: any): void
 }>()
 
-const { width } = useWindowSize()
-const dialogWidth = computed(() => width.value < 640 ? '94%' : '880px')
-const visibleRef = computed({ get: () => props.visible, set: value => emit('update:visible', value) })
-
 const loading = ref(false)
 const applying = ref(false)
 const loadFailed = ref(false)
 const preview = ref<FaceRescanPreview | null>(null)
+const DEFAULT_SEARCH_THRESHOLD = 0.6
+const threshold = ref<number | undefined>(DEFAULT_SEARCH_THRESHOLD)
+const removalThreshold = ref<number | undefined>()
+const thresholdChanged = computed(() => !!preview.value && (
+  threshold.value !== preview.value.candidate_threshold || removalThreshold.value !== preview.value.removal_threshold
+))
+let requestVersion = 0
+let controller: AbortController | null = null
 const selectedAddIds = ref<number[]>([])
 const selectedRemoveIds = ref<number[]>([])
 const activeTab = ref('add')
@@ -104,69 +128,94 @@ const allAddsSelected = computed(() => !!preview.value?.add_candidates.length &&
 const allRemovesSelected = computed(() => !!preview.value?.remove_candidates.length && selectedRemoveIds.value.length === preview.value.remove_candidates.length)
 
 const toggleSelection = (selection: number[], faceId: number) => {
+  if (applying.value || thresholdChanged.value) return
   const index = selection.indexOf(faceId)
   if (index >= 0) selection.splice(index, 1)
   else selection.push(faceId)
 }
 
 const toggleAllAdds = () => {
-  if (!preview.value) return
+  if (!preview.value || applying.value || thresholdChanged.value) return
   selectedAddIds.value = allAddsSelected.value ? [] : preview.value.add_candidates.map(item => item.face_id)
 }
 
 const toggleAllRemoves = () => {
-  if (!preview.value) return
+  if (!preview.value || applying.value || thresholdChanged.value) return
   selectedRemoveIds.value = allRemovesSelected.value ? [] : preview.value.remove_candidates.map(item => item.face_id)
 }
 
 const loadPreview = async () => {
-  if (!props.identity) return
+  if (!props.identity || applying.value) return
+  controller?.abort()
+  controller = new AbortController()
+  const version = ++requestVersion
   loading.value = true
   loadFailed.value = false
   preview.value = null
+  selectedAddIds.value = []
+  selectedRemoveIds.value = []
   try {
-    const result = await faceApi.previewIdentityRescan(props.identity.id)
+    const result = await faceApi.previewIdentityRescan(props.identity.id, threshold.value, controller.signal, removalThreshold.value)
+    if (version !== requestVersion || !props.visible) return
     preview.value = result
+    threshold.value = result.candidate_threshold
+    removalThreshold.value = result.removal_threshold
     selectedAddIds.value = result.add_candidates
       .filter(item => item.recommended && item.assignment_type === 'unassigned')
       .map(item => item.face_id)
     selectedRemoveIds.value = []
     activeTab.value = result.add_candidates.length ? 'add' : 'remove'
   } catch (error) {
+    if (version !== requestVersion || !props.visible) return
     console.error('Failed to preview face rescan', error)
     loadFailed.value = true
   } finally {
-    loading.value = false
+    if (version === requestVersion) loading.value = false
   }
 }
 
 const applySelection = async () => {
-  if (!props.identity || !selectedCount.value) return
+  if (!props.identity || !selectedCount.value || applying.value || thresholdChanged.value || loading.value || !preview.value) return
+  const version = requestVersion
   applying.value = true
   try {
     const result = await faceApi.applyIdentityRescan(props.identity.id, {
       add_face_ids: selectedAddIds.value,
       remove_face_ids: selectedRemoveIds.value,
+      threshold: preview.value.candidate_threshold,
+      removal_threshold: preview.value.removal_threshold,
     })
+    if (version !== requestVersion || !props.visible) return
     ElMessage.success(`已应用：新增 ${result.added_count ?? 0} 张，移出 ${result.removed_count ?? 0} 张`)
     emit('applied', result)
     emit('update:visible', false)
   } catch (error: any) {
+    if (version !== requestVersion || !props.visible) return
     if (error?.response?.status === 409) {
       ElMessage.warning('候选结果已变化，请重新确认')
+      applying.value = false
       await loadPreview()
     } else {
       console.error('Failed to apply face rescan', error)
-      ElMessage.error('应用重新扫描结果失败')
+      ElMessage.error('应用查找结果失败')
     }
   } finally {
     applying.value = false
   }
 }
 
-watch(() => props.visible, value => {
-  if (value) loadPreview()
-})
+watch([() => props.visible, () => props.identity?.id], ([visible]) => {
+  ++requestVersion
+  controller?.abort()
+  loading.value = false
+  preview.value = null
+  selectedAddIds.value = []
+  selectedRemoveIds.value = []
+  threshold.value = DEFAULT_SEARCH_THRESHOLD
+  removalThreshold.value = undefined
+  if (visible) void loadPreview()
+}, { immediate: true })
+onBeforeUnmount(() => { ++requestVersion; controller?.abort() })
 
 const CandidateGrid = defineComponent({
   name: 'CandidateGrid',
@@ -174,6 +223,7 @@ const CandidateGrid = defineComponent({
     items: { type: Array as PropType<FaceRescanCandidate[]>, required: true },
     selectedIds: { type: Array as PropType<number[]>, required: true },
     emptyText: { type: String, required: true },
+    disabled: { type: Boolean, default: false },
   },
   emits: ['toggle'],
   setup(candidateProps, { emit: emitCandidate }) {
@@ -202,7 +252,10 @@ const CandidateGrid = defineComponent({
     return () => candidateProps.items.length
       ? h('div', { class: 'grid max-h-[48vh] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 md:grid-cols-4' },
           candidateProps.items.map(item => h('button', {
+            key: item.face_id,
             type: 'button',
+            disabled: candidateProps.disabled,
+            'aria-pressed': candidateProps.selectedIds.includes(item.face_id),
             class: [
               'relative overflow-hidden rounded-xl border bg-white text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900',
               candidateProps.selectedIds.includes(item.face_id) ? 'border-primary-500 ring-1 ring-primary-500' : 'border-gray-200 dark:border-gray-700',
@@ -217,12 +270,15 @@ const CandidateGrid = defineComponent({
                 loading: 'lazy',
                 alt: '人脸候选',
               }),
-              h(ElCheckbox, {
-                modelValue: candidateProps.selectedIds.includes(item.face_id),
-                class: 'absolute left-2 top-2 rounded bg-white/90 px-1 dark:bg-gray-900/90',
-                'onUpdate:modelValue': () => emitCandidate('toggle', item.face_id),
-                onClick: (event: Event) => event.stopPropagation(),
-              }),
+              h('span', {
+                'aria-hidden': 'true',
+                class: [
+                  'pointer-events-none absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border shadow-sm',
+                  candidateProps.selectedIds.includes(item.face_id)
+                    ? 'border-primary-500 bg-primary-500 text-white'
+                    : 'border-white/90 bg-black/35',
+                ],
+              }, candidateProps.selectedIds.includes(item.face_id) ? [h(CheckIcon, { class: 'h-4 w-4', strokeWidth: 3 })] : []),
             ]),
             h('div', { class: 'space-y-1 p-2' }, [
               h('p', { class: 'text-xs font-medium text-gray-800 dark:text-gray-100' }, `相似度 ${Math.round(item.confidence * 100)}%`),

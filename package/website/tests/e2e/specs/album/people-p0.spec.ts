@@ -197,11 +197,11 @@ test.describe.serial('P0 - 人物相册', () => {
     await expect(imgs.first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test('2.5.3b 人物详情页重新扫描先展示候选确认页 @p0', async ({ page, request }, testInfo) => {
+  test('2.5.3b 人物详情页查找更多照片支持局部阈值和候选确认 @p0', async ({ page, request }, testInfo) => {
     const probe = await requireAnyIdentity(request, testInfo)
     if (!probe.ok) return
 
-    await page.route(`**/api/faces/identities/${probe.identity.id}/rescan/preview`, async (route) => {
+    await page.route(`**/api/faces/identities/${probe.identity.id}/rescan/preview*`, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -213,7 +213,7 @@ test.describe.serial('P0 - 人物相册', () => {
             reason: null,
             reference_count: 3,
             threshold: 0.35,
-            candidate_threshold: 0.45,
+            candidate_threshold: Number(new URL(route.request().url()).searchParams.get('threshold') ?? .45),
             removal_threshold: 0.52,
             add_candidates: [
               { face_id: 101, photo_id: '00000000-0000-0000-0000-000000000101', distance: 0.1, confidence: 0.9, recommended: true, assignment_type: 'unassigned' },
@@ -241,12 +241,21 @@ test.describe.serial('P0 - 人物相册', () => {
     await editDialog.getByRole('button', { name: '取消' }).click()
 
     await actionsButton.click()
-    await page.getByRole('menuitem', { name: '重新扫描人脸' }).click()
-    const rescanDialog = page.getByRole('dialog').filter({ hasText: '重新扫描确认' })
+    await page.getByRole('menuitem', { name: '查找此人的更多照片' }).click()
+    const rescanDialog = page.getByRole('dialog').filter({ hasText: '查找此人的更多照片' })
     await expect(rescanDialog).toBeVisible({ timeout: 5_000 })
     await expect(rescanDialog.getByText('找到 2 个待新增、1 个待移出人脸')).toBeVisible()
     await expect(rescanDialog.getByText('相似度 90%')).toBeVisible()
     await expect(rescanDialog.getByText('当前：其他人物')).toBeVisible()
+    await expect(rescanDialog.getByRole('button', { name: '应用选中项（1）' })).toBeEnabled()
+    // 弹窗默认以 0.6 发起首次查找，mock 原样回显 candidate_threshold；
+    // 填一个不同的值才会触发「阈值已修改」的禁用态。
+    await rescanDialog.getByRole('spinbutton', { name: '最大匹配距离' }).fill('0.63')
+    await rescanDialog.getByRole('spinbutton', { name: '最大匹配距离' }).blur()
+    await expect(rescanDialog.getByRole('button', { name: '应用选中项（1）' })).toBeDisabled()
+    const customLookup = page.waitForResponse(response => response.url().includes('/rescan/preview?threshold=0.63'))
+    await rescanDialog.getByRole('button', { name: '重新查找' }).click()
+    await customLookup
     await expect(rescanDialog.getByRole('button', { name: '应用选中项（1）' })).toBeEnabled()
   })
 

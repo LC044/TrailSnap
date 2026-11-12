@@ -195,10 +195,14 @@ class FaceClusterService:
             scanned = limit
         return None
 
-    def preview_identity_rescan(self, identity_id: uuid.UUID, owner_id: uuid.UUID = None) -> dict:
+    def preview_identity_rescan(self, identity_id: uuid.UUID, owner_id: uuid.UUID = None,
+                                *, threshold: float | None = None,
+                                removal_threshold: float | None = None) -> dict:
         """Return add/remove candidates without changing any face assignment."""
         try:
-            analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=False)
+            analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=False,
+                **({"threshold": threshold} if threshold is not None else {}),
+                **({"removal_threshold": removal_threshold} if removal_threshold is not None else {}))
             return self._serialize_rescan_preview(analysis)
         except Exception as exc:
             self.db.rollback()
@@ -211,13 +215,17 @@ class FaceClusterService:
         owner_id: uuid.UUID,
         add_face_ids: list[int],
         remove_face_ids: list[int],
+        *, threshold: float | None = None,
+        removal_threshold: float | None = None,
     ) -> dict:
         """Recompute and atomically apply only the candidates confirmed by the user."""
         try:
             from app.service.face_appearance_clusters import lock_owner
             lock_owner(self.db, owner_id)
             self.owner_id = owner_id
-            analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=True)
+            analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=True,
+                **({"threshold": threshold} if threshold is not None else {}),
+                **({"removal_threshold": removal_threshold} if removal_threshold is not None else {}))
             valid_add_ids = {item["face"].id for item in analysis["add_candidates"]}
             valid_remove_ids = {item["face"].id for item in analysis["remove_candidates"]}
             selected_add_ids = set(add_face_ids)
@@ -261,6 +269,8 @@ class FaceClusterService:
         identity_id: uuid.UUID,
         owner_id: uuid.UUID | None,
         lock: bool,
+        threshold: float | None = None,
+        removal_threshold: float | None = None,
     ) -> dict:
         assigned_query = self.db.query(Face).join(Photo).filter(
             Face.face_identity_id == identity_id,
@@ -275,7 +285,8 @@ class FaceClusterService:
             assigned_query = assigned_query.with_for_update(of=Face)
         assigned_faces = assigned_query.all()
 
-        removal_threshold = self.RESCAN_REMOVAL_THRESHOLD
+        candidate_threshold = self.RESCAN_CANDIDATE_THRESHOLD if threshold is None else threshold
+        removal_threshold = self.RESCAN_REMOVAL_THRESHOLD if removal_threshold is None else removal_threshold
         if not assigned_faces:
             return {
                 "identity_id": identity_id,
@@ -285,23 +296,16 @@ class FaceClusterService:
                 "add_candidates": [],
                 "remove_candidates": [],
                 "removal_threshold": removal_threshold,
+                "candidate_threshold": candidate_threshold,
             }
 
         embeddings = [self.normalize_embedding(face.face_feature) for face in assigned_faces]
         identity = crud_face.get_identity(self.db, identity_id, owner_id=owner_id)
         default_face_id = identity.default_face_id if identity else None
-        sample_indices = self._sample_reference_indices(len(assigned_faces), assigned_faces, default_face_id)
-        trusted_sample_indices = self._select_consistent_component(
-            [embeddings[index] for index in sample_indices],
-            [assigned_faces[index].id for index in sample_indices],
-            default_face_id,
-        )
-        trusted_indices = [sample_indices[index] for index in trusted_sample_indices]
+        trusted_indices, prototypes = self._select_rescan_references(assigned_faces, embeddings, default_face_id)
         manually_confirmed_indices = {
             index for index, face in enumerate(assigned_faces) if self._is_manually_confirmed(face)
         }
-        trusted_indices = sorted(set(trusted_indices) | manually_confirmed_indices)
-        prototypes = self._select_diverse_prototypes([embeddings[index] for index in trusted_indices])
 
         remove_candidates = []
         if len(assigned_faces) >= 3:
@@ -316,7 +320,7 @@ class FaceClusterService:
         matching_face_ids = self._find_matching_face_ids(
             prototypes,
             owner_id,
-            threshold=self.RESCAN_CANDIDATE_THRESHOLD,
+            threshold=candidate_threshold,
         )
         candidate_faces = []
         if matching_face_ids:
@@ -336,17 +340,24 @@ class FaceClusterService:
         currently_kept_ids = {face.id for face in assigned_faces} - removal_ids
         add_candidates = []
         for face in candidate_faces:
-            if face.id in currently_kept_ids:
+            if face.face_identity_id == identity_id or face.id in currently_kept_ids:
                 continue
             min_distance = min(
                 self._cosine_distance(self.normalize_embedding(face.face_feature), prototype)
                 for prototype in prototypes
             )
-            if min_distance > self.RESCAN_CANDIDATE_THRESHOLD:
+            if min_distance > candidate_threshold:
                 continue
             if face.face_identity_id and face.face_identity_id != identity_id and self._is_manually_confirmed(face):
                 continue
             add_candidates.append({"face": face, "distance": min_distance})
+
+        # ``candidate_faces`` comes back in database order; sort by similarity
+        # (distance ascending) so the preview grid shows the best matches first.
+        add_candidates.sort(key=lambda item: (item["distance"], item["face"].id))
+        # Removals rank least-similar first (distance descending): the further
+        # a face is from the trusted prototypes, the more suspect it is.
+        remove_candidates.sort(key=lambda item: (-item["distance"], item["face"].id))
 
         return {
             "identity_id": identity_id,
@@ -356,6 +367,7 @@ class FaceClusterService:
             "add_candidates": add_candidates,
             "remove_candidates": remove_candidates,
             "removal_threshold": removal_threshold,
+            "candidate_threshold": candidate_threshold,
         }
 
     def _serialize_rescan_preview(self, analysis: dict) -> dict:
@@ -400,7 +412,7 @@ class FaceClusterService:
             "reason": analysis["reason"],
             "reference_count": len(analysis["prototypes"]),
             "threshold": self.RESCAN_AUTO_MATCH_THRESHOLD,
-            "candidate_threshold": self.RESCAN_CANDIDATE_THRESHOLD,
+            "candidate_threshold": analysis.get("candidate_threshold", self.RESCAN_CANDIDATE_THRESHOLD),
             "removal_threshold": analysis["removal_threshold"],
             "add_candidates": add_candidates,
             "remove_candidates": remove_candidates,
@@ -454,8 +466,9 @@ class FaceClusterService:
             "count": len(selected_add_ids),
             "reference_count": len(analysis["prototypes"]),
             "threshold": self.RESCAN_AUTO_MATCH_THRESHOLD,
-            "candidate_threshold": self.RESCAN_CANDIDATE_THRESHOLD,
+            "candidate_threshold": analysis.get("candidate_threshold", self.RESCAN_CANDIDATE_THRESHOLD),
             "affected_photo_ids": [str(photo_id) for photo_id in affected_photo_ids],
+            "removal_threshold": analysis["removal_threshold"],
         }
 
     @staticmethod
@@ -463,9 +476,10 @@ class FaceClusterService:
         return float(np.clip(1.0 - np.dot(left, right), 0.0, 2.0))
 
     def _is_manually_confirmed(self, face: Face) -> bool:
+        confidence = getattr(face, "recognize_confidence", None)
         return (
-            face.recognize_confidence is not None
-            and float(face.recognize_confidence) >= self.MANUAL_ASSIGNMENT_CONFIDENCE
+            confidence is not None
+            and float(confidence) >= self.MANUAL_ASSIGNMENT_CONFIDENCE
         )
 
     def _select_consistent_component(
@@ -473,9 +487,10 @@ class FaceClusterService:
         embeddings: list[np.ndarray],
         face_ids: list[int],
         default_face_id: int | None,
+        confirmed_face_ids: set[int] | None = None,
     ) -> list[int]:
-        """Select the largest connected face component; use the cover only as a tie-breaker."""
-        if len(embeddings) <= 2:
+        """Prefer a manually supported component, then its size and cover."""
+        if len(embeddings) <= 1:
             return list(range(len(embeddings)))
 
         remaining = set(range(len(embeddings)))
@@ -497,9 +512,59 @@ class FaceClusterService:
 
         def component_rank(component: list[int]):
             contains_default = default_face_id in {face_ids[index] for index in component}
-            return len(component), contains_default
+            confirmed_count = sum(face_ids[index] in (confirmed_face_ids or set()) for index in component)
+            return confirmed_count, len(component), contains_default
 
         return max(components, key=component_rank)
+
+    def _select_rescan_references(self, faces, embeddings, default_face_id):
+        """Choose a trusted component per appearance, with confirmed faces first.
+
+        Legacy faces without a cluster share a fallback group. Each appearance
+        receives a reference before the remaining budget is used for diversity.
+        """
+        groups = {}
+        for index, face in enumerate(faces):
+            groups.setdefault(getattr(face, "face_cluster_id", None), []).append(index)
+        trusted = []
+        reference_groups = []
+        for indices in groups.values():
+            group_faces = [faces[index] for index in indices]
+            sampled = self._sample_reference_indices(len(indices), group_faces, default_face_id)
+            sampled_indices = [indices[index] for index in sampled]
+            confirmed_ids = {faces[index].id for index in sampled_indices if self._is_manually_confirmed(faces[index])}
+            component = self._select_consistent_component(
+                [embeddings[index] for index in sampled_indices],
+                [faces[index].id for index in sampled_indices], default_face_id, confirmed_ids,
+            )
+            selected = [sampled_indices[index] for index in component]
+            trusted.extend(selected)
+            # A confirmed face seeds farthest-first selection instead of the
+            # earliest automatically assigned face in the appearance.
+            selected.sort(key=lambda index: (not self._is_manually_confirmed(faces[index]), faces[index].id))
+            manual = [embeddings[index] for index in selected if self._is_manually_confirmed(faces[index])]
+            automatic = [embeddings[index] for index in selected if not self._is_manually_confirmed(faces[index])]
+            representatives = self._select_diverse_prototypes(manual)
+            if len(representatives) < self.MAX_RESCAN_PROTOTYPES:
+                expanded = self._select_diverse_prototypes(representatives + automatic)
+                # Keep manual representatives even when diversity favors an
+                # automatic outlier over a second confirmed face.
+                for vector in expanded:
+                    if len(representatives) >= self.MAX_RESCAN_PROTOTYPES:
+                        break
+                    if not any(np.array_equal(vector, item) for item in representatives):
+                        representatives.append(vector)
+            reference_groups.append((bool(manual), representatives))
+        reference_groups.sort(key=lambda group: not group[0])
+        budget = max(self.MAX_RESCAN_PROTOTYPES, len(reference_groups))
+        prototypes = [group[1][0] for group in reference_groups]
+        for position in range(1, self.MAX_RESCAN_PROTOTYPES):
+            for _, representatives in reference_groups:
+                if len(prototypes) >= budget:
+                    return trusted, prototypes
+                if position < len(representatives):
+                    prototypes.append(representatives[position])
+        return trusted, prototypes
 
     def _select_diverse_prototypes(self, embeddings: list[np.ndarray]) -> list[np.ndarray]:
         """Choose multiple representative embeddings with farthest-first sampling."""
@@ -535,10 +600,14 @@ class FaceClusterService:
         if face_count <= self.MAX_RESCAN_REFERENCE_SAMPLE:
             return list(range(face_count))
 
-        sampled = {
+        confirmed = [index for index, face in enumerate(faces) if self._is_manually_confirmed(face)]
+        if len(confirmed) >= self.MAX_RESCAN_REFERENCE_SAMPLE:
+            return [confirmed[int(index)] for index in np.linspace(0, len(confirmed) - 1, self.MAX_RESCAN_REFERENCE_SAMPLE)]
+        sampled = set(confirmed)
+        sampled.update({
             int(index)
-            for index in np.linspace(0, face_count - 1, self.MAX_RESCAN_REFERENCE_SAMPLE)
-        }
+            for index in np.linspace(0, face_count - 1, self.MAX_RESCAN_REFERENCE_SAMPLE - len(confirmed))
+        })
         if default_face_id is not None:
             default_index = next(
                 (index for index, face in enumerate(faces) if face.id == default_face_id),

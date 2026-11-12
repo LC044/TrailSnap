@@ -76,7 +76,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Loader2, ChevronRight, CheckCircle2, AlertCircle, ArrowUpRight, X } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
-import { useDebounceFn } from '@vueuse/core'
+import { createTaskRefresh } from '@/utils/taskRefresh'
 import { tasksApi } from '@/api/tasks'
 import { useNotificationStore } from '@/stores/notificationStore'
 
@@ -204,21 +204,19 @@ const toggleExpand = () => {
   expanded.value = !expanded.value
 }
 
-// SSE 事件驱动刷新（防抖 1s），不再做 5 秒固定轮询
-const handleEvent = useDebounceFn(() => {
-  refresh()
-}, 1000)
-
-watch(() => store.lastEventAt, () => {
-  handleEvent()
-})
+// Refresh at most once per four seconds, even during a continuous event stream.
+const taskRefresh = createTaskRefresh(() => { void refresh() })
+watch(() => store.taskRevision, taskRefresh.schedule)
+let fallbackTimer: number | undefined
 
 onMounted(() => {
-  // 挂载时拉一次初始状态；后续刷新完全由 SSE 事件驱动
-  refresh()
+  taskRefresh.schedule()
+  fallbackTimer = window.setInterval(taskRefresh.schedule, 60000)
 })
 
 onUnmounted(() => {
+  taskRefresh.cancel()
+  window.clearInterval(fallbackTimer)
   if (successTimer !== null) window.clearTimeout(successTimer)
 })
 </script>

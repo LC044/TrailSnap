@@ -117,8 +117,8 @@
               : ''
           ]"
         >
-          <CheckSquareIcon class="w-5 h-5" />
-          <span>{{ isMergeMode ? '完成' : '批量' }}</span>
+          <EditIcon class="w-5 h-5" />
+          <span>{{ isMergeMode ? '完成' : '编辑人物' }}</span>
         </button>
       </div>
     </div>
@@ -271,7 +271,7 @@
           编辑人物信息
         </div>
         <div class="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors" @click="handleMenuClick('rescan')">
-          重新扫描人脸
+          查找此人的更多照片
         </div>
         <div 
           v-if="activePerson?.is_hidden" 
@@ -314,7 +314,8 @@ import {
   Eye as EyeIcon,
   EyeOff as EyeOffIcon,
   Filter as FilterIcon,
-  Trash2 as TrashIcon } from 'lucide-vue-next'
+  Trash2 as TrashIcon, 
+  EditIcon} from 'lucide-vue-next'
 import IdentityEditDialog from '@/components/IdentityEditDialog.vue'
 import FaceRescanDialog from '@/components/FaceRescanDialog.vue'
 import PersonAvatar from '@/components/PersonAvatar.vue'

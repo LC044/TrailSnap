@@ -70,6 +70,7 @@ function pageHarness() {
     ref, computed, watch() {}, onMounted() {}, onUnmounted() {}, useMediaQuery: () => ref(false),
     ...presentation, AlertCircle: {}, CheckCircle2: {}, Circle: {}, Clock3: {}, PauseCircle: {},
     useNotificationStore: () => ({ handleEvent: (...args) => events.push(args) }),
+    createTaskRefresh: fn => ({ schedule: fn, cancel() {} }),
     tasksApi: {
       getGroupedStatus: async () => { if (fail) throw Error('offline'); return rows },
       getGlobalStatus: async () => ({ fast_mode: 'True' }),

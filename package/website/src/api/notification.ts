@@ -36,7 +36,7 @@ export interface NotificationCreateInput {
  * and `notification.*` (persisted) events.
  */
 export function buildNotificationsEventsUrl(token: string | null | undefined): string {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ batch: 'true' });
   if (token) params.set('token', token);
   const qs = params.toString();
   return `${toServerUrl('/api/notifications/events')}${qs ? '?' + qs : ''}`;

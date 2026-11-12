@@ -132,6 +132,8 @@ class AddPhotosToIdentityRequest(BaseModel):
 
 
 class FaceRescanApplyRequest(BaseModel):
+    threshold: Optional[float] = Field(None, ge=0, le=1, description="预览使用的查找距离阈值")
+    removal_threshold: Optional[float] = Field(None, ge=0, le=1, description="预览使用的最小移出距离")
     add_face_ids: List[int] = Field(default_factory=list, description="确认新增或改归属的人脸ID")
     remove_face_ids: List[int] = Field(default_factory=list, description="确认从当前人物移出的人脸ID")
 

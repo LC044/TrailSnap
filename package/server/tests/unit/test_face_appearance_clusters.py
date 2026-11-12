@@ -50,6 +50,57 @@ def separate_cluster(db, owner, angles, identity=None):
     return group
 
 
+def test_more_photos_custom_distance_is_reused_when_applying(library):
+    from app.service.face_cluster import FaceClusterService, FaceRescanConflictError
+
+    db, owner = library
+    person = FaceIdentity(id=uuid4(), owner_id=owner.id, identity_name="参考人物")
+    db.add(person)
+    db.flush()
+    for angles in ([0, .02], [1.5, 1.52]):
+        group = separate_cluster(db, owner, angles, person.id)
+        db.get(Face, group.anchor_face_id).recognize_confidence = 1
+    candidate = add_face(db, owner, 2.6)
+    db.commit()
+    service = FaceClusterService(db)
+    ordinary = service.preview_identity_rescan(person.id, owner.id)
+    assert candidate.id not in {item["face_id"] for item in ordinary["add_candidates"]}
+    expanded = service.preview_identity_rescan(person.id, owner.id, threshold=.65)
+    assert expanded["candidate_threshold"] == .65
+    assert candidate.id in {item["face_id"] for item in expanded["add_candidates"]}
+    with pytest.raises(FaceRescanConflictError):
+        service.apply_identity_rescan(person.id, owner.id, [candidate.id], [])
+    result = service.apply_identity_rescan(person.id, owner.id, [candidate.id], [], threshold=.65)
+    assert result["added_count"] == 1 and result["candidate_threshold"] == .65
+    assert db.get(Face, candidate.id).face_identity_id == person.id
+
+
+def test_custom_removal_distance_is_rechecked_when_applying(library):
+    from app.service.face_cluster import FaceClusterService, FaceRescanConflictError
+
+    db, owner = library
+    person = FaceIdentity(id=uuid4(), owner_id=owner.id, identity_name="参考人物")
+    db.add(person)
+    db.flush()
+    references = [add_face(db, owner, angle, person.id) for angle in [0, .02]]
+    outlier = add_face(db, owner, 1., person.id)
+    person.default_face_id = references[0].id
+    db.commit()
+    service = FaceClusterService(db)
+    default = service.preview_identity_rescan(person.id, owner.id)
+    assert default["removal_threshold"] == .52
+    assert default["remove_candidates"] == []
+    custom = service.preview_identity_rescan(person.id, owner.id, removal_threshold=.3)
+    assert custom["removal_threshold"] == .3
+    assert [item["face_id"] for item in custom["remove_candidates"]] == [outlier.id]
+    with pytest.raises(FaceRescanConflictError):
+        service.apply_identity_rescan(person.id, owner.id, [], [outlier.id])
+    result = service.apply_identity_rescan(person.id, owner.id, [], [outlier.id], removal_threshold=.3)
+    assert result["removed_count"] == 1
+    assert result["removal_threshold"] == .3
+    assert db.get(Face, outlier.id).face_identity_id is None
+
+
 def test_bootstrap_preserves_multiple_appearances_and_names(library):
     db, owner = library
     person = FaceIdentity(id=uuid4(), owner_id=owner.id, identity_name="孩子")
