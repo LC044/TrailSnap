@@ -51,6 +51,50 @@ class RuntimeTests(unittest.TestCase):
         self.temp.cleanup()
     def read_compose(self):
         return json.loads((self.module.PACKAGE / 'docker/docker-compose.yaml').read_text(encoding='utf-8'))
+    def test_docker_adoption_preserves_root_photo_mount_and_data(self):
+        state = self.module.STATE
+        (state / 'runtime').mkdir()
+        (state / 'data').mkdir()
+        (state / 'data/system_config.json').write_text('{"security":{"secret_key":"old-secret"}}')
+        (state / 'pg_data/pgdata').mkdir(parents=True)
+        (state / 'pg_data/pgdata/PG_VERSION').write_text('18')
+        (state / 'runtime/postgres.env').write_text('POSTGRES_DB=trailsnap\nPOSTGRES_USER=trailsnap\nPOSTGRES_PASSWORD=trailsnap\n')
+        record = dict(appname='trailsnap', revision=3, layout='catalog-v1', port=3180,
+                      data_dir='/vol2/test/state', photo_dir='/vol2/test/photos', extra_dirs=[],
+                      libraries=[dict(source='/vol2/test/photos', target='/app/Photos', read_only=True)])
+        (state / 'runtime/installation.json').write_text(json.dumps(record))
+        self.module.initialize()
+        self.module.initialize()
+        mounts = self.read_compose()['services']['server']['volumes']
+        self.assertEqual(1, sum(v.get('target') == '/app/Photos' for v in mounts if isinstance(v, dict)))
+        self.assertIn('old-secret', (state / 'data/system_config.json').read_text())
+
+    def test_legacy_password_is_literal_and_url_encoded(self):
+        import shlex
+        from urllib.parse import quote
+        self.module.initialize()
+        credentials = self.module.STATE / 'runtime/postgres.env'
+        for password in ['trailsnap', 'a $HOME `id` \' " @:/%=中文']:
+            credentials.write_text('POSTGRES_DB=trailsnap\nPOSTGRES_USER=trailsnap\nPOSTGRES_PASSWORD=' + password + '\n', encoding='utf-8')
+            self.module.initialize()
+            shell = (self.module.STATE / 'runtime/postgres-shell.env').read_text()
+            self.assertEqual(password, shlex.split(shell.splitlines()[2].split('=', 1)[1])[0])
+            url = (self.module.STATE / 'runtime/server.env').read_text()
+            self.assertIn(quote(password, safe='') + '@postgres', url)
+            self.assertIn(password, credentials.read_text(encoding='utf-8'))
+
+    def test_old_database_version_and_running_database_are_rejected(self):
+        self.module.initialize()
+        folder = self.module.STATE / 'pg_data/pgdata'
+        folder.mkdir()
+        (folder / 'PG_VERSION').write_text('17')
+        with self.assertRaisesRegex(RuntimeError, 'PostgreSQL 18'):
+            self.module.initialize()
+        (folder / 'PG_VERSION').write_text('18')
+        (folder / 'postmaster.pid').write_text('123')
+        with self.assertRaisesRegex(RuntimeError, '正常停止'):
+            self.module.initialize()
+
     def test_selected_port_and_data_persist_and_secrets_do_not_rotate(self):
         self.module.initialize()
         password = (self.module.STATE / 'runtime/postgres.env').read_bytes()

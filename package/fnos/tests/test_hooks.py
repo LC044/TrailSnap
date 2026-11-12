@@ -47,7 +47,8 @@ source "$HOOK" install
                                wizard_data_dir=data, wizard_photo_dir=photos)
                     script = '''
 realpath() { printf '%s\\n' "${@: -1}"; }
-export -f realpath
+docker() { return 0; }
+export -f realpath docker
 /bin/bash "$CALLBACK"
 '''
                     result = subprocess.run([BASH, '-c', script], env=env, capture_output=True)

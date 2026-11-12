@@ -88,6 +88,7 @@ test('other-person scope is sent independently of the correction target and pres
   const p = await harness(); t.after(p.cleanup)
   p.toggle(p.items.value[0])
   await p.load(1)
+  p.scope.value = 'current'; await settle()
   p.scope.value = 'other'
   await settle()
   assert.equal(p.queries.at(-1)[2].scope, 'other')
@@ -254,13 +255,47 @@ test('ordinary failures preserve selection while conflicts clear it and require 
 test('reopening resets filters and still preselects only the new reference', async t => {
   const p = await harness(); t.after(p.cleanup)
   p.scope.value = 'current'; p.match.value = 'broad'; await settle()
+  p.threshold.value = .6; p.includeConfirmed.value = true; await settle()
   p.assignmentMode.value = 'unassigned'
   p.props.visible = false; await settle()
   p.props.visible = true; await settle()
-  assert.equal(p.scope.value, 'all')
+  assert.equal(p.scope.value, 'other')
   assert.equal(p.match.value, 'balanced')
+  assert.equal(p.threshold.value, null)
+  assert.equal(p.includeConfirmed.value, false)
   assert.equal(p.assignmentMode.value, 'person')
   assert.equal(p.selectedCount.value, 1)
+})
+
+test('default filters, advanced threshold and preset resets are sent to the server', async t => {
+  const p = await harness(); t.after(p.cleanup)
+  assert.equal(p.queries[0][2].scope, 'other')
+  assert.equal(p.queries[0][2].match, 'balanced')
+  assert.equal(p.queries[0][2].threshold, .45)
+  assert.equal(p.queries[0][2].include_confirmed, false)
+  p.toggle(p.items.value[1])
+  p.threshold.value = .62; await settle()
+  assert.equal(p.queries.at(-1)[2].threshold, .62)
+  assert.equal(p.queries.at(-1)[2].skip, 0)
+  assert.equal(p.selectedCount.value, 2)
+  p.match.value = 'strict'; await settle()
+  assert.equal(p.threshold.value, null)
+  assert.equal(p.queries.at(-1)[2].threshold, .35)
+  p.scope.value = 'current_low'; await settle()
+  assert.equal(p.queries.at(-1)[2].threshold, .55)
+})
+
+test('hiding confirmed faces removes their selections while preserving the sample', async t => {
+  const confirmed = { ...candidate(2, 'other'), manually_confirmed: true }
+  const p = await harness(async () => result([confirmed])); t.after(p.cleanup)
+  assert.equal(p.canSelect(confirmed), false)
+  p.includeConfirmed.value = true; await settle()
+  assert.equal(p.queries.at(-1)[2].include_confirmed, true)
+  p.toggle(confirmed)
+  assert.equal(p.selectedCount.value, 2)
+  p.includeConfirmed.value = false; await settle()
+  assert.equal(p.selectedCount.value, 1)
+  assert.equal(p.isSelected(p.reference.value), true)
 })
 
 test('selection cap prevents an accidental oversized batch', async t => {

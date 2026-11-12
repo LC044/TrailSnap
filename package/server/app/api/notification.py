@@ -6,7 +6,6 @@
   通知收件箱 CRUD，按 user_id 隔离。
 - `POST /notifications`：管理员创建通知（可广播给全部用户），落库 + 实时推送。
 """
-import asyncio
 import json
 from datetime import datetime as _dt
 from typing import List, Optional, Dict, Any
@@ -16,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
+from app.service.task_event_stream import task_event_stream
 
 from app.api.deps import get_current_user, resolve_user_from_token
 from app.crud import notification as crud_notification
@@ -66,12 +66,15 @@ async def notification_events(
     request: Request,
     token: str = Query(None, description="JWT 或 agent token；用于 EventSource 鉴权"),
     db: Session = Depends(get_db),
+    batch: bool = Query(False, description="合并任务状态，每4秒发送一次 task.batch"),
 ):
     """SSE channel for all notifications. Carries:
     - ``task.updated`` / ``task.created`` / ``task.retry`` / ``task.category`` (bridged from
       TaskManager, in-memory only, not persisted);
     - ``notification.created`` / ``notification.read`` (persisted notifications).
     A keep-alive ``ping`` is sent every 15 seconds.
+    With ``batch=true``, task row changes are coalesced into ``task.batch``
+    every four seconds; other notifications remain immediate.
     """
     if not token:
         raise HTTPException(status_code=401, detail="SSE requires token query parameter")
@@ -83,17 +86,11 @@ async def notification_events(
     async def event_generator():
         try:
             yield {"event": "hello", "data": json.dumps({"ts": _dt.utcnow().isoformat() + "Z"})}
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    yield {
-                        "event": msg.get("event", "notification.created"),
-                        "data": json.dumps(msg.get("data") or {}, default=str),
-                    }
-                except asyncio.TimeoutError:
-                    yield {"event": "ping", "data": json.dumps({"ts": _dt.utcnow().isoformat() + "Z"})}
+            async for msg in task_event_stream(queue, request, batch=batch is True, default_event='notification.created'):
+                data = msg['data']
+                if msg['event'] == 'ping':
+                    data = {'ts': _dt.utcnow().isoformat() + 'Z'}
+                yield {'event': msg['event'], 'data': json.dumps(data, default=str)}
         finally:
             manager.unsubscribe(queue)
 

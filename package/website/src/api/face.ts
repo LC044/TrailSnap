@@ -92,6 +92,8 @@ export const faceApi = {
   async searchSimilarFaces(photoId: string, faceId: number, params: {
     scope: SimilarFaceScope; match: SimilarFaceMatch; skip: number; limit: number;
     exclude_identity_id?: string;
+    threshold?: number;
+    include_confirmed?: boolean;
   }, signal?: AbortSignal) {
     const res = await request.get<SimilarFacesResult>(`/api/faces/photos/${photoId}/${faceId}/similar`, {
       params, signal, silentError: true,
@@ -155,12 +157,14 @@ export const faceApi = {
     return data.data;
   },
 
-  async previewIdentityRescan(id: string) {
-    const data = await request.post<FaceRescanPreview>(`/api/faces/identities/${id}/rescan/preview`);
+  async previewIdentityRescan(id: string, threshold?: number, signal?: AbortSignal, removalThreshold?: number) {
+    const data = await request.post<FaceRescanPreview>(`/api/faces/identities/${id}/rescan/preview`, undefined, {
+      params: { threshold, removal_threshold: removalThreshold }, signal, silentError: true,
+    });
     return data.data;
   },
 
-  async applyIdentityRescan(id: string, selection: { add_face_ids: number[]; remove_face_ids: number[] }) {
+  async applyIdentityRescan(id: string, selection: { add_face_ids: number[]; remove_face_ids: number[]; threshold?: number; removal_threshold?: number }) {
     const data = await request.post(`/api/faces/identities/${id}/rescan/apply`, selection);
     return data.data;
   },

@@ -7,7 +7,7 @@ from app.dependencies import get_db, BaseResponse
 from app.schemas import face as schemas
 from app.crud import face as crud_face
 from app.core.config_manager import config_manager
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Annotated
 from pydantic import BaseModel
 from uuid import UUID
 
@@ -85,14 +85,16 @@ def assign_photo_face(photo_id: UUID, face_id: int, payload: schemas.AssignPhoto
 @router.get("/photos/{photo_id}/{face_id}/similar", response_model=BaseResponse[schemas.SimilarFacesResult])
 def search_similar_faces(
     photo_id: UUID, face_id: int,
-    scope: schemas.SimilarFaceScope = "all", match: schemas.SimilarFaceMatch = "balanced",
+    scope: schemas.SimilarFaceScope = "other", match: schemas.SimilarFaceMatch = "balanced",
     exclude_identity_id: Optional[UUID] = None,
     skip: int = Query(0, ge=0), limit: int = Query(60, ge=1, le=100),
+    threshold: Annotated[Optional[float], Query(ge=0, le=1)] = None, include_confirmed: bool = False,
     db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user),
 ):
     from app.service.similar_faces import search_similar_faces as search
     return BaseResponse.success(search(
         db, photo_id, face_id, current_user.id, scope, match, exclude_identity_id, skip, limit,
+        threshold=threshold, include_confirmed=include_confirmed,
     ))
 
 
@@ -528,6 +530,8 @@ def rescan_identity(
 @router.post("/identities/{id}/rescan/preview", summary="预览人物重新扫描结果", description="扫描全部有效人脸并返回待新增、改归属和待移出候选，不修改数据")
 def preview_identity_rescan(
     id: UUID = Path(..., description="人物ID"),
+    threshold: Annotated[Optional[float], Query(ge=0, le=1, description="本次查找的最大余弦距离")] = None,
+    removal_threshold: Annotated[Optional[float], Query(ge=0, le=1, description="本次查找的最小移出距离")] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -537,7 +541,9 @@ def preview_identity_rescan(
     try:
         from app.service.face_cluster import FaceRescanError
         service = _face_cluster_service()(db, user_id=current_user.id)
-        result = service.preview_identity_rescan(id, owner_id=current_user.id)
+        result = service.preview_identity_rescan(id, owner_id=current_user.id,
+            **({"threshold": threshold} if threshold is not None else {}),
+            **({"removal_threshold": removal_threshold} if removal_threshold is not None else {}))
     except FaceRescanError as exc:
         raise HTTPException(status_code=500, detail="Face identity rescan preview failed") from exc
     return BaseResponse(code=200, msg="扫描预览成功", data=result)
@@ -561,6 +567,8 @@ def apply_identity_rescan(
             owner_id=current_user.id,
             add_face_ids=payload.add_face_ids,
             remove_face_ids=payload.remove_face_ids,
+            **({"threshold": payload.threshold} if payload.threshold is not None else {}),
+            **({"removal_threshold": payload.removal_threshold} if payload.removal_threshold is not None else {}),
         )
     except FaceRescanConflictError as exc:
         raise HTTPException(status_code=409, detail="Face rescan candidates changed; preview again") from exc

@@ -1,8 +1,8 @@
-import asyncio
 import json
 from fastapi import APIRouter, Depends, HTTPException, Body, Query, Request
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
+from app.service.task_event_stream import task_event_stream
 
 from app.api.deps import get_current_user, resolve_user_from_token
 from app.db.models import User
@@ -171,11 +171,14 @@ async def task_events(
     request: Request,
     token: str = Query(None, description="JWT 或 agent token；用于 EventSource 鉴权（EventSource 无法自定义 header）"),
     db: Session = Depends(get_db),
+    batch: bool = Query(False, description="合并任务状态，每4秒发送一次 task.batch"),
 ):
     """SSE channel for real-time task status updates.
 
     The client opens this with ``EventSource('/api/tasks/events?token=...')``
     and listens for ``task.updated`` / ``task.created`` / ``task.retry`` events.
+    New clients use ``batch=true`` and listen for ``task.batch`` with an
+    ``events`` array of the latest per-task changes every four seconds.
     A keep-alive comment is sent every 15 seconds so reverse proxies do not
     close the connection.
     """
@@ -191,17 +194,11 @@ async def task_events(
     async def event_generator():
         try:
             yield {"event": "hello", "data": json.dumps({"ts": _dt.utcnow().isoformat() + "Z"})}
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    yield {
-                        "event": msg.get("event", "task.updated"),
-                        "data": json.dumps(msg.get("data") or {}, default=str),
-                    }
-                except asyncio.TimeoutError:
-                    yield {"event": "ping", "data": json.dumps({"ts": _dt.utcnow().isoformat() + "Z"})}
+            async for msg in task_event_stream(queue, request, batch=batch is True, default_event='task.updated'):
+                data = msg['data']
+                if msg['event'] == 'ping':
+                    data = {'ts': _dt.utcnow().isoformat() + 'Z'}
+                yield {'event': msg['event'], 'data': json.dumps(data, default=str)}
         finally:
             manager.unsubscribe(queue)
 

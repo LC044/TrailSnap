@@ -124,8 +124,9 @@ def _serialize(row, distance: float, owner_id: UUID, reference_id: int, feature_
 
 
 def search_similar_faces(db: Session, photo_id: UUID, face_id: int, owner_id: UUID,
-                         scope: SimilarFaceScope = "all", match: SimilarFaceMatch = "balanced",
-                         exclude_identity_id: UUID | None = None, skip: int = 0, limit: int = 60):
+                         scope: SimilarFaceScope = "other", match: SimilarFaceMatch = "balanced",
+                         exclude_identity_id: UUID | None = None, skip: int = 0, limit: int = 60,
+                         threshold: float | None = None, include_confirmed: bool = False):
     reference = _reference(db, photo_id, face_id, owner_id)
     vector = _normalised_feature(reference)
     signature = _feature_signature(vector)
@@ -137,6 +138,9 @@ def search_similar_faces(db: Session, photo_id: UUID, face_id: int, owner_id: UU
     if low_similarity and reference.face_identity_id is None:
         raise HTTPException(422, "样本人脸尚未归属人物，无法排查当前人物")
     query = query.filter(Face.id != face_id)
+    if not include_confirmed:
+        query = query.filter(or_(Face.recognize_confidence.is_(None),
+                                 Face.recognize_confidence < MANUAL_CONFIDENCE))
     if scope in {"current", "current_low"}:
         query = query.filter(Face.face_identity_id == reference.face_identity_id)
     elif scope == "other":
@@ -151,7 +155,8 @@ def search_similar_faces(db: Session, photo_id: UUID, face_id: int, owner_id: UU
         query = query.filter(Face.face_identity_id.is_(None))
     if exclude_identity_id:
         query = query.filter(or_(Face.face_identity_id.is_(None), Face.face_identity_id != exclude_identity_id))
-    threshold = (LOW_DISTANCES if low_similarity else DISTANCES)[match]
+    if threshold is None:
+        threshold = (LOW_DISTANCES if low_similarity else DISTANCES)[match]
     if db.get_bind().dialect.name == "sqlite":
         scores = _sqlite_scores(db, owner_id, vector, threshold, low_similarity)
         rows = [(row, scores[row.id]) for row in query.all() if row.id in scores and _valid_rect(row.face_rect)]

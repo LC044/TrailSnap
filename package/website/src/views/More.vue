@@ -83,8 +83,8 @@
                     type="text"
                     class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     placeholder="例：G2025"
-                    pattern="[GDKZT][0-9]+"
-                    title="以G/D/K/Z/T开头，后接数字"
+                    pattern="(?:[GDCKTZSNVLYA][0-9]{1,4}|[0-9]{3,5})"
+                    title="支持G/D/C/K/T/Z/S/N/V/L/Y/A字头及纯数字车次"
                     required
                   >
                 </div>

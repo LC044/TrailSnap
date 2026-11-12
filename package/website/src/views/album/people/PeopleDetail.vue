@@ -84,7 +84,7 @@
             <el-dropdown-item command="rescan">
               <div class="flex items-center gap-2">
                 <RefreshCwIcon class="h-4 w-4" />
-                <span>重新扫描人脸</span>
+                <span>查找此人的更多照片</span>
               </div>
             </el-dropdown-item>
           </el-dropdown-menu>

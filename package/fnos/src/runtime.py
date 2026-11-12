@@ -5,7 +5,9 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shlex
 import sys
+from urllib.parse import quote
 
 APP = '@@APP@@'
 META = Path('/meta')
@@ -183,7 +185,7 @@ def initialize():
         # Docker may have created empty bind targets. Never adopt unrelated files.
         for child in STATE.iterdir():
             if not child.is_dir() or child.name not in {'data', 'runtime', 'pg_data', 'backups'} or any(child.iterdir()):
-                fail('数据目录已有其他内容。请选择新的空目录或已有的行影集数据目录。')
+                fail('数据目录非空且缺少接管配置。全新安装请选择空目录；迁移 Docker 请先按官网飞牛迁移教程准备 runtime/postgres.env 和 runtime/installation.json，不要删除原数据。')
     META.mkdir(parents=True, exist_ok=True)
     os.chown(META, uid, gid)
     for name in ['', 'runtime', 'data', 'pg_data', 'backups']:
@@ -198,14 +200,24 @@ def initialize():
         password_path.write_text('POSTGRES_DB=trailsnap\nPOSTGRES_USER=trailsnap\nPOSTGRES_PASSWORD=' + secrets.token_hex(32) + '\n')
     settings = dict(line.split('=', 1) for line in password_path.read_text(encoding="utf-8").splitlines() if '=' in line)
     password = settings.get('POSTGRES_PASSWORD', '')
-    if not re.fullmatch('[a-f0-9]{64}', password):
-        fail('保存的数据库凭据格式无效。')
+    if not password or any(c in password for c in '\x00\r\n'):
+        fail('数据库密码为空或包含换行。请在 runtime/postgres.env 填写旧 Compose 中的实际密码（原文，不加引号），不要修改数据库密码。')
+    if settings.get('POSTGRES_USER') != 'trailsnap' or settings.get('POSTGRES_DB') != 'trailsnap':
+        fail('接管要求旧数据库用户名和数据库名均为 trailsnap。请核对旧 Compose；自定义名称暂不支持直接接管，请保留原部署。')
+    version_file = STATE / 'pg_data/pgdata/PG_VERSION'
+    if version_file.exists() and version_file.read_text().strip() != '18':
+        fail('旧数据库不是 PostgreSQL 18，不能直接接管 pg_data。请保留原部署并通过数据库逻辑备份迁移，不要修改 PG_VERSION。')
+    if (STATE / 'pg_data/pgdata/postmaster.pid').exists():
+        fail('数据库目录存在 postmaster.pid。请先正常停止旧 Docker 数据库后重试；不要在数据库运行时删除此文件。')
+    shell_env = STATE / 'runtime/postgres-shell.env'
+    shell_env.write_text(''.join(f'{key}={shlex.quote(settings[key])}\n' for key in ('POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD')))
     server_env = STATE / 'runtime/server.env'
-    server_env.write_text(f'DB_URL=postgresql://trailsnap:{password}@postgres:5432/trailsnap\nRAILWAY_DB_URL=postgresql://trailsnap:{password}@postgres:5432/railway\n')
+    encoded = quote(password, safe='')
+    server_env.write_text(f'DB_URL={shlex.quote(f"postgresql://trailsnap:{encoded}@postgres:5432/trailsnap")}\nRAILWAY_DB_URL={shlex.quote(f"postgresql://trailsnap:{encoded}@postgres:5432/railway")}\n')
     config = STATE / 'data/system_config.json'
     if not config.exists():
         atomic(config, {'security': {'secret_key': secrets.token_hex(32), 'allow_registration': False}})
-    for path in [password_path, server_env, config]:
+    for path in [password_path, shell_env, server_env, config]:
         os.chown(path, uid, gid)
         os.chmod(path, 0o600)
     if marker.exists():
@@ -277,5 +289,13 @@ if __name__ == '__main__':
     try:
         {'init': initialize, 'configure': configure}[sys.argv[1]]()
     except Exception as error:
-        print(str(error), file=sys.stderr)
+        if isinstance(error, RuntimeError):
+            message = str(error)
+        elif isinstance(error, PermissionError):
+            message = '无法读写安装目录。请为应用账号授予用户数据目录读写权限，并保留 PostgreSQL 原目录属主。'
+        elif isinstance(error, (ValueError, KeyError, TypeError)):
+            message = '接管配置格式错误或缺少字段。请按官网飞牛迁移教程核对 runtime/installation.json 和 postgres.env，不要删除原数据。'
+        else:
+            message = '初始化失败，请检查目录是否在线、剩余空间和安装配置，保留数据并提交安装日志获取帮助。'
+        print(message, file=sys.stderr)
         sys.exit(1)

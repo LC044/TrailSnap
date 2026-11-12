@@ -38,19 +38,23 @@ def normalize_ticket_text(text):
         '門':'门','樂':'乐','長':'长','慶':'庆','雲':'云','龍':'龙','寧':'宁','濟':'济','蘭':'兰','陽':'阳',
         '烏':'乌','張':'张','壽':'寿','貴':'贵','黃':'黄','興':'兴'})).strip()
     text=re.sub(r'(?<!\d)(\d{1,2}[-/]\d{2})(\d{2}[:：]\d{2})',r'\1 \2',text)
-    text=re.sub(r'(?<=[\u4e00-\u9fa5])[Il|丨]\s*([GDCKTZSNLYA]\d{1,4})',r'\1',text)
-    text=re.sub(r'(?<![A-Za-z0-9])([gdcktzsnlya])(?=\d{1,4}(?!\d))',lambda m:m[1].upper(),text)
-    text=re.sub(r'(?<![A-Za-z0-9])([GDCKTZS])i(?=\d{1,3}(?!\d))',r'\g<1>1',text)
+    text=re.sub(r'(?<=[\u4e00-\u9fa5])[Il|丨]\s*([GDCKTZSNVLYA]\d{1,4})',r'\1',text)
+    text=re.sub(r'(?<![A-Za-z0-9])([gdcktzsnvlya])(?=\d{1,4}(?!\d))',lambda m:m[1].upper(),text)
+    text=re.sub(r'(?<![A-Za-z0-9])([GDCKTZSNV])i(?=\d{1,3}(?!\d))',r'\g<1>1',text)
     # A paper ticket's service can be glued to a noisy serial/station block.
     if '站' in text and re.search(r'[\u4e00-\u9fa5]',text):
-        text=re.sub(r'(?<=\d)([GDCKTZS]\d{1,4})$',r' \1',text)
-    return re.sub(r'^[0O①②③④⑤⑥⑦⑧⑨]\s*([GDCKTZSNLYA]\d{1,4})$',r'\1',text)
+        text=re.sub(r'(?<=\d)([GDCKTZSNV]\d{1,4})$',r' \1',text)
+    return re.sub(r'^[0O①②③④⑤⑥⑦⑧⑨]\s*([GDCKTZSNVLYA]\d{1,4})$',r'\1',text)
 
 
 def candidate_train_codes(texts):
     texts=[_fix_ocr_text(normalize_ticket_text(t)) for t in texts]
     modern={m[1] for t in texts for m in re.finditer(r'(?<![A-Za-z0-9])([GDCKTZS]\d{1,4})(?![A-Za-z0-9])',t)}
-    if modern:return modern
+    extended={m[1] for t in texts for m in re.finditer(r'(?<![A-Za-z0-9])([NV]\d{1,4})(?![A-Za-z0-9])',t)
+              if not modern or len(m[1])>2 or re.search(r'车次|/',t)}
+    # A bare N3 next to a conventional train can be a gate/queue label. Explicit
+    # code labels or slash services retain even short N/V codes.
+    if modern or extended:return modern|extended
     return {m[1] for t in texts if (m:=re.fullmatch(r'([NLYA]\d{1,4})\s*次?',t))}
 
 
@@ -150,7 +154,7 @@ def _station_candidates(texts, polys):
     known = _get_valid_station_names()
     candidates = []
     rail_rows=[_poly_center(p)[1] for t,p in zip(texts,polys)
-               if re.fullmatch(r'(?:[GDCKTZSNLYA]\d{1,4}|\d{3,5})\s*次?',normalize_ticket_text(t))]
+               if re.fullmatch(r'(?:[GDCKTZSNVLYA]\d{1,4}|\d{3,5})\s*次?',normalize_ticket_text(t))]
     for i, (text, poly) in enumerate(zip(texts, polys)):
         raw = text.strip()
         if '站' in raw and candidate_train_codes([raw]):
@@ -163,7 +167,7 @@ def _station_candidates(texts, polys):
             for name,offset in zip(route.groups(),(-.25,.25)):
                 candidates.append((name,i,x+offset*width,y,True,20))
             continue
-        inline = re.fullmatch(r'([\u4e00-\u9fa5]+?)(?:[GDCKTZSNLYA]?\d{1,5})次',raw)
+        inline = re.fullmatch(r'([\u4e00-\u9fa5]+?)(?:[GDCKTZSNVLYA]?\d{1,5})次',raw)
         if inline and inline[1] in known:
             raw=inline[1]
         punctuated=re.sub(r'[。·\s]','',raw)
@@ -177,7 +181,7 @@ def _station_candidates(texts, polys):
                 candidates.append((name,i,x+offset*width,y,True,20))
             continue
         # Compact order lists put the complete route into a single text box.
-        compact = re.fullmatch(r'[GDCKTZSNLYA]\d{1,4}\s*(.+?)\s*[-—→一]\s*(.+)', raw)
+        compact = re.fullmatch(r'[GDCKTZSNVLYA]\d{1,4}\s*(.+?)\s*[-—→一]\s*(.+)', raw)
         pair = [part.strip().removesuffix('站') for part in compact.groups()] if compact else []
         if len(pair) == 2 and all(name in known for name in pair):
             x,y = _poly_center(poly)
@@ -250,14 +254,14 @@ def resolve_train_code(texts, departure_station='', polys=None):
     """Resolve only an unambiguous service, including departure-specific renumbering."""
     texts=[normalize_ticket_text(text) for text in texts]
     if departure_station:
-        pattern = re.compile(re.escape(departure_station) + r'站?起车次(?:号)?变更为\s*([GDCKTZSNLYA]\d{1,4})(?!\d)')
+        pattern = re.compile(re.escape(departure_station) + r'站?起车次(?:号)?变更为\s*([GDCKTZSNVLYA]\d{1,4})(?!\d)')
         changed = {m.group(1) for t in texts for m in pattern.finditer(t)}
         if len(changed) == 1:
             return changed.pop()
         if polys:
             # 12306 puts “自当前车站起车次号变更为…” below the relevant stop.
             for i, (text, poly) in enumerate(zip(texts, polys)):
-                note = re.search(r'当前车站起车次(?:号)?变更为\s*([GDCKTZSNLYA]\d{1,4})(?!\d)', text)
+                note = re.search(r'当前车站起车次(?:号)?变更为\s*([GDCKTZSNVLYA]\d{1,4})(?!\d)', text)
                 if not note or len(poly) < 4:
                     continue
                 _, y = _poly_center(poly)
@@ -916,7 +920,7 @@ def parse_ticket_info(ocr_texts, polys):
     train_index_in_visual = -1
     # 车次优先级：G > D > C > K > T > Z
     present_codes=candidate_train_codes(visual_texts)
-    prefixes = list('GDCKTZS') if any(c[0] in 'GDCKTZS' for c in present_codes) else list('NLYA')
+    prefixes = list('GDCKTZSNV') if any(c[0] in 'GDCKTZSNV' for c in present_codes) else list('NLYA')
     for idx, txt in enumerate(visual_texts):
         fixed_txt = _fix_ocr_text(txt)
         if train_code:
@@ -931,7 +935,7 @@ def parse_ticket_info(ocr_texts, polys):
             if code not in present_codes:
                 continue
             # 过滤明显伪造码：如 C0000 / G0000
-            if re.fullmatch(r'[GDCKTZSNLYA]0{3,4}', code):
+            if re.fullmatch(r'[GDCKTZSNVLYA]0{3,4}', code):
                 continue
             # 基本长度约束（2~5）
             if 2 <= len(code) <= 5:
@@ -1059,7 +1063,7 @@ def parse_ticket_info(ocr_texts, polys):
             # 2. 查找车次及其位置
             train_match = None
             if not ticket_info["train_code"]:
-                train_match = re.search(r'(?<![0-9])([GDCKTZSNLYA]\d{1,4})(?![0-9])', txt)
+                train_match = re.search(r'(?<![0-9])([GDCKTZSNVLYA]\d{1,4})(?![0-9])', txt)
                 if train_match:
                     ticket_info["train_code"] = train_match.group(1)
                     train_start = train_match.start()
@@ -1067,7 +1071,7 @@ def parse_ticket_info(ocr_texts, polys):
                     train_start = -1
             else:
                 # 车次已知，但仍可尝试定位（用于已有车次但未处理车站的情况）
-                tm = re.search(r'(?<![0-9])([GDCKTZSNLYA]\d{1,4})(?![0-9])', txt)
+                tm = re.search(r'(?<![0-9])([GDCKTZSNVLYA]\d{1,4})(?![0-9])', txt)
                 train_start = tm.start() if tm else -1
 
             # 3. 如果有车站
@@ -1597,7 +1601,7 @@ def parse_ticket_cards(texts, polys, initial=None):
     initial = parse_ticket_info(texts,polys) if initial is None else initial
     anchors=[]
     for text,poly in zip(texts,polys):
-        codes=re.findall(r'(?<![A-Za-z0-9])[GDCKTZSNLYA]\d{1,4}(?![A-Za-z0-9])',normalize_ticket_text(text))
+        codes=re.findall(r'(?<![A-Za-z0-9])[GDCKTZSNVLYA]\d{1,4}(?![A-Za-z0-9])',normalize_ticket_text(text))
         if len(set(codes))==1 and len(poly)>=4:
             anchors.append((_poly_center(poly)[1],codes[0]))
     anchors.sort()

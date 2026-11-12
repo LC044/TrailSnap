@@ -37,9 +37,10 @@ def pack(sequence, rows, full=False):
     return v2pack(sequence, stations, versions, observations, full)
 
 
-def v2pack(sequence, stations=(), versions=(), observations=(), full=False):
+def v2pack(sequence, stations=(), versions=(), observations=(), full=False, station_dates=None):
+    extra = {'station_dates': station_dates} if station_dates is not None else {}
     data=gzip.compress(json.dumps({'schema_version':2,'sequence':sequence,'full':full,
-                                  'stations':stations, 'train_versions':versions, 'observations':observations}).encode())
+                                  'stations':stations, 'train_versions':versions, 'observations':observations, **extra}).encode())
     sha=hashlib.sha256(data).hexdigest()
     return {'sequence':sequence,'file':f'packs/{sha}.json.gz','bytes':len(data),'sha256':sha}, data
 

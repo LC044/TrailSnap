@@ -479,7 +479,7 @@ test.describe.serial('P1 - 人物相册', () => {
     }
   })
 
-  test('2.5.14 重新扫描人脸 - 上下文菜单先调用预览 API', async ({ page, request }, testInfo) => {
+  test('2.5.14 查找此人的更多照片 - 上下文菜单先调用预览 API', async ({ page, request }, testInfo) => {
     const probe = await requireAnyIdentity(request, testInfo)
     if (!probe.ok) return
 
@@ -498,7 +498,7 @@ test.describe.serial('P1 - 人物相册', () => {
         (res.status() === 200 || res.status() >= 400),
       { timeout: 30_000 },
     )
-    await menu.getByText('重新扫描人脸').click()
+    await menu.getByText('查找此人的更多照片').click()
     const res = await rescanReq
     // 后端可能 200（成功）或 4xx/5xx（AI 服务未起），都视为流程到达端点
     expect([200, 400, 500, 502, 503]).toContain(res.status())

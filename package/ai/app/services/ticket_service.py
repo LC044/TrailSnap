@@ -63,7 +63,7 @@ model_manager.register_model("tickets_yolo", load_onnx_model, release_onnx_model
 def has_railway_evidence(texts):
     text = ' '.join(texts).translate(str.maketrans({'車': '车', '號': '号'}))
     # Airline numbers (e.g. G3915 as an airline designator) alone are insufficient.
-    code = re.search(r'(?<![A-Za-z0-9])[GDCKTZSNLYA]\d{1,4}(?![A-Za-z0-9])', text)
+    code = re.search(r'(?<![A-Za-z0-9])[GDCKTZSNVLYA]\d{1,4}(?![A-Za-z0-9])', text)
     railway = re.search(r'\d{1,2}\s*车\s*\d{1,3}\s*[A-Fa-f]?\s*号|二等座|一等座|复兴号|中国铁路|12306', text)
     aviation = re.search(r'登机口|航班|航空|机场|经济舱', text)
     return bool(code and railway and not aviation)

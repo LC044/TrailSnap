@@ -120,7 +120,7 @@ def test_consistent_component_keeps_largest_matching_group():
     assert selected == [0, 1, 2]
 
 
-def test_consistent_component_is_conservative_with_two_faces():
+def test_consistent_component_keeps_cover_when_two_faces_are_disconnected():
     from app.service.face_cluster import FaceClusterService
 
     svc = FaceClusterService(db=MagicMock())
@@ -129,7 +129,7 @@ def test_consistent_component_is_conservative_with_two_faces():
         FaceClusterService.normalize_embedding([0.0, 1.0]),
     ]
 
-    assert svc._select_consistent_component(embeddings, [1, 2], default_face_id=1) == [0, 1]
+    assert svc._select_consistent_component(embeddings, [1, 2], default_face_id=1) == [0]
 
 
 def test_diverse_prototypes_do_not_collapse_to_one_center():
@@ -295,3 +295,41 @@ def test_preview_marks_only_strong_candidates_as_recommended():
     assert preview["removal_threshold"] == 0.52
     assert preview["add_candidates"][0]["recommended"] is True
     assert preview["add_candidates"][1]["recommended"] is False
+
+
+def test_rescan_references_keep_each_appearance_and_prefer_manual_component():
+    from app.service.face_cluster import FaceClusterService
+
+    svc = FaceClusterService(db=MagicMock())
+    faces = [SimpleNamespace(id=i, face_cluster_id=group, recognize_confidence=confidence)
+             for i, group, confidence in [(1, "front", .7), (2, "front", .7),
+                                           (3, "front", 1), (4, "side", .7), (5, "side", 1)]]
+    embeddings = [svc.normalize_embedding(vector) for vector in
+                  [[1, 0, 0], [.99, .01, 0], [0, 1, 0], [0, 0, 1], [0, .01, 1]]]
+    trusted, references = svc._select_rescan_references(faces, embeddings, 1)
+    assert set(trusted) == {2, 3, 4}
+    assert np.array_equal(references[0], embeddings[2])
+    assert np.array_equal(references[1], embeddings[4])
+    assert not any(np.array_equal(vector, embeddings[0]) for vector in references)
+
+
+def test_rescan_legacy_references_prefer_confirmed_over_larger_automatic_component():
+    from app.service.face_cluster import FaceClusterService
+
+    svc = FaceClusterService(db=MagicMock())
+    faces = [SimpleNamespace(id=i, recognize_confidence=1 if i == 3 else .7) for i in range(4)]
+    embeddings = [svc.normalize_embedding(vector) for vector in [[1, 0], [1, .01], [1, -.01], [0, 1]]]
+    trusted, references = svc._select_rescan_references(faces, embeddings, 0)
+    assert trusted == [3]
+    assert len(references) == 1 and np.array_equal(references[0], embeddings[3])
+
+
+def test_reference_sampling_keeps_manual_faces_before_uniform_sampling():
+    from app.service.face_cluster import FaceClusterService
+
+    svc = FaceClusterService(db=MagicMock())
+    svc.MAX_RESCAN_REFERENCE_SAMPLE = 4
+    faces = [SimpleNamespace(id=i, recognize_confidence=1 if i in {13, 27} else .5) for i in range(100)]
+    indices = svc._sample_reference_indices(100, faces, 57)
+    assert {13, 27, 57}.issubset(indices)
+    assert len(indices) <= 5

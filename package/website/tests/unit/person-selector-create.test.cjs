@@ -6,12 +6,12 @@ const vm = require('node:vm')
 const ts = require('typescript')
 const { ref, computed } = require('vue')
 
-function selector() {
+function selector(includeUnnamed = false) {
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/components/PersonSelector.vue'), 'utf8')
   const script = source.split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
   const events = [], queries = [], names = [], errors = []
   let failure = false
-  const props = { visible: true, submitting: false }
+  const props = { visible: true, submitting: false, includeUnnamed }
   const state = { ref, computed, watch() {}, defineProps: () => props, defineEmits: () => (...args) => events.push(args),
     console: { error() {} }, ElMessage: { error: text => errors.push(text) },
     faceApi: { listIdentities: async (...args) => { queries.push(args); return [{ id: 'one', identity_name: '一张照片的人', face_count: 1 }] },
@@ -54,4 +54,11 @@ test('failed creation keeps the entered name and allows retry without selecting 
   s.fail(false)
   await s.createPerson()
   assert.equal(s.events.length, 1)
+})
+
+test('correct-person selector can include unnamed people below the automatic photo threshold', async () => {
+  const s = selector(true)
+  await s.loadPeople()
+  assert.equal(s.queries[0][2], undefined)
+  assert.equal(s.queries[0][3], 0)
 })

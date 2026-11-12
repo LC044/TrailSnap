@@ -175,10 +175,25 @@ def test_is_manually_confirmed_false_when_none():
 
 def test_select_consistent_component_returns_all_for_trivial_sizes():
     svc = _service()
-    for n in (0, 1, 2):
+    for n in (0, 1):
         embeddings = [_unit_vec(seed=i) for i in range(n)]
         face_ids = list(range(n))
         assert svc._select_consistent_component(embeddings, face_ids, default_face_id=None) == list(range(n))
+
+
+def test_select_consistent_component_checks_two_disconnected_faces():
+    svc = _service()
+    embeddings = [_unit_vec(seed=0), _unit_vec(seed=100)]
+    assert svc._cosine_distance(*embeddings) >= svc.DISTANCE_THRESHOLD
+    assert svc._select_consistent_component(embeddings, [10, 11], default_face_id=11) == [1]
+    assert svc._select_consistent_component(embeddings, [10, 11], default_face_id=11,
+                                            confirmed_face_ids={10}) == [0]
+
+
+def test_select_consistent_component_keeps_two_connected_faces():
+    svc = _service()
+    embeddings = [_unit_vec(seed=0), _unit_vec(seed=0)]
+    assert svc._select_consistent_component(embeddings, [10, 11], default_face_id=None) == [0, 1]
 
 
 def test_select_consistent_component_picks_largest_cluster():

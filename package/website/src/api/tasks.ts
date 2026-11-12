@@ -1,5 +1,9 @@
 import request from '@/utils/request';
 import { toServerUrl } from '@/config/server';
+import { useUserStore } from '@/stores/user';
+import { createTaskStatusCache } from '@/utils/taskRefresh';
+
+const loadGroupedStatus = createTaskStatusCache<any[]>();
 
 export interface Task {
   id: string
@@ -37,7 +41,7 @@ export interface PhotoProcessingResponse {
  * `Authorization: Bearer <token>` and `?token=<token>`.
  */
 export function buildTaskEventsUrl(token: string | null | undefined): string {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ batch: 'true' });
   if (token) params.set('token', token);
   const qs = params.toString();
   return `${toServerUrl('/api/tasks/events')}${qs ? '?' + qs : ''}`;
@@ -120,8 +124,10 @@ export const tasksApi = {
   },
 
   async getGroupedStatus() {
-    const data = await request.get<any[]>('/api/tasks/grouped-status')
-    return data.data
+    return loadGroupedStatus(buildTaskEventsUrl(useUserStore().token), async () => {
+      const data = await request.get<any[]>('/api/tasks/grouped-status')
+      return data.data
+    })
   },
 
   async pauseCategory(category: string) {

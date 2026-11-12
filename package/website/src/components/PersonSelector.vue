@@ -81,6 +81,7 @@ const props = defineProps<{
   visible: boolean
   submitting?: boolean
   title?: string
+  includeUnnamed?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -115,7 +116,7 @@ const loadPeople = async () => {
   people.value = []
   try {
     for (let page = 1; ; page++) {
-      const batch = await faceApi.listIdentities(page, 200, ['named'], 0)
+      const batch = await faceApi.listIdentities(page, 200, props.includeUnnamed ? undefined : ['named'], 0)
       if (request !== requestVersion || !props.visible) return
       people.value.push(...batch)
       if (batch.length < 200) break
