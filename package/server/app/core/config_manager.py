@@ -5,9 +5,10 @@ from collections import OrderedDict
 from uuid import UUID
 from typing import Any, Dict, List, Optional, Tuple
 from contextvars import ContextVar
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from app.core.paths import DATA_DIR
+from app.core.ai_endpoint import normalize_ai_api_url
 
 DEFAULT_NARRATIVE_PROMPT = """你是一位为「电子相框」撰写旁白短句的中文文案助手。
 你的目标不是描述画面，而是为画面补上一点“画外之意”。
@@ -180,7 +181,13 @@ class AISettings(BaseModel):
     chat_connection_id: str = Field(default="builtin", description="Default connection ID for agent chat")
     chat_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for agent chat")
     chat_reasoning_effort: str = Field(default="none", description="Default reasoning effort for agent chat")
-    ai_api_url: str = Field(default=os.getenv("TS_AI_API_URL") or os.getenv("AI_API_URL", "http://localhost:8001"), description="AI Service API URL")
+    ai_api_url: str = Field(default=os.getenv("TS_AI_API_URL") or os.getenv("AI_API_URL", "http://127.0.0.1:8001"), validate_default=True, description="AI Service API URL")
+
+    @field_validator("ai_api_url")
+    @classmethod
+    def normalize_local_endpoint(cls, value: str) -> str:
+        return normalize_ai_api_url(value)
+
     face_recognition_threshold: float = Field(default=0.7, description="Face recognition confidence threshold")
     face_cluster_threshold: float = Field(default=0.5, description="Face cluster distance threshold")
     face_cluster_merge_threshold: float = Field(default=0.25, ge=0, le=1, description="Maximum distance for physical appearance-cluster merging")
@@ -374,6 +381,8 @@ class ConfigManager:
             return target
 
         merged_data = deep_merge(current_data, user_settings)
+        # Normalize persisted defaults before deriving the built-in LLM URL.
+        merged_data['ai']['ai_api_url'] = normalize_ai_api_url(merged_data['ai']['ai_api_url'])
         stored_ai = user_settings.get('ai') or {}
         for key, factor in {
             'face_cluster_merge_threshold': 0.5,
@@ -394,7 +403,7 @@ class ConfigManager:
         # Ensure built-in AI connection exists and is synced with ai_api_url
         ai_settings = merged_data.get('ai', {})
         connections = ai_settings.get('connections', [])
-        ai_api_url = ai_settings.get('ai_api_url', os.getenv("AI_API_URL", "http://localhost:8001"))
+        ai_api_url = ai_settings.get('ai_api_url', os.getenv("AI_API_URL", "http://127.0.0.1:8001"))
         builtin_api_base = f"{ai_api_url}/v1"
         
         builtin_exists = False

@@ -19,6 +19,7 @@ const GroupAlbumDetail = () => import('@/views/album/people/GroupAlbumDetail.vue
 const LocationList = () => import('@/views/album/location/LocationList.vue');
 const LocationDetail = () => import('@/views/album/location/LocationDetail.vue');
 const ClassificationList = () => import('@/views/album/intelligent-classification/ClassificationList.vue');
+const ClassificationGroupDetail = () => import('@/views/album/intelligent-classification/ClassificationGroupDetail.vue');
 const ClassificationDetail = () => import('@/views/album/intelligent-classification/ClassificationDetail.vue');
 const MoonJournal = () => import('@/views/moon/MoonJournal.vue');
 const SearchResult = () => import('@/views/search/SearchResult.vue');
@@ -61,6 +62,8 @@ const routes: RouteRecordRaw[] = [
       { path: '/album/location', name: 'LocationList', component: LocationList, meta: { title: '位置相册', navGroup: 'albums' } },
       { path: '/album/location/:name', name: 'LocationDetail', component: LocationDetail, meta: { title: '位置详情', navGroup: 'albums' } },
       { path: '/album/classification', name: 'ClassificationList', component: ClassificationList, meta: { title: '智能分类', navGroup: 'albums', desktopAICapability: 'classification' } },
+      // 分组名可能包含 /（如「城市建筑 / 地点」），用自定义正则吞掉斜杠
+      { path: '/album/classification/group/:group(.*)', name: 'ClassificationGroup', component: ClassificationGroupDetail, meta: { title: '分类分组', navGroup: 'albums', desktopAICapability: 'classification' } },
       { path: '/album/classification/:name', name: 'ClassificationDetail', component: ClassificationDetail, meta: { title: '分类详情', navGroup: 'albums', desktopAICapability: 'classification' } },
       { path: '/moon', name: 'MoonJournal', component: MoonJournal, meta: { title: '月迹', navGroup: 'albums' } },
       { path: '/explore/relations', name: 'Relations', component: () => import('@/views/explore/RelationsPage.vue'), meta: { title: '关联探索', navGroup: 'memories' } },

@@ -5,12 +5,14 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.schemas import tag as schemas
 import uuid
 
-def get_tag_by_name(db: Session, tag_name: str, owner_id: Optional[UUID] = None):
+def get_tag_by_name(db: Session, tag_name: str, owner_id: Optional[UUID] = None, tag_type: Optional[str] = None):
     query = db.query(PhotoTag).filter(PhotoTag.tag_name == tag_name)
     if owner_id:
         query = query.filter(PhotoTag.owner_id == owner_id)
     else:
         query = query.filter(PhotoTag.owner_id == None)
+    if tag_type is not None:
+        query = query.filter(PhotoTag.type == tag_type)
     return query.first()
 
 def create_tag(db: Session, tag_name: str, tag_type: str = None, owner_id: Optional[UUID] = None):
@@ -39,7 +41,7 @@ def get_photo_tags(db: Session, photo_id: UUID, owner_id: Optional[UUID] = None)
 
 def add_tag_to_photo(db: Session, photo_id: UUID, tag_name: str, confidence: float = 1.0, owner_id: Optional[UUID] = None) -> schemas.PhotoTagResponse:
     # Check if tag exists
-    tag = get_tag_by_name(db, tag_name, owner_id)
+    tag = get_tag_by_name(db, tag_name, owner_id, tag_type="custom")
     if not tag:
         tag = create_tag(db, tag_name, 'custom', owner_id)
 
@@ -67,6 +69,9 @@ def add_tag_to_photo(db: Session, photo_id: UUID, tag_name: str, confidence: flo
         db.commit()
         db.refresh(relation)
     
+    from app.service.clip_classification import decide_tag
+    decide_tag(db, photo_id, tag.id, True)
+    db.commit()
     return schemas.PhotoTagResponse(id=tag.id, tag_name=tag.tag_name, confidence=relation.confidence)
 
 def remove_tag_from_photo(db: Session, photo_id: UUID, tag_id: UUID):
@@ -76,7 +81,8 @@ def remove_tag_from_photo(db: Session, photo_id: UUID, tag_id: UUID):
     ).first()
 
     if relation:
-        db.delete(relation)
+        from app.service.clip_classification import decide_tag
+        decide_tag(db, photo_id, tag_id, False)
         db.commit()
     return True
 
@@ -109,7 +115,7 @@ def get_tags_with_stats(db: Session, owner_id: UUID, skip: int = 0, limit: int =
     tags_with_data = db.query(PhotoTag, subquery.c.count, Photo)\
         .join(subquery, PhotoTag.id == subquery.c.tag_id)\
         .outerjoin(Photo, (PhotoTag.cover_id == Photo.id) & (Photo.is_deleted == False))\
-        .filter(PhotoTag.owner_id == owner_id)\
+        .filter(PhotoTag.owner_id == owner_id, PhotoTag.is_deleted.is_(False))\
         .order_by(desc(subquery.c.count))\
         .offset(skip).limit(limit).all()
 
@@ -133,6 +139,7 @@ def get_tags_with_stats(db: Session, owner_id: UUID, skip: int = 0, limit: int =
         result.append(schemas.TagStats(
             id=tag.id,
             tag_name=tag.tag_name,
+            type=tag.type,
             count=count,
             cover=cover_photo
         ))
@@ -143,8 +150,14 @@ def get_tags_with_stats(db: Session, owner_id: UUID, skip: int = 0, limit: int =
 
     return result
 
-def get_photos_by_tag_name(db: Session, owner_id: UUID, tag_name: str, skip: int = 0, limit: int = 50):
-    tag = get_tag_by_name(db, tag_name, owner_id)
+def resolve_tag(db, owner_id, tag_name, tag_id=None):
+    if tag_id is None:
+        return get_tag_by_name(db, tag_name, owner_id)
+    return db.query(PhotoTag).filter_by(id=tag_id, owner_id=owner_id, is_deleted=False).first()
+
+
+def get_photos_by_tag_name(db: Session, owner_id: UUID, tag_name: str, skip: int = 0, limit: int = 50, tag_id: Optional[UUID] = None):
+    tag = resolve_tag(db, owner_id, tag_name, tag_id)
     if not tag:
         return []
 
@@ -159,21 +172,26 @@ def get_photos_by_tag_name(db: Session, owner_id: UUID, tag_name: str, skip: int
 
     return photos
 
-def remove_photos_from_tag(db: Session, owner_id: UUID, tag_name: str, photo_ids: List[UUID]) -> int:
-    tag = get_tag_by_name(db, tag_name, owner_id)
+def remove_photos_from_tag(db: Session, owner_id: UUID, tag_name: str, photo_ids: List[UUID], tag_id: Optional[UUID] = None) -> int:
+    tag = resolve_tag(db, owner_id, tag_name, tag_id)
     if not tag:
         return 0
 
-    count = db.query(PhotoTagRelation).filter(
+    owned_ids = [p.id for p in db.query(Photo).filter(Photo.owner_id == owner_id, Photo.id.in_(photo_ids))]
+    relations = db.query(PhotoTagRelation).filter(
         PhotoTagRelation.tag_id == tag.id,
-        PhotoTagRelation.photo_id.in_(photo_ids)
-    ).delete(synchronize_session=False)
+        PhotoTagRelation.photo_id.in_(owned_ids)
+    ).all()
+    from app.service.clip_classification import decide_tag
+    for photo_id in owned_ids:
+        decide_tag(db, photo_id, tag.id, False)
+    count = len(relations)
     
     db.commit()
     return count
 
-def set_tag_cover(db: Session, owner_id: UUID, tag_name: str, photo_id: UUID) -> bool:
-    tag = get_tag_by_name(db, tag_name, owner_id)
+def set_tag_cover(db: Session, owner_id: UUID, tag_name: str, photo_id: UUID, tag_id: Optional[UUID] = None) -> bool:
+    tag = resolve_tag(db, owner_id, tag_name, tag_id)
     if not tag:
         return False
         

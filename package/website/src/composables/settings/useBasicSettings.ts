@@ -18,7 +18,7 @@ export function useBasicSettings() {
     external_directories: [] as string[]
   });
   const aiForm = ref({
-    ai_api_url: 'http://localhost:8001',
+    ai_api_url: 'http://127.0.0.1:8001',
     ...faceRecognitionPresets.normal.parameters,
   });
   type ConnectionTestState = {

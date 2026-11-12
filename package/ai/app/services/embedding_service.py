@@ -129,11 +129,15 @@ class EmbeddingService:
         model_manager.register_model("clip_text", self._load_text_model, self._release_model)
         model_manager.register_model("clip_image", self._load_image_model, self._release_model)
 
-    async def embed_texts(self, texts: List[str], use_cache: bool = False) -> List[List[float]]:
+    async def embed_texts(self, texts: List[str], use_cache: bool = False, reject_truncation: bool = False) -> List[List[float]]:
         if not ai_model_manager.is_ready("clip_text"):
             raise Exception("Models are not ready yet. Please try again later.")
         wrapper = model_manager.get_model("clip_text")
         try:
+            if reject_truncation:
+                tokens = await asyncio.to_thread(wrapper.tokenizer, text=texts, truncation=False, padding=False)
+                if any(len(ids) > wrapper.max_length for ids in tokens['input_ids']):
+                    raise ValueError(f'分类描述超过模型的 {wrapper.max_length} token 限制，请缩短描述')
             loaded_id = getattr(wrapper, 'model_id', None)
             if isinstance(loaded_id, str) and loaded_id != ai_model_manager.get_selected_id("embedding"):
                 raise RuntimeError('Embedding model not ready after switch; please retry')
