@@ -12,7 +12,6 @@
       <p><strong>操作：</strong>{{ operationLabel }}</p>
       <p v-if="plan.request.config.target" class="break-all"><strong>目标：</strong>{{ plan.request.config.target }}</p>
       <p v-if="plan.request.config.action === 'copy'">预计生成 {{ plan.summary.output_files }} 个文件，约 {{ formatBytes(plan.summary.output_bytes || 0) }}。</p>
-      <p class="ts-muted">执行只处理此计划中已核对的影像，不会加入执行期间的新影像。</p>
     </div>
     <el-alert v-if="isCleanup" title="清理候选默认不勾选。展开参考图核对后手动选择，重复组至少保留一项；确认后移入回收站，不永久删除。" type="warning" :closable="false" />
     <el-alert v-if="isPreview" title="修改范围或规则后，必须重新生成预览。文件已变化或目标被占用时将记录异常，不覆盖。" type="info" :closable="false" />
@@ -49,11 +48,11 @@
     </div>
     <div class="flex justify-center"><el-pagination v-model:current-page="page" :page-size="40" :total="total" layout="prev, pager, next" :pager-count="5" @current-change="load" /></div>
     <div v-if="isPreview" class="ts-divider space-y-3 border-t pt-4">
-      <el-checkbox v-model="confirmed">我已查看范围与真实变更，了解{{ operationLabel }}</el-checkbox>
+      <el-checkbox v-model="confirmed" class="plan-confirmation">我已查看范围了解真实变更</el-checkbox>
       <div class="flex flex-wrap justify-end gap-2">
         <el-button @click="$emit('back')">返回修改</el-button>
         <el-button type="primary" :loading="executing" :disabled="!confirmed || !actionCount || loading || !!error" @click="$emit('execute', isCleanup ? selected : undefined)">
-          确认{{ operationVerb }} {{ actionCount }} 项
+          确认{{ operationVerb }}<template v-if="!['移动', '复制'].includes(operationVerb)"> {{ actionCount }} 项</template>
         </el-button>
       </div>
     </div>
@@ -136,3 +135,17 @@ const exportResult = async () => {
   finally { exporting.value = false }
 }
 </script>
+
+<style scoped>
+.plan-confirmation {
+  max-width: 100%;
+  height: auto;
+  min-height: 44px;
+  margin-right: 0;
+}
+.plan-confirmation :deep(.el-checkbox__label) {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+</style>

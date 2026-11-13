@@ -18,9 +18,9 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
     test(`${tool.path} 使用统一预览计划工作流而非旧任务轮询`, async ({ page }) => {
       await page.goto(`/toolbox/${tool.path}`)
       await expect(page.locator('h1.ts-page-title', { hasText: tool.title })).toBeVisible({ timeout: 10_000 })
-      await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible()
+      await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
       await expect(page.getByRole('link', { name: '操作记录' })).toHaveAttribute('href', '/toolbox')
-      await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled()
+      await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled()
     })
   }
 
@@ -32,15 +32,15 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
     await expect(page.getByRole('button', { name: '选择文件夹' })).toBeVisible()
     await expect(page.getByText('包含子文件夹', { exact: true })).toBeVisible()
     await expect(page.getByText('这些是服务器或桌面图库中的实际目录，不是手机本地相册。')).toBeVisible()
-    await expect(page.getByText('尚未选择文件夹')).toBeVisible()
+    await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '文件夹', exact: true })).toHaveAttribute('aria-pressed', 'true')
     // 旧版目录树「加载失败/重试/确认/取消」与文件夹输入框随直连表单移除，
     // 目录现在作为范围的一部分显式列出，不再写回输入框。
     await expect(page.getByPlaceholder('请选择要进行重命名操作的文件夹')).toHaveCount(0)
 
     await sources.getByRole('button', { name: '全部' }).click()
-    await expect(page.getByText('全部图库（主动选择）')).toBeVisible()
+    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toBeVisible()
     await sources.getByRole('button', { name: '文件夹' }).click()
-    await expect(page.getByText('尚未选择文件夹')).toBeVisible()
+    await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '文件夹', exact: true })).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('AI 服务分区保存不会提交大模型连接或默认模型', async ({ page }) => {

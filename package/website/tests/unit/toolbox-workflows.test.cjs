@@ -162,3 +162,78 @@ test('selection entry freezes explicit deduplicated IDs and account context', ()
   entry.openToolForSelection({ push: value => calls.push(value) }, 'owner', [], 'rename')
   assert.equal(calls.length, 1)
 })
+
+test('organize quick presets preserve explicit file decisions and expose advanced settings', () => {
+  const config = vue.reactive(api().defaultConfig('organize'))
+  config.target = '/photos'; config.action = 'move'; config.layout = 'preserve'; config.missing = 'upload'
+  const component = load('views/toolbox/OrganizeRuleEditor.vue', { '@/api/toolboxWorkflows': api() }).default
+  const ctx = mount(component, { modelValue: config, scope: api().emptyScope() })
+  ctx.state.applyPreset('year-city')
+  assert.deepEqual(config.rules.map(r => r.strategy), ['time', 'location'])
+  assert.equal(config.target, '/photos')
+  assert.equal(config.action, 'move')
+  assert.match(ctx.state.advancedSummary.value, /保留原层级/)
+  assert.match(ctx.state.advancedSummary.value, /上传时间/)
+  assert.equal(ctx.state.currentPreset.value, 'year-city')
+  config.rules[1].groups = ['city-id']
+  assert.equal(ctx.state.currentPreset.value, undefined)
+  assert.match(ctx.state.ruleSummary.value, /指定分组/)
+  ctx.unmount()
+})
+
+test('failed preset save retains the previous selection instead of exposing an unsaved ID', async () => {
+  const store = { preferences: { presets: [], recent: [], default_rename_id: null }, busy: false,
+    load: async () => {}, save: async () => { throw new Error('conflict') } }
+  const component = load('views/toolbox/ToolPresetBar.vue', {
+    '@/stores/toolbox': { useToolboxStore: () => store },
+    'element-plus': { ElMessage: { success() {}, warning() {} }, ElMessageBox: {} },
+  }).default
+  const ctx = mount(component, { modelValue: api().defaultConfig('organize') })
+  await vue.nextTick()
+  ctx.state.presetName.value = '旅行'
+  await ctx.state.saveNew()
+  assert.equal(ctx.state.chosen.value, '')
+  assert.match(ctx.state.loadError.value, /保存失败/)
+  ctx.unmount()
+})
+
+test('template manager routes each preset to its own tool and persists names', async () => {
+  const preset = { id: 'organize-one', name: '旅行', config: api().defaultConfig('organize') }
+  const calls = []
+  const store = { preferences: { version: 1, presets: [preset], recent: [], default_rename_id: null }, busy: false,
+    load: async () => {}, save: async value => { store.preferences = value } }
+  const component = load('views/toolbox/ToolboxHomePage.vue', {
+    '@/stores/toolbox': { useToolboxStore: () => store },
+    '@/api/toolboxWorkflows': { workflowApi: { history: async () => [] } },
+    'vue-router': { useRouter: () => ({ push: value => calls.push(value) }) },
+    'element-plus': { ElMessageBox: { confirm: async () => {} } },
+  }).default
+  const ctx = mount(component)
+  ctx.state.editRules(preset)
+  assert.equal(calls[0].path, '/toolbox/organize')
+  assert.equal(calls[0].query.preset, preset.id)
+  ctx.state.editingName.value = '新的旅行方案'
+  await ctx.state.renamePreset(preset)
+  assert.equal(store.preferences.presets[0].name, '新的旅行方案')
+  await ctx.state.deletePreset(preset)
+  assert.equal(store.preferences.presets.length, 0)
+  ctx.unmount()
+})
+
+test('toolbox restores user identity from a token before loading empty presets', async () => {
+  const user = vue.reactive({ token: 'session', userInfo: null })
+  const calls = []
+  user.getUserInfo = async () => { calls.push('user'); user.userInfo = { id: 'restored' } }
+  const store = load('stores/toolbox.ts', {
+    pinia: { defineStore: (_name, setup) => setup },
+    '@/stores/user': { useUserStore: () => user },
+    '@/api/toolboxWorkflows': { workflowApi: { preferences: async () => {
+      calls.push('preferences')
+      return { version: 0, presets: [], recent: [], default_rename_id: null }
+    } } },
+  }).useToolboxStore()
+  await store.load()
+  assert.deepEqual(calls, ['user', 'preferences'])
+  assert.equal(store.loadedOwner.value, 'restored')
+  assert.deepEqual(store.preferences.value.presets, [])
+})
