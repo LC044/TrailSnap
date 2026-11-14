@@ -88,7 +88,7 @@ type ReleaseAsset = { name: string; browser_download_url: string }
 const { lang } = useData()
 const isEnglish = computed(() => lang.value.startsWith('en'))
 const releaseUrl = 'https://github.com/LC044/TrailSnap/releases/latest'
-const mirrorUrl = 'https://ug.link/dxp4800plus-72ab-9a51/filemgr/share-download/?id=35a6dea0517d482aa40526429a453e29'
+const mirrorUrl = 'https://demo.siyuan.ink/downloads/'
 const assets = ref<ReleaseAsset[]>([])
 const releaseName = ref('')
 const detectedPlatform = ref<PlatformKey | ''>('')
