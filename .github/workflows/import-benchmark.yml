@@ -1,0 +1,98 @@
+name: Import benchmark
+
+on:
+  schedule:
+    # Daily 04:00 Asia/Shanghai.
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tests/performance/import*'
+      - 'tests/performance/test_import_benchmark.py'
+      - '.github/workflows/import-benchmark.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: import-benchmark-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      TS_PERF_MACHINE_ID: github-ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare shared test env
+        run: cp tests/.env.test.ci tests/.env.test
+      - name: Test benchmark validity rules
+        shell: pwsh
+        run: ./tests/scripts/run-tests.ps1 -Layer performance -Scope import-unit
+      - name: Checkout E2E dataset v1
+        uses: actions/checkout@v4
+        with:
+          repository: LC044/trailsnap-test-photos
+          ref: 609f747b7a6c318eb6d550469e11d11ce078495b
+          path: tests/.cache/benchmark-photos
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Build tested server revision
+        uses: docker/build-push-action@v6
+        with:
+          context: package/server
+          build-args: RAILWAY_HISTORY_SEED_REQUIRED=false
+          load: true
+          tags: trailsnap-import-benchmark:local
+          cache-from: type=gha,scope=e2e-server
+          cache-to: type=gha,mode=max,scope=e2e-server
+      - name: Restore model files
+        id: models
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/.cache/benchmark-models
+          key: import-models-v1-${{ hashFiles('package/ai/app/model_catalog.json') }}
+      - name: Retrieve previous successful default-branch results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p tests/artifacts/import-baseline
+          python tests/performance/import_history.py --repository "$GITHUB_REPOSITORY" --output tests/artifacts/import-baseline
+      - name: Run all resource profiles
+        shell: pwsh
+        env:
+          TS_PERF_OUTPUT: tests/artifacts/import-benchmark
+          TS_PERF_BASELINE: tests/artifacts/import-baseline/result.json
+        run: ./tests/scripts/run-tests.ps1 -Layer performance -Scope import
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f tests/artifacts/import-benchmark/report.md ]; then
+            cat tests/artifacts/import-benchmark/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Store results outside Git
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: import-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/artifacts/import-benchmark/
+          retention-days: 90
+          if-no-files-found: error
+      - name: Fix model cache permissions
+        if: always()
+        run: |
+          mkdir -p tests/.cache/benchmark-models
+          sudo chown -R "$USER:$USER" tests/.cache/benchmark-models
+      - name: Save model files
+        if: always() && steps.models.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: tests/.cache/benchmark-models
+          key: import-models-v1-${{ hashFiles('package/ai/app/model_catalog.json') }}
