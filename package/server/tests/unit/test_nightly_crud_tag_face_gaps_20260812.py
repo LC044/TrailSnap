@@ -50,6 +50,9 @@ def _q(*, first=_UNSET, all=_UNSET, get=_UNSET):
         m.filter.return_value.first.return_value = first
         # .filter().filter().first()
         m.filter.return_value.filter.return_value.first.return_value = first
+        # .filter().filter().filter().first() — get_tag_by_name chains
+        # tag_name + owner + tag_type filters.
+        m.filter.return_value.filter.return_value.filter.return_value.first.return_value = first
         # .filter().order_by().first()
         m.filter.return_value.order_by.return_value.first.return_value = first
         # .filter().filter().order_by().first()
@@ -106,6 +109,21 @@ def _fresh_db():
     db.refresh = MagicMock()
     db.flush = MagicMock()
     return db
+
+
+@pytest.fixture(autouse=True)
+def _stub_clip_decisions(monkeypatch):
+    """Isolate mock-db tests from the CLIP decision bookkeeping.
+
+    ``add_tag_to_photo`` / ``remove_tag_from_photo`` / ``remove_photos_from_tag``
+    now also record manual keep/exclude decisions via
+    ``app.service.clip_classification.decide_tag``. That path needs a real
+    database (photo row locks, TagDecision writes) and is covered by dedicated
+    CLIP tests; the mock-db tests here only assert the relation lifecycle.
+    """
+    monkeypatch.setattr(
+        "app.service.clip_classification.decide_tag", lambda *args, **kwargs: None
+    )
 
 
 def _photo_schema(photo_id):
@@ -239,9 +257,17 @@ def test_remove_tag_from_photo_deletes_when_relation_present():
     db = _fresh_db()
     db.query.return_value = _q(first=relation)
 
-    crud_tag.remove_tag_from_photo(db, uuid4(), uuid4())
+    with patch(
+        "app.service.clip_classification.decide_tag"
+    ) as decide:
+        crud_tag.remove_tag_from_photo(db, uuid4(), uuid4())
 
-    db.delete.assert_called_once_with(relation)
+    # Removal now records a manual exclusion decision instead of a raw
+    # db.delete; decide_tag(keep=False) is responsible for dropping the
+    # relation (covered by the dedicated CLIP tests with a real session).
+    decide.assert_called_once()
+    assert decide.call_args.args[3] is False
+    db.delete.assert_not_called()
     db.commit.assert_called_once()
 
 
@@ -266,7 +292,7 @@ def test_remove_tags_from_photo_accepts_list():
 
 
 def test_get_tags_with_stats_attaches_cover_from_cover_id():
-    tag_obj = SimpleNamespace(id=uuid4(), tag_name="beach", cover_id=uuid4())
+    tag_obj = SimpleNamespace(id=uuid4(), tag_name="beach", cover_id=uuid4(), type="custom")
     cover_photo = _photo_schema(tag_obj.cover_id)
     db = _fresh_db()
     # First query = subquery (no special return needed)
@@ -286,7 +312,7 @@ def test_get_tags_with_stats_attaches_cover_from_cover_id():
 
 
 def test_get_tags_with_stats_backfills_cover_when_missing():
-    tag_obj = SimpleNamespace(id=uuid4(), tag_name="beach", cover_id=None)
+    tag_obj = SimpleNamespace(id=uuid4(), tag_name="beach", cover_id=None, type="custom")
     fallback = _photo_schema(uuid4())
     db = _fresh_db()
     db.query.side_effect = [
@@ -337,14 +363,27 @@ def test_remove_photos_from_tag_returns_zero_when_tag_missing():
 
 def test_remove_photos_from_tag_returns_delete_count():
     tag_obj = SimpleNamespace(id=uuid4(), tag_name="beach")
+    photo = SimpleNamespace(id=uuid4())
+    relation = SimpleNamespace()
     db = _fresh_db()
-    # Tag lookup → tag; delete chain → 4.
-    db.query.return_value = _q(first=tag_obj)
-    db.query.return_value.filter.return_value.delete.return_value = 4
+    # Tag lookup → tag; owned photo lookup → [photo]; relation lookup → 1 row.
+    # The owned-photo query is iterated directly after .filter() (no .all()),
+    # so the mock needs __iter__ on the filtered result.
+    owned_query = _q(all=[photo])
+    owned_query.filter.return_value.__iter__.return_value = iter([photo])
+    db.query.side_effect = [
+        _q(first=tag_obj),
+        owned_query,
+        _q(all=[relation]),
+    ]
 
-    result = crud_tag.remove_photos_from_tag(db, uuid4(), "beach", [uuid4(), uuid4()])
+    with patch("app.service.clip_classification.decide_tag") as decide:
+        result = crud_tag.remove_photos_from_tag(db, uuid4(), "beach", [photo.id])
 
-    assert result == 4
+    # Removal counts the relations that were dropped via manual decisions.
+    assert result == 1
+    decide.assert_called_once()
+    assert decide.call_args.args[3] is False
     db.commit.assert_called_once()
 
 

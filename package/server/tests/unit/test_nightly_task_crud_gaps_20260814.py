@@ -144,10 +144,12 @@ def test_get_grouped_status_returns_categories_sorted_by_priority_desc():
     db.query.side_effect = [pending_query, waiting_query]
 
     out = crud_task.get_grouped_status(db, paused_categories={TaskType.RECOGNIZE_FACE})
-    # All 10 categories surfaced (CLUSTER_FACES joined the panel when
-    # clustering was split out of RECOGNIZE_FACE).
-    assert len(out) == 10
+    # All 11 categories surfaced (CLUSTER_FACES joined the panel when
+    # clustering was split out of RECOGNIZE_FACE; CLASSIFY_IMAGE_CLIP joined
+    # when editable CLIP rules became a background task).
+    assert len(out) == 11
     assert any(row["category"] == TaskType.CLUSTER_FACES for row in out)
+    assert any(row["category"] == TaskType.CLASSIFY_IMAGE_CLIP for row in out)
     priorities = [row["priority"] for row in out]
     assert priorities == sorted(priorities, reverse=True)
     # RECOGNIZE_FACE entry should be marked 'paused'

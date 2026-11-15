@@ -108,6 +108,42 @@ def test_cache_expires_and_is_scoped_to_service(monkeypatch):
         assert state.get_model_wait_reason("http://two", TaskType.RECOGNIZE_FACE)
 
 
+@pytest.mark.parametrize("override_url", [None, "http://payload-ai"])
+@pytest.mark.parametrize("error", ["Face model is not ready", "图片分类模型 尚未就绪（pending），请在 AI 模型管理中下载"])
+def test_inference_not_ready_invalidates_cache_without_consuming_attempt(monkeypatch, override_url, error):
+    from app.core.config_manager import config_manager
+
+    worker = task_worker.TaskWorker()
+    worker._publish = MagicMock()
+    db = MagicMock()
+    api_url = override_url or "http://ai"
+    task = SimpleNamespace(id="not-ready", type=TaskType.RECOGNIZE_FACE, owner_id="owner",
+                           status=TaskStatus.PENDING, attempt_count=2, priority=10,
+                           error=None, next_retry_at=None, created_at=None, updated_at=None,
+                           payload={"ai_api_url": override_url} if override_url else {},
+                           total_items=0, processed_items=0)
+    strategy = SimpleNamespace(process_batch=AsyncMock(return_value=[{
+        "task_id": task.id, "task_type": task.type, "status": TaskStatus.FAILED,
+        "error": "AI Service error: 500: " + error,
+    }]), timeout=10, resource_key="test", max_attempts=3)
+    monkeypatch.setattr(state, "_cache", {
+        api_url + "/ai/models": (state.time.monotonic(), snapshot("ready")),
+        "http://other/ai/models": (state.time.monotonic(), snapshot("ready")),
+    })
+    monkeypatch.setattr(state, "_refreshing", {})
+    monkeypatch.setattr(task_worker, "SessionLocal", lambda: db)
+    monkeypatch.setattr(task_worker.crud_task, "get_tasks_by_ids", lambda *_: [task])
+    monkeypatch.setattr(task_worker.TaskStrategyFactory, "get_strategy", lambda *_: strategy)
+    monkeypatch.setattr(config_manager, "get_user_config", lambda *_: SimpleNamespace(
+        ai=SimpleNamespace(ai_api_url="http://ai")))
+    assert worker._execute_batch_sync([{"id": task.id, "type": task.type}]) == ([], "waiting_for_model")
+    assert api_url + "/ai/models" not in state._cache
+    assert "http://other/ai/models" in state._cache
+    assert task.status == TaskStatus.PENDING
+    assert task.attempt_count == 2
+    assert task.next_retry_at > datetime.now()
+
+
 @pytest.mark.parametrize("other_error", ["设备繁忙", state.WAIT_PREFIX + "other model"])
 def test_ready_clears_waiting_backlog_without_touching_other_retries(face_sqlite_session, monkeypatch, other_error):
     from datetime import timedelta

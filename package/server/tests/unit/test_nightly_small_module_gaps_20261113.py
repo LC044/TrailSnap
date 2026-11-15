@@ -270,7 +270,7 @@ def test_get_model_wait_reason_reuses_a_cached_snapshot(monkeypatch):
 
 
 def test_get_model_wait_reason_drops_a_full_cache(monkeypatch):
-    """A bounded cache is cleared instead of growing without limit."""
+    """A full cache evicts one entry instead of growing without limit."""
     from app.service import ai_model_state
 
     response = MagicMock()
@@ -280,7 +280,9 @@ def test_get_model_wait_reason_drops_a_full_cache(monkeypatch):
 
     ai_model_state.get_model_wait_reason("http://ai", TaskType.OCR)
 
-    assert len(ai_model_state._cache) == 1
+    assert len(ai_model_state._cache) == 128
+    assert "http://ai/ai/models" in ai_model_state._cache
+    assert "u0" not in ai_model_state._cache
 
 
 # ---------------------------------------------------------------------------

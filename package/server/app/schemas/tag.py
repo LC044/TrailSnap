@@ -21,6 +21,7 @@ from app.schemas.photo import Photo
 class TagStats(BaseModel):
     id: UUID
     tag_name: str
+    type: Optional[str] = None
     count: int
     cover: Optional[Photo] = None
 

@@ -126,6 +126,10 @@ class _FakeResp:
         self._payload = payload
     async def json(self):
         return self._payload
+    async def text(self):
+        # ai_response_error reads the body to keep the status code in the
+        # persisted error detail.
+        return str(self._payload)
     async def __aenter__(self):
         return self
     async def __aexit__(self, *exc):
@@ -314,7 +318,9 @@ def test_face_process_batch_ai_non_200_marks_failed(monkeypatch):
     s = RecognizeFaceStrategy()
     res = _run(s.process_batch(MagicMock(), [t], db))
     assert res[0]["status"] == "failed"
-    assert "AI Service error: 502" in res[0]["error"]
+    # 502/503/504 现在归入“等待 AI 模型”可重试文案，而非永久失败。
+    assert "AI 服务尚未就绪" in res[0]["error"]
+    assert "502" in res[0]["error"]
 
 
 def test_face_process_batch_ai_result_error_marks_failed(monkeypatch):
@@ -446,7 +452,9 @@ def test_face_process_single_photo_ai_non_200(monkeypatch):
     s = RecognizeFaceStrategy()
     res = _run(s.process_single_photo(MagicMock(), _photo(), MagicMock()))
     assert res["status"] == "failed"
-    assert "AI Service error: 503" in res["error"]
+    # 502/503/504 现在归入“等待 AI 模型”可重试文案，而非永久失败。
+    assert "AI 服务尚未就绪" in res["error"]
+    assert "503" in res["error"]
 
 
 def test_face_process_single_photo_ai_result_error(monkeypatch):

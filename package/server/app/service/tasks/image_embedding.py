@@ -157,6 +157,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                             
                             vectors = db.query(ImageVector).filter(ImageVector.photo_id.in_([p.id for p in valid_photos])).all()
                             vector_map = {v.photo_id: v for v in vectors}
+                            classified_photos = []
                             for idx, task in enumerate(valid_tasks):
                                 photo = valid_photos[idx]
                                 embedding = ai_results[idx] if idx < len(ai_results) else []
@@ -174,6 +175,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                                     tasks_status['image_embedding'] = True
                                     photo.processed_tasks = tasks_status
                                     db.add(photo)
+                                    classified_photos.append(photo)
                                     
                                     results.append({
                                         'task_id': task.id,
@@ -188,6 +190,8 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                                         'status': 'failed',
                                         'error': 'No embedding returned'
                                     })
+                            from app.service.clip_classification import enqueue_photos
+                            enqueue_photos(db, classified_photos, model=self._response_model(resp, payload.get('model')))
                             db.commit()
                         else:
                             err_msg = await ai_response_error(resp)
@@ -199,9 +203,11 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                 owner_ids = {t.id for t in owner_tasks}
                 results = [r for r in results if r["task_id"] not in owner_ids]
                 logger.error(f"Error in Image Embedding processing batch for owner {owner_id}: {e}")
+                error = ("等待 AI 模型：AI 服务暂不可达，恢复后自动继续"
+                         if isinstance(e, (aiohttp.ClientConnectionError, TimeoutError)) else str(e))
                 for task in owner_tasks:
                     if not any(r['task_id'] == task.id for r in results):
-                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': str(e)})
+                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': error})
 
         return results
 
@@ -241,6 +247,8 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                             tasks_status['image_embedding'] = True
                             photo.processed_tasks = tasks_status
                             db.add(photo)
+                            from app.service.clip_classification import enqueue_photo
+                            enqueue_photo(db, photo)
                             db.commit()
                             return {'status': 'success', 'embedding_size': len(embedding)}
                         else:
@@ -249,6 +257,8 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                         text = await resp.text()
                         logger.error(f"AI Service error: {resp.status} {text}")
                         return {'status': 'failed', 'error': await ai_response_error(resp)}
+        except (aiohttp.ClientConnectionError, TimeoutError) as e:
+            raise RuntimeError("等待 AI 模型：AI 服务暂不可达，恢复后自动继续") from e
         except Exception as e:
             logger.error(f"Error processing Image Embedding for photo {photo.id}: {e}")
             tasks_status = dict(photo.processed_tasks or {})

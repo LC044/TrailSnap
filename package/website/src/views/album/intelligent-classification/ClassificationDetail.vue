@@ -55,6 +55,7 @@ const route = useRoute()
 const router = useRouter()
 const goBack = useAppBack('/album/classification')
 const name = route.params.name as string
+const tagId = typeof route.query.tag_id === 'string' ? route.query.tag_id : undefined
 const photoStore = usePhotoStore()
 const loading = ref(false)
 const photos = ref<AlbumImage[]>([])
@@ -96,7 +97,7 @@ const loadMore = async () => {
     let hasNext = true
 
     while (hasNext) {
-      const rawPhotos = await classificationService.getTagPhotos(name, skip.value, limit)
+      const rawPhotos = await classificationService.getTagPhotos(name, skip.value, limit, tagId)
 
       if (rawPhotos.length < limit) {
         hasMore.value = false
@@ -138,7 +139,7 @@ const handleConfirmDelete = async (ids: string[], callback: (success: boolean) =
 
 const removePhotoFromTags = async (ids: string[]) => {
   try {
-    await classificationService.removePhotosFromTag(name, ids)
+    await classificationService.removePhotosFromTag(name, ids, tagId)
     photos.value = photos.value.filter(img => !ids.includes(img.id))
     calculateTimelineStats(photos.value)
     ElMessage.success('从分类中移除成功')
@@ -151,7 +152,7 @@ const handleSetCover = async (ids: string[]) => {
   if (!ids.length) return
   const photoId = ids[0]
   try {
-    await classificationService.setCover(name, photoId)
+    await classificationService.setCover(name, photoId, tagId)
     ElMessage.success('已设为封面')
   } catch (e) {
     ElMessage.error('设置封面失败')

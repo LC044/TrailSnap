@@ -55,7 +55,7 @@ test.describe('P1 - 智能分类', () => {
     if (!(await ensureAuthSession(request, page, testInfo))) return
   })
 
-  test('2.3.1 分类网格 - YOLO 标签列表正确渲染', async ({ page, request }, testInfo) => {
+  test('2.3.1 分类列表 - 大组卡片正确渲染并可进入分组页', async ({ page, request }, testInfo) => {
     const probe = await requireAnyTag(request, testInfo)
     if (!probe.ok) return
     await page.goto('/album/classification')
@@ -63,14 +63,14 @@ test.describe('P1 - 智能分类', () => {
     // 列表头
     await expect(page.getByRole('heading', { name: '智能分类' })).toBeVisible({ timeout: 10_000 })
 
-    // 至少 1 个 tag 卡片
-    const tagCard = page.locator('h3[title]').first()
-    await expect(tagCard).toBeVisible({ timeout: 15_000 })
-    const tagName = await tagCard.textContent()
-    expect(tagName?.trim().length).toBeGreaterThan(0)
+    // 至少 1 个大组卡片（YOLO / CLIP 分组）
+    const groupCard = page.locator('[data-testid="classification-group-grid"] button').first()
+    await expect(groupCard).toBeVisible({ timeout: 15_000 })
 
-    // 数量文案 "X 个项目"
-    await expect(page.getByText(/\d+\s*个项目/).first()).toBeVisible()
+    // 点击进入分组详情页，顶部出现类别选择条
+    await groupCard.click()
+    await expect(page).toHaveURL(/\/album\/classification\/group\//, { timeout: 10_000 })
+    await expect(page.getByTestId('classification-category-strip')).toBeVisible({ timeout: 15_000 })
   })
 
   test('2.3.2 分类详情 - 进入 tag 后列出匹配照片', async ({ page, request }, testInfo) => {

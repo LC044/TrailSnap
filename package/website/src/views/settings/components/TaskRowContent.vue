@@ -23,7 +23,7 @@
         <button class="ts-icon-button ts-button-ghost" :aria-label="`${task.task_name}操作`" :aria-expanded="menuOpen" aria-haspopup="menu" :disabled="disabled" @click="$emit('toggle-menu')"><MoreHorizontal class="h-5 w-5" /></button>
         <AdaptiveMenu :model-value="menuOpen" :title="`${task.task_name}操作`" close-on-action @update:model-value="value => $emit('update-menu', value)">
           <button v-if="isMobile" class="ts-action-row" @click="$emit('category-command', task.status === 'paused' ? 'resume' : 'pause')">{{ task.status === 'paused' ? '继续任务' : '暂停任务' }}</button>
-          <button class="ts-action-row" @click="$emit('category-command', 'scan_missing')">执行缺失任务</button>
+          <button class="ts-action-row" @click="$emit('category-command', 'scan_missing')">{{ task.category === 'CLASSIFY_IMAGE_CLIP' ? '执行全库分类' : '执行缺失任务' }}</button>
           <button class="ts-action-row" :disabled="task.failed === 0" @click="$emit('category-command', 'retry')">重试失败任务</button>
           <button v-if="task.category === 'RECOGNIZE_TICKET'" class="ts-action-row" @click="$emit('category-command', 'recover_tickets')">恢复旧版未保存的票据</button>
           <button class="ts-action-row danger" :disabled="task.failed === 0" @click="$emit('category-command', 'delete_failed')">删除失败任务</button>

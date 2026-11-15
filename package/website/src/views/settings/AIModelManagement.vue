@@ -303,7 +303,7 @@ async function selectModel(task: string, model: string) {
         return
       }
       await ElMessageBox.confirm(
-        '切换后需要重新提取全部照片的图片特征，系统会自动添加后台任务。处理期间搜索结果可能不完整或不准确。',
+        '切换后需要重新执行全部照片的 embedding 任务，确保图片与分类描述采用同一个模型。系统会自动添加图片特征重建任务，处理完成后更新 CLIP 分类。处理期间搜索结果可能不完整或不准确。',
         '切换图片特征模型',
         { confirmButtonText: '切换并重新处理', cancelButtonText: '取消', type: 'warning' },
       )

@@ -37,3 +37,4 @@ from .daily_frame import DailyFrameCalendar, DailyFrame, DailyFrameWork
 
 from .ticket_wallet import AlbumTicket, TicketDismissal
 from .toolbox import ToolboxPlan, ToolboxPlanItem
+from .clip_classification import ClipCategory, ClipRuleRevision, TagDecision

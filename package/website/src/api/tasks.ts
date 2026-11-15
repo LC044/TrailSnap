@@ -28,6 +28,7 @@ export type PhotoProcessingOperation =
   | 'RECOGNIZE_FACE'
   | 'OCR'
   | 'CLASSIFY_IMAGE'
+  | 'CLASSIFY_IMAGE_CLIP'
   | 'IMAGE_EMBEDDING'
 
 export interface PhotoProcessingResponse {
