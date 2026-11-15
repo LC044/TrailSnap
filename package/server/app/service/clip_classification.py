@@ -1,6 +1,10 @@
 """Editable CLIP rules and independent classification tag associations."""
 
 import threading
+import base64
+import binascii
+import hashlib
+from io import BytesIO
 from collections import OrderedDict
 from contextlib import contextmanager
 from uuid import UUID, uuid4
@@ -72,6 +76,25 @@ def prototype(vectors):
     return normalize(normalize(vectors).mean(axis=0, keepdims=True))[0]
 
 
+def validate_reference_image(value):
+    """Only bounded raster snapshots, never remote URLs or arbitrary file paths."""
+    from PIL import Image
+
+    if len(value) > 700_000 or not value.startswith("data:image/jpeg;base64,"):
+        raise ValueError("参考图片须为不超过512 KB的JPEG裁剪图片")
+    try:
+        content = base64.b64decode(value.split(",", 1)[1], validate=True)
+        if not content or len(content) > 512 * 1024:
+            raise ValueError("参考图片不能为空或超过512 KB")
+        with Image.open(BytesIO(content)) as image:
+            if image.format != "JPEG" or max(image.size) > 1024:
+                raise ValueError("参考图片须为最长边不超过1024像素的JPEG图片")
+            image.load()
+    except (OSError, binascii.Error, Image.DecompressionBombError) as exc:
+        raise ValueError("参考图片无法解码，请重新选择") from exc
+    return value
+
+
 def ai_url(owner_id, db):
     return config_manager.get_user_config(owner_id, db).ai.ai_api_url.rstrip("/")
 
@@ -119,14 +142,81 @@ def vector_generation_lock(url, model):
                 _vector_locks[key] = (mutex, users - 1)
 
 
-def category_vector(url, model, descriptions):
+def category_vector(url, model, descriptions, reference_images=None):
+    if reference_images:
+        return category_vectors(url, model, [descriptions], [reference_images])[0]
     return category_vectors(url, model, [descriptions])[0]
 
 
-def category_vectors(url, model, description_groups):
+def category_vectors(url, model, description_groups, reference_image_groups=None):
     """Warm uncached rules in bounded inference batches, then reuse prototypes."""
     with vector_generation_lock(url, model):
+        if reference_image_groups and any(reference_image_groups):
+            return _multimodal_category_vectors(url, model, description_groups, reference_image_groups)
         return _category_vectors(url, model, description_groups)
+
+
+def rule_vectors(url, model, rules):
+    descriptions = [rule.descriptions for rule in rules]
+    images = [rule.reference_images or [] for rule in rules]
+    if any(images):
+        return category_vectors(url, model, descriptions, images)
+    return category_vectors(url, model, descriptions)
+
+
+def _multimodal_category_vectors(url, model, description_groups, image_groups):
+    # Hash snapshots so the bounded vector cache does not retain image payloads.
+    keys = [(url, model, tuple(texts), tuple(hashlib.sha256(image.encode()).hexdigest()
+             for image in images), "multimodal-mean-normalize-v1")
+            for texts, images in zip(description_groups, image_groups)]
+    values, missing = {}, {}
+    with _lock:
+        for key, texts, images in zip(keys, description_groups, image_groups):
+            if key in _cache:
+                values[key] = _cache[key]
+                _cache.move_to_end(key)
+            else:
+                missing[key] = (texts, images)
+    items = list(missing.items())
+    for start in range(0, len(items), 16):
+        batch = items[start:start + 16]
+        texts = [text for _, (group, _) in batch for text in group]
+        images = [image.split(",", 1)[1] for _, (_, group) in batch for image in group]
+        encoded_texts = _encode_rule_items(url, model, "text", texts)
+        encoded_images = _encode_rule_items(url, model, "image", images)
+        text_offset = image_offset = 0
+        for key, (group_texts, group_images) in batch:
+            # Every text and every image has one vote, rather than one vote per modality.
+            vectors = (encoded_texts[text_offset:text_offset + len(group_texts)]
+                       + encoded_images[image_offset:image_offset + len(group_images)])
+            value = prototype(vectors)
+            text_offset += len(group_texts)
+            image_offset += len(group_images)
+            values[key] = value
+            with _lock:
+                _cache[key] = value
+                while len(_cache) > 512:
+                    _cache.popitem(last=False)
+    return [values[key].copy() for key in keys]
+
+
+def _encode_rule_items(url, model, kind, items):
+    encoded = []
+    for start in range(0, len(items), 16):
+        batch = items[start:start + 16]
+        payload = {"texts" if kind == "text" else "images": batch, "model": model}
+        if kind == "text":
+            payload["cache"] = True
+        response = ai_request(requests.post, url + "/embedding/" + kind,
+                              json=payload, timeout=120)
+        if response.headers.get("X-Embedding-Model") != model:
+            raise ValueError("AI 服务未确认模型身份，请升级 AI 服务")
+        vectors = response.json()
+        if len(vectors) != len(batch):
+            raise ValueError("AI 服务返回的向量数量不一致")
+        normalize(vectors)
+        encoded.extend(vectors)
+    return encoded
 
 
 def _category_vectors(url, model, description_groups):
@@ -381,6 +471,7 @@ def serialize_category(db, cat, *, rule=None, tag=None):
         "enabled": cat.enabled,
         "revision": cat.revision,
         "descriptions": rule.descriptions,
+        "reference_images": rule.reference_images or [],
         "strictness": rule.strictness,
         "thresholds": rule.thresholds,
         "builtin": cat.preset_key is not None,
@@ -388,6 +479,7 @@ def serialize_category(db, cat, *, rule=None, tag=None):
             builtin["calibration"]
             if builtin
             and rule.descriptions == builtin["descriptions"]
+            and not rule.reference_images
             and rule.thresholds == builtin["thresholds"]
             else {"status": "custom"}
         ),
@@ -438,11 +530,13 @@ def publish_tag(db, photo_id, tag_id, score=None):
 
 
 def preview(
-    db, owner_id, descriptions, strictness, thresholds, sample_size=1000, photo_ids=None
+    db, owner_id, descriptions, strictness, thresholds, sample_size=1000, photo_ids=None,
+    reference_images=None,
 ):
     url = ai_url(owner_id, db)
     model = selected_embedding_model(url)
-    vector = category_vector(url, model, descriptions)
+    vector = (category_vector(url, model, descriptions, reference_images)
+              if reference_images else category_vector(url, model, descriptions))
     base = thresholds.get(model, DEFAULT_THRESHOLD)
     threshold = base + STRICTNESS[strictness]
     query = (

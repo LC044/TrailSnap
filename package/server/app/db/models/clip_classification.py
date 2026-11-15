@@ -49,6 +49,7 @@ class ClipRuleRevision(Base):
     )
     revision = Column(Integer, primary_key=True)
     descriptions = Column(JSON, nullable=False)
+    reference_images = Column(JSON, nullable=False, default=list, server_default="[]")
     strictness = Column(String(20), nullable=False, default="standard")
     thresholds = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)

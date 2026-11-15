@@ -310,6 +310,11 @@ def test_sqlite_migration_round_trip_and_uuid_storage(face_sqlite_session):
         with Operations.context(MigrationContext.configure(conn)):
             migration.downgrade()
             migration.upgrade()
+            image_spec = importlib.util.spec_from_file_location("clip_image_migration",
+                path.with_name("clip_sqlite_0026_clip_reference_images.py"))
+            image_migration = importlib.util.module_from_spec(image_spec)
+            image_spec.loader.exec_module(image_migration)
+            image_migration.upgrade()
             assert "clip_photo_results" not in inspect(conn).get_table_names()
     _, _, _, cat = seed(db)
     stored = db.execute(text("select id from clip_categories")).scalar()

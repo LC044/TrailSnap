@@ -86,7 +86,7 @@ class ClipClassificationStrategy(BaseTaskStrategy):
             selected_ids = {c.id for _, _, selected, _ in rows for c in selected}
             active = [c for c in cats if c.id in selected_ids]
             thresholds = [svc.threshold_for(rules[(c.id, c.revision)], model) for c in active]
-            vectors = svc.category_vectors(url, model, [rules[(c.id, c.revision)].descriptions for c in active])
+            vectors = svc.rule_vectors(url, model, [rules[(c.id, c.revision)] for c in active])
             scores = svc.normalize([embedding for _, embedding, _, _ in rows]) @ np.asarray(vectors).T
             for (pid, _, selected, result), values in zip(rows, scores):
                 chosen = {c.id for c in selected}
@@ -271,8 +271,8 @@ class ClipClassificationStrategy(BaseTaskStrategy):
             rule = rules[(cat.id, revision)]
             threshold = svc.threshold_for(rule, model)
             rules_to_score.append((cat, revision, threshold, rule))
-        vectors = svc.category_vectors(
-            url, model, [rule.descriptions for *_, rule in rules_to_score]
+        vectors = svc.rule_vectors(
+            url, model, [rule for *_, rule in rules_to_score]
         )
         for (cat, revision, threshold, rule), vector in zip(rules_to_score, vectors):
             prepared.append((cat, revision, float(image @ vector), threshold))

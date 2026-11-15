@@ -118,6 +118,88 @@ function pickerSearchStore(searchByText, getAllPhotos = async(_skip,_limit,{ids}
     '@/utils/date':load('utils/date.ts',{}),
   }).usePhotoPickerSearchStore()
 }
+
+test('changing picker filters retains search type and restarts ranked results with the new scope',async()=>{
+  const queries=[], scopes=[]
+  const store=pickerSearchStore(async params=>{
+    queries.push(params)
+    return ['a','b'].map(id=>({photo:{id}}))
+  },async(_skip,_limit,filters)=>{
+    scopes.push(filters)
+    return [{id:filters.years[0]===2026?'b':'a'}]
+  })
+  await store.search('车票','ocr',{years:[2025]})
+  await store.refreshFilters({years:[2026],file_types:['image']})
+  assert.deepEqual(queries.map(q=>[q.text,q.type,q.skip]),[['车票','ocr',0],['车票','ocr',0]])
+  assert.deepEqual(scopes[1],{years:[2026],file_types:['image'],ids:['a','b']})
+  assert.deepEqual(store.images.value.map(p=>p.id),['b'])
+})
+
+function filterPicker() {
+  const calls=[]
+  const store=vue.reactive({
+    selectedFilters:{years:[],cities:[],people:[],categories:[],image_types:[],makes:[],models:[],file_types:['image','live_photo']},
+    availableFilters:{file_types:['image','video','live_photo','panorama'],years:[2026]},
+    images:[], loading:false,error:null,fetchAvailableFilters:async()=>{},fetchTimelineStats:async()=>{},
+    loadPhotos:async reset=>calls.push(['gallery',reset]),resetAll(){},
+    getPickerSearchFilters(){return JSON.parse(JSON.stringify(this.selectedFilters))},
+  })
+  const search=vue.reactive({query:'',images:[],loading:false,error:null,resetAll(){this.query=''},
+    refreshFilters:async scope=>calls.push(['search',scope])})
+  const dependencies={
+    '@/stores/albumStore':{useAlbumStore:()=>({fetchAlbums:async()=>{}})},
+    '@/stores/photoStore':{usePhotoStore:()=>store},
+    '@/stores/uiStore':{useUiStore:()=>({setSelectionActive(){}})},
+    '@/stores/photoPickerSearchStore':{usePhotoPickerSearchStore:()=>search},
+    '@vueuse/core':{onClickOutside(){}},'lucide-vue-next':{},'element-plus':{},
+  }
+  for(const name of ['ui/ResponsiveDialog','FilterPanel','PhotoPickerScrollbar','AlbumTimeline','PhotoLightbox','PhotoGallery','ConfirmDialog','ParticleExplosion']) dependencies['@/components/'+name+'.vue']={}
+  dependencies['@/views/search/MobileSearch.vue']={}
+  const component=load('components/PhotoSelector.vue',dependencies).default
+  const ctx=mount(component,{store,enableFilters:true,allowedFileTypes:['image','live_photo']})
+  return {...ctx,store,search,calls}
+}
+
+test('picker filters refresh gallery, constrain media options, and clear only their own conditions',async()=>{
+  const ctx=filterPicker()
+  await new Promise(resolve=>setImmediate(resolve))
+  ctx.calls.length=0
+  assert.deepEqual(ctx.state.filterStore.value.availableFilters.file_types,['image','live_photo'])
+  assert.equal(ctx.state.activeFilterCount.value,0)
+  ctx.store.selectedFilters.years.push(2026)
+  ctx.store.selectedFilters.file_types.splice(0,2,'image')
+  await ctx.state.filterStore.value.loadPhotos(true)
+  assert.equal(ctx.state.activeFilterCount.value,2)
+  assert.deepEqual(ctx.calls,[['gallery',true]])
+  await ctx.state.clearFilters()
+  assert.equal(ctx.state.activeFilterCount.value,0)
+  assert.deepEqual(ctx.store.selectedFilters.file_types,['image','live_photo'])
+  assert.deepEqual(ctx.store.selectedFilters.years,[])
+  ctx.unmount()
+})
+
+test('picker filter panel reflects search loading and retries search with the current scope',async()=>{
+  const ctx=filterPicker()
+  await new Promise(resolve=>setImmediate(resolve))
+  ctx.calls.length=0
+  const panel=ctx.state.filterStore.value
+  ctx.search.query='旅行'
+  ctx.search.loading=true
+  assert.equal(panel.loading,true)
+  ctx.search.error='搜索失败'
+  assert.equal(panel.error,'搜索失败')
+  ctx.store.selectedFilters.cities.push('杭州市')
+  await panel.loadPhotos(true)
+  assert.equal(ctx.calls[0][0],'search')
+  assert.deepEqual(ctx.calls[0][1].cities,['杭州市'])
+  await ctx.state.clearFilters()
+  assert.equal(ctx.search.query,'旅行')
+  assert.deepEqual(ctx.calls[1][1].file_types,['image','live_photo'])
+  ctx.state.clearSearch()
+  assert.equal(ctx.search.query,'')
+  assert.deepEqual(ctx.calls[2],['gallery',true])
+  ctx.unmount()
+})
 test('picker search filters scoped candidates on the server and keeps search rank order',async()=>{
   const calls=[]
   const store=pickerSearchStore(async()=>['a','b','c'].map(id=>({photo:{id}})),async(skip,limit,filters)=>{

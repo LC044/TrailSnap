@@ -8,6 +8,8 @@
 
 常用测试层，一个入口脚本，一份环境变量文件。
 
+需求平台测试已迁至 [TrailSnap-Feedback](https://github.com/LC044/TrailSnap-Feedback)，请在独立仓库执行 `pwsh tests/scripts/run-tests.ps1 -Layer unit -Level all`。
+
 | 层 | 位置 | 框架 | 触发 | 速度 |
 |---|---|---|---|---|
 | 后端单元 | `package/server/tests/unit` | pytest | `run-tests.ps1 -Layer unit` | 秒级，无外部服务 |
@@ -17,7 +19,6 @@
 | 前端单元 | `package/website/tests/unit` | Node test runner + Vue | `run-tests.ps1 -Layer unit -Component website` | 秒级，无外部服务 |
 | 桌面单元 | `package/desktop/src-tauri` | Rust | `run-tests.ps1 -Layer unit -Component desktop` | 需要 Rust 和桌面构建资源，显式选择 |
 | 飞牛打包 | `package/fnos/tests` | Python unittest | `run-tests.ps1 -Layer unit -Component fnos -Level all` | 无服务、无网络，不拉取镜像；显式选择 |
-| 需求平台 | `package/requirement-platform/server/tests` | pytest | `run-tests.ps1 -Layer unit -Component requirement-platform -Level all` | 独立临时 SQLite，验证 API、MCP 和 Agent 交付；显式选择，不启动主应用服务 |
 | 桌面升级验收 | `package/server/tests/desktop` | pytest | `run-tests.ps1 -Layer integration -Component desktop` | 独立数据库和图库副本，不启动普通 dev 服务 |
 | 文件夹扫描性能 | `tests/performance` | 独立 Python 基准 | `run-tests.ps1 -Layer performance` | 一键空白库、扫描真实/合成文件夹、输出耗时报告；需 DB |
 
@@ -115,7 +116,7 @@ pwsh .\tests\scripts\run-perf.ps1
 | `EnvFile`（位置参数） | 路径 | 默认 `tests\.env.test` |
 | `-Layer` | unit/integration/e2e/all/performance | 测哪一层；performance 委托 `run-perf.ps1` |
 | `-Level` | dev/scan/smoke/p0/p1/all/light/full | 深度/套件；默认读 `TS_E2E_SUITE` |
-| `-Component` | server/ai/website/cli/desktop/requirement-platform/all | 测哪个组件；desktop、requirement-platform 需显式选择，不包含在 all 中；需求平台使用 unit 层运行完整独立协议测试 |
+| `-Component` | server/ai/website/cli/desktop/fnos/all | 测哪个组件；desktop、fnos 需显式选择，不包含在 all 中 |
 | `-Mode` | dev/docker | 服务载体；默认按 `TS_TEST_ENV` |
 | `-Scope` | all/photo/album/... | 业务域（unit/integration） |
 | `-TestFiles` | 前端 spec 路径数组（相对 `package/website`） | 缩小 E2E 文件范围，仍应用 `-Level` 的标签过滤 |

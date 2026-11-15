@@ -738,4 +738,5 @@ export const usePhotoStore = defineStore('photo', photoStoreSetup)
 // “全部照片”页长期缓存；其他照片视图使用独立的 store。
 export const usePhotosPageStore = defineStore('photosPage', photoStoreSetup)
 export const useSearchPhotosStore = defineStore('searchPhotos', () => createPhotoStore(false))
+export const useClipReferencePhotosStore = defineStore('clipReferencePhotos', () => createPhotoStore(false))
 

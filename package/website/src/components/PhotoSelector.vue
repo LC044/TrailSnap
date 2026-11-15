@@ -13,6 +13,13 @@
           class="ts-button ts-button-secondary ts-button-sm" @click="showSearchDialog = true">
           <Search class="h-4 w-4" /><span>搜索</span>
         </button>
+        <button v-if="enableFilters" type="button" aria-label="筛选照片" title="筛选照片"
+          :aria-expanded="showFilterDialog" :disabled="busy"
+          class="ts-button ts-button-secondary ts-button-sm"
+          :class="{ 'text-primary-600 dark:text-primary-400': activeFilterCount > 0 }"
+          @click="showFilterDialog = true">
+          <Filter class="h-4 w-4" /><span class="hidden sm:inline">筛选</span><span v-if="activeFilterCount">{{ activeFilterCount }}</span>
+        </button>
         <button
           @click="showViewOptions = !showViewOptions"
           class="p-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-all"
@@ -95,6 +102,10 @@
     </div>
 
     <!-- Main Content -->
+    <div v-if="enableFilters && activeFilterCount" class="shrink-0 flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-2 dark:border-gray-800">
+      <p class="text-sm ts-muted">已启用 {{ activeFilterCount }} 项筛选</p>
+      <button type="button" class="ts-button ts-button-ghost ts-button-sm" :disabled="busy" @click="clearFilters">清除筛选</button>
+    </div>
     <div class="relative min-h-0 flex-1">
       <div ref="scrollContainer" class="h-full overflow-y-auto relative custom-scrollbar">
         <!-- Loading Overlay for initial data -->
@@ -152,6 +163,16 @@
       <MobileSearch v-if="showSearchDialog" embedded @search="submitSearch" />
     </ResponsiveDialog>
 
+    <ResponsiveDialog v-if="enableFilters" v-model="showFilterDialog" title="筛选照片" max-width="28rem" mobile-mode="fullscreen" mobile-back>
+      <FilterPanel v-if="showFilterDialog" :store="filterStore" />
+      <template #footer>
+        <div class="flex justify-between gap-3">
+          <button type="button" class="ts-button ts-button-secondary" :disabled="busy" @click="clearFilters">清除筛选</button>
+          <button type="button" class="ts-button ts-button-primary" @click="showFilterDialog = false">查看结果</button>
+        </div>
+      </template>
+    </ResponsiveDialog>
+
     <!-- Lightbox -->
     <PhotoLightbox
       :visible="!!lightboxImage"
@@ -170,10 +191,11 @@ import { usePhotoPickerSearchStore } from '@/stores/photoPickerSearchStore'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import MobileSearch from '@/views/search/MobileSearch.vue'
 import PhotoPickerScrollbar from '@/components/PhotoPickerScrollbar.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
 import type { AlbumImage } from '@/types/album'
 import {
   X, Maximize, Grid3x3, Grid2x2, LayoutDashboard, LayoutGrid,
-  Check, Settings2, Loader2, Search
+  Check, Settings2, Loader2, Search, Filter
 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import AlbumTimeline from '@/components/AlbumTimeline.vue'
@@ -190,6 +212,8 @@ const props = defineProps<{
   embedded?: boolean
   singleSelect?: boolean
   busy?: boolean
+  enableFilters?: boolean
+  allowedFileTypes?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -204,11 +228,48 @@ const store = computed(() => props.store || defaultStore)
 const searchStore = usePhotoPickerSearchStore()
 searchStore.resetAll()
 const showSearchDialog = ref(false)
+const showFilterDialog = ref(false)
 const displayStore = computed(() => searchStore.query ? searchStore : store.value)
+const constrainMediaTypes = () => {
+  if (!props.allowedFileTypes?.length) return
+  const selected = store.value.selectedFilters.file_types.filter((type: string) => props.allowedFileTypes!.includes(type))
+  store.value.selectedFilters.file_types.splice(0, store.value.selectedFilters.file_types.length,
+    ...(selected.length ? selected : props.allowedFileTypes))
+}
+const activeFilterCount = computed(() => Object.entries(store.value.selectedFilters || {}).reduce((count, [key, value]) => {
+  if (!Array.isArray(value)) return count
+  if (key === 'file_types' && props.allowedFileTypes?.length &&
+    value.length === props.allowedFileTypes.length && value.every(type => props.allowedFileTypes!.includes(type))) return count
+  return count + value.length
+}, 0))
+const refreshFilters = async () => {
+  constrainMediaTypes()
+  if (scrollContainer.value) scrollContainer.value.scrollTop = 0
+  if (searchStore.query) await searchStore.refreshFilters(store.value.getPickerSearchFilters?.() ?? {})
+  else await store.value.loadPhotos(true)
+}
+// Adapt the shared panel to the currently displayed gallery or search results.
+const filterStore = computed(() => ({
+  ...store.value,
+  get availableFilters() { return {
+    ...store.value.availableFilters,
+    file_types: (store.value.availableFilters?.file_types || []).filter((type: string) => !props.allowedFileTypes?.length || props.allowedFileTypes.includes(type)),
+  } },
+  get loading() { return displayStore.value.loading },
+  get error() { return displayStore.value.error },
+  loadPhotos: refreshFilters,
+}))
+const clearFilters = async () => {
+  for (const values of Object.values(store.value.selectedFilters)) {
+    if (Array.isArray(values)) values.splice(0)
+  }
+  await refreshFilters()
+}
 const contentContainer = ref<HTMLElement | null>(null)
 const clearSearch = () => {
   searchStore.resetAll()
   if (scrollContainer.value) scrollContainer.value.scrollTop = 0
+  if (props.enableFilters) void store.value.loadPhotos(true)
 }
 const submitSearch = async (criteria: { query: string; type?: string }) => {
   if (props.busy) return
@@ -294,6 +355,10 @@ onMounted(async () => {
     }
     // Initial Load for selector
     await albumStore.fetchAlbums()
+    if (props.enableFilters) {
+      constrainMediaTypes()
+      await store.value.fetchAvailableFilters()
+    }
     await store.value.fetchTimelineStats()
     await store.value.loadPhotos(true)
   } finally {

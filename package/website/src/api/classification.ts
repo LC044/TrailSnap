@@ -17,6 +17,7 @@ export interface ClipCategory {
   enabled: boolean
   revision: number
   descriptions: string[]
+  reference_images: string[]
   strictness: 'relaxed' | 'standard' | 'strict'
   thresholds: Record<string, number>
   builtin: boolean
@@ -37,6 +38,12 @@ export interface ClipPreview {
 }
 
 export const clipClassificationService = {
+  async referencePhoto(photoId: string) {
+    const response = await request.get<Blob>(`/api/medias/${encodeURIComponent(photoId)}/thumbnail`, {
+      params: { size: 'medium' }, responseType: 'blob',
+    })
+    return response.data
+  },
   async list() {
     return (await request.get<{ groups: string[]; categories: ClipCategory[] }>('/api/tags/clip/categories')).data
   },
