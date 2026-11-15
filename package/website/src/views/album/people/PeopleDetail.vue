@@ -48,7 +48,7 @@
             </div>
             <p class="mt-1 truncate text-sm text-gray-500 dark:text-gray-400">{{ identity?.tags?.length ? `${identity.tags.join(' · ')} ｜ ` : '' }}{{ images.length }} 张照片</p>
           </div>
-          <div class="ml-auto inline-flex shrink-0 rounded-xl bg-gray-100 p-1 dark:bg-gray-800" role="tablist" aria-label="人物详情视图">
+          <div class="ml-auto inline-flex shrink-0 rounded-xl bg-gray-100 p-1 sm:mr-20 dark:bg-gray-800" role="tablist" aria-label="人物详情视图">
             <button role="tab" :aria-selected="true" class="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-primary-600 shadow-sm dark:bg-gray-700 dark:text-primary-300 sm:px-5">照片</button>
             <button role="tab" :aria-selected="false" class="rounded-lg px-3 py-2 text-sm text-gray-600 dark:text-gray-300 sm:px-5" @click="router.push(`/album/people/${identityId}/timeline`)">时光线</button>
           </div>
