@@ -9,7 +9,7 @@ description: TrailSnap 需求规格、Agent 编码交付、提交与 PR 工作�
 
 ## 提交原则
 
-- 按根目录 AGENTS.md 和 tests/README.md 选择验证范围，统一通过 tests/scripts/run-tests.ps1 执行；需求平台使用 `-Layer unit -Component requirement-platform -Level all`。
+- 按根目录 AGENTS.md 和 tests/README.md 选择验证范围，统一通过 tests/scripts/run-tests.ps1 执行。需求平台已迁至 [LC044/TrailSnap-Feedback](https://github.com/LC044/TrailSnap-Feedback)，在独立仓库执行其 `tests/scripts/run-tests.ps1 -Layer unit -Level all`。
 
 ## 提交信息
 

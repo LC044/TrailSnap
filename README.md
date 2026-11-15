@@ -50,6 +50,8 @@
 
 ## ✨ 核心特色
 
+需求共创平台已独立开源至 [TrailSnap-Feedback](https://github.com/LC044/TrailSnap-Feedback)，其部署、数据库迁移、AI 对话和镜像构建在独立仓库维护。[提交反馈](https://feedback.trailsnap.cn/)。
+
 - **📷 智能相册**: 足迹地图、人物识别、智能分类、OCR识别、智能搜索。
 - **🚆 行程记录**: 特有的火车票、行程、景区/演唱会门票管理功能，自动识别票据信息。
 - **🤖 AI 赋能**: 一句话让AI帮你生成旅行日记。
