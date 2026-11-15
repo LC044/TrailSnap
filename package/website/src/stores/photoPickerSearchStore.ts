@@ -71,6 +71,7 @@ export const usePhotoPickerSearchStore = defineStore('photo-picker-search', () =
   }
   return {
     images, loading, error, hasMore, query, search, loadPhotos, resetAll,
+    refreshFilters: (scope: Record<string, unknown>) => search(query.value, searchType, scope),
     timelineStats: null,
     currentContext: { type: 'search' },
     loadPhotosByMonth: async () => {},

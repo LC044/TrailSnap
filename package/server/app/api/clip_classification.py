@@ -3,7 +3,7 @@
 from typing import Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.api.deps import get_current_user
@@ -24,7 +24,8 @@ router = APIRouter()
 
 class RuleInput(BaseModel):
     name: str = Field(min_length=1, max_length=50)
-    descriptions: list[str] = Field(min_length=1, max_length=5)
+    descriptions: list[str] = Field(default_factory=list, max_length=5)
+    reference_images: list[str] = Field(default_factory=list, max_length=5)
     groups: list[str] = Field(
         default_factory=lambda: ["自定义"], min_length=1, max_length=3
     )
@@ -33,6 +34,17 @@ class RuleInput(BaseModel):
     enabled: bool = False
     revision: int | None = None
     apply_history: bool = False
+
+    @field_validator("reference_images")
+    @classmethod
+    def valid_images(cls, values):
+        return [svc.validate_reference_image(value) for value in values]
+
+    @model_validator(mode="after")
+    def has_description(self):
+        if not self.descriptions and not self.reference_images:
+            raise ValueError("请至少添加一条文字描述或一张参考图片")
+        return self
 
     @field_validator("name")
     @classmethod
@@ -172,6 +184,7 @@ def preview(
             payload.thresholds,
             payload.sample_size,
             payload.photo_ids,
+            reference_images=payload.reference_images,
         )
         for key in ("matches", "boundary"):
             result[key] = [
@@ -232,6 +245,7 @@ def save_rule(db, user, payload, category_id=None):
             old_rule = db.get(ClipRuleRevision, (cat.id, cat.revision))
             changed = (
                 old_rule.descriptions != payload.descriptions
+                or (old_rule.reference_images or []) != payload.reference_images
                 or old_rule.strictness != payload.strictness
                 or old_rule.thresholds != payload.thresholds
             )
@@ -244,6 +258,7 @@ def save_rule(db, user, payload, category_id=None):
                     category_id=cat.id,
                     revision=cat.revision,
                     descriptions=payload.descriptions,
+                    reference_images=payload.reference_images,
                     strictness=payload.strictness,
                     thresholds=payload.thresholds,
                 )
