@@ -66,6 +66,8 @@ class FindDuplicatePhotosStrategy(BaseTaskStrategy):
                 batch_photos = page.order_by(Photo.id).limit(batch_size).all()
                 if not batch_photos:
                     break
+                if cursor is not None and batch_photos[-1].id == cursor:
+                    break  # Same page twice: the id order no longer advances.
                 cursor = batch_photos[-1].id
             
                 # Create async tasks for MD5 calculation

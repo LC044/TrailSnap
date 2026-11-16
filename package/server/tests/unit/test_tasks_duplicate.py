@@ -43,12 +43,27 @@ def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro) if False else asyncio.run(coro)
 
 
+def _paged_session(photos):
+    """A stub session matching the paginated scan: count() plus order_by().limit().all().
+
+    The strategy counts, then pages with ``Photo.id > cursor``; stubs must
+    return real lists with ids or the cursor never advances.
+    """
+    db = MagicMock()
+    query = db.query.return_value.filter.return_value
+    query.count.return_value = len(photos)
+    query.filter.return_value = query
+    query.order_by.return_value.limit.return_value.all.side_effect = (
+        lambda photos=photos: photos.copy() if photos else []
+    )
+    return db
+
+
 def test_process_returns_zero_count_when_no_photos_need_md5():
     """If every photo already has an MD5, the strategy should short-circuit."""
     from app.service.tasks import duplicate
 
-    db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = []
+    db = _paged_session([])
     task = _build_task()
 
     result = asyncio.run(
@@ -71,8 +86,9 @@ def test_process_updates_md5_for_existing_files(tmp_path):
     file_b.write_bytes(b"world")
 
     photos = [_make_photo(str(file_a)), _make_photo(str(file_b))]
-    db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = photos
+    for i, photo in enumerate(photos, 1):
+        photo.id = i
+    db = _paged_session(photos)
     task = _build_task()
 
     async def fake_md5(path):
@@ -108,8 +124,9 @@ def test_process_skips_missing_files_and_assigns_empty_md5(tmp_path):
     # Note: missing is intentionally never created on disk.
 
     photos = [_make_photo(str(real)), _make_photo(str(missing))]
-    db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = photos
+    for i, photo in enumerate(photos, 1):
+        photo.id = i
+    db = _paged_session(photos)
     task = _build_task()
 
     async def fake_md5(path):

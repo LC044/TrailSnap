@@ -42,11 +42,20 @@ def _task(payload=None):
 
 
 def _session(photos=()):
-    """A stub session whose ``query(Photo).filter(...)`` returns ``photos``."""
+    """A stub session whose ``query(Photo).filter(...)`` returns ``photos``.
+
+    The paginated scan calls ``count()``, then ``order_by().limit().all()``
+    pages keyed by ``Photo.id > cursor``; stubs must return real lists and
+    ids, otherwise the cursor never advances and the scan loops forever.
+    """
     db = MagicMock()
     query = db.query.return_value.filter.return_value
-    query.all.return_value = list(photos)
+    rows = [SimpleNamespace(id=uuid.uuid4(), **vars(photo)) for photo in photos]
+    query.count.return_value = len(rows)
     query.filter.return_value = query
+    query.order_by.return_value.limit.return_value.all.side_effect = (
+        lambda rows=rows: rows.copy() if rows else []
+    )
     return db, query
 
 
