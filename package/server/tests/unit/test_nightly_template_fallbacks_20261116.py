@@ -61,8 +61,22 @@ def test_format_date_reports_unknown_without_any_time_source():
     assert template_mod._format_date(_photo(), {}, "%Y%m%d") == "unknown"
 
 
+class _BadFormatDate:
+    """A date whose ``strftime`` only rejects the requested format.
+
+    ``datetime.strftime`` raises on Windows for an unknown directive but
+    passes it through on Linux, so the failure has to be simulated to make
+    the fallback observable on every platform.
+    """
+
+    def strftime(self, fmt):
+        if fmt != "%Y%m%d":
+            raise ValueError("Invalid format string")
+        return "20260304"
+
+
 def test_format_date_survives_an_invalid_format_string():
-    photo = _photo(photo_time=datetime(2026, 3, 4, 5, 6, 7))
+    photo = _photo(photo_time=_BadFormatDate())
     assert template_mod._format_date(photo, {}, "%Q") == "20260304"
 
 
@@ -78,4 +92,5 @@ def test_build_extension_uses_the_file_type_mapping():
     assert build_extension(photo) == ".mov"
     photo = _photo(filename="", file_type="unknown-kind")
     assert build_extension(photo, fallback=".bin") == ".bin"
+
 
