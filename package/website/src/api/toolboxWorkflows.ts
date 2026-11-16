@@ -35,6 +35,7 @@ export interface ToolConfig {
   cleanup_mode: 'duplicate' | 'similar' | 'quality'
   compare_all: boolean
   similarity: number
+  scan_mode: 'fast' | 'complete'
   quality_max: number
   time_mode: 'none' | 'auto' | 'custom'
   custom_time: string | null
@@ -55,7 +56,7 @@ export interface ToolPlan {
   status: string
   version: number
   request: { scope: MediaScope; config: ToolConfig }
-  summary: Record<string, number>
+  summary: Record<string, any>
   task_id: string | null
   created_at: string
   expires_at: string
@@ -69,7 +70,8 @@ export interface ToolPlanItem {
   target: string
   status: string
   reason: string
-  detail: { label?: string; targets?: string[]; related_ids?: string[]; time?: string; make?: string; model?: string }
+  selected?: boolean
+  detail: { group_id?: number; label?: string; targets?: string[]; related_ids?: string[]; time?: string; make?: string; model?: string }
 }
 export interface ScopeItem { id: string; filename: string; photo_time: string | null; file_type: string }
 export interface PageResult<T> { total: number; items: T[] }
@@ -83,7 +85,7 @@ export const defaultConfig = (kind: ToolKind): ToolConfig => ({
   rules: [{ strategy: 'time', granularity: 'year', nested: true, groups: null }],
   missing: 'skip', multi_group: 'skip', template: 'IMG_{date}_{time}', start_index: 1,
   reset_index: false, descending: false, album_prefix: '', cleanup_mode: 'duplicate',
-  compare_all: false, similarity: .95, quality_max: 40, time_mode: 'auto', custom_time: null,
+  compare_all: false, similarity: .95, scan_mode: 'fast', quality_max: 40, time_mode: 'auto', custom_time: null,
   make: '', model: '', only_missing_metadata: true,
 })
 
@@ -121,7 +123,18 @@ export const workflowApi = {
     return (await request.get<ToolPlan[]>(`${base}/plans`, { params: { offset, limit, active_only: activeOnly } })).data
   },
   async items(id: string, offset = 0, status?: string) {
-    return (await request.get<PageResult<ToolPlanItem>>(`${base}/plans/${id}/items`, { params: { offset, status } })).data
+    return (await request.get<PageResult<ToolPlanItem> & { selected_count?: number }>(`${base}/plans/${id}/items`, { params: { offset, status } })).data
+  },
+  async selection(plan: ToolPlan, itemIds: number[], selected: boolean) {
+    return (await request.put<{ selected_count: number }>(`${base}/plans/${plan.id}/selection`, {
+      version: plan.version, item_ids: itemIds, selected,
+    })).data
+  },
+  async members(id: string, groupId: number, offset = 0) {
+    return (await request.get<PageResult<{ photo_id: string; in_scope: boolean }> & { representative_id: string }>(`${base}/plans/${id}/groups/${groupId}/members`, { params: { offset } })).data
+  },
+  async export(id: string) {
+    return (await request.get<Blob>(`${base}/plans/${id}/export`, { responseType: 'blob' })).data
   },
   async execute(plan: ToolPlan, selectedItems?: number[]) {
     return (await request.post<ToolPlan>(`${base}/plans/${plan.id}/execute`, {

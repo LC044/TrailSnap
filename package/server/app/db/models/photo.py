@@ -26,6 +26,8 @@ class Photo(Base):
     # do not exceed the B-tree index tuple limit. SQLite ignores the dialect
     # option and keeps its regular B-tree index.
     __table_args__ = (
+        Index("ix_photos_owner_deleted_md5", "owner_id", "is_deleted", "md5", "id"),
+        Index("ix_photos_owner_deleted_id", "owner_id", "is_deleted", "id"),
         Index("ix_photos_file_path", "file_path", postgresql_using="hash"),
         Index("ix_photos_storage_reference", "owner_id", "storage_root_id"),
         Index("ix_photos_owner_deleted_time_id", "owner_id", "is_deleted", "photo_time", "id"),

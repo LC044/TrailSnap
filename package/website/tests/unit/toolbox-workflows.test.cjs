@@ -49,6 +49,33 @@ const deferred = () => {
   return { promise, resolve }
 }
 
+test('cleanup saves cross-page selection on server and loads references by page', async () => {
+  const calls = []
+  const plan = vue.reactive({ id: 'scan-one', kind: 'cleanup', version: 1, status: 'preview',
+    summary: { phase: 'done', total: 30001, candidate: 20001 },
+    request: { scope: api().emptyScope(), config: api().defaultConfig('cleanup') } })
+  const workflowApi = {
+    items: async () => ({ total: 20001, selected_count: 10001, items: [{ id: 7, selected: false, photo_id: 'photo', source: '/a.jpg', status: 'candidate', detail: { group_id: 2 } }] }),
+    selection: async (...args) => { calls.push(['selection', ...args]); return { selected_count: 10002 } },
+    members: async (...args) => { calls.push(['members', ...args]); return { total: 3000, representative_id: 'representative', items: [{ photo_id: 'reference', in_scope: false }] } },
+  }
+  const component = load('views/toolbox/ToolPlanPreview.vue', {
+    '@/api/toolboxWorkflows': { workflowApi }, '@/utils/mediaUrl': { thumbnailUrl: id => id },
+    'element-plus': { ElMessage: { error() {} } },
+  }).default
+  const ctx = mount(component, { plan, executing: false })
+  await ctx.state.load()
+  assert.equal(ctx.state.selectedCount.value, 10001)
+  await ctx.state.toggle(7, true)
+  assert.equal(ctx.state.selectedCount.value, 10002)
+  assert.equal(ctx.state.rows.value[0].selected, true)
+  assert.deepEqual(calls[0].slice(2), [[7], true])
+  await ctx.state.loadReferences(2, 3)
+  assert.deepEqual(calls[1], ['members', 'scan-one', 2, 48])
+  assert.equal(ctx.state.references.value[2].items[0].in_scope, false)
+  ctx.unmount()
+})
+
 test('new scope is empty, and directory cancellation does not select a folder', async () => {
   const scope = api().emptyScope()
   const updates = []

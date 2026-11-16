@@ -28,8 +28,12 @@
               <el-option label="仅在本次范围内比较" :value="false" /><el-option label="与整个图库比较（范围外仅作参考，不可删除）" :value="true" />
             </el-select></el-form-item>
             <el-form-item v-if="config.cleanup_mode === 'similar'" label="相似度阈值"><el-slider v-model="config.similarity" :min=".8" :max="1" :step=".01" show-input /></el-form-item>
+            <el-form-item v-if="config.cleanup_mode === 'similar'" label="扫描方式"><el-select v-model="config.scan_mode" class="w-full">
+              <el-option label="快速扫描 · 覆盖全部照片，近似查找相似候选" value="fast" />
+              <el-option label="完整扫描 · 精确比较全部特征，耗时较长" value="complete" />
+            </el-select></el-form-item>
             <el-form-item v-if="config.cleanup_mode === 'quality'" label="综合评分不高于"><el-input-number v-model="config.quality_max" :min="0" :max="200" /></el-form-item>
-            <el-alert title="本版使用已经计算的哈希、向量和评分生成候选，缺少分析结果的影像会跳过。相似比较最多 3000 项；其他工具单次最多 50000 项。" type="info" :closable="false" />
+            <el-alert title="后台扫描覆盖所选范围全部照片，可离开页面后继续。重复照片自动补算哈希；相似照片使用已有特征，缺失或失败数量会单独显示。快速扫描可能漏掉部分相似候选，可使用完整扫描进一步核对。" type="info" :closable="false" />
             </details>
           </el-form>
           <el-form v-else label-position="top">
@@ -147,6 +151,7 @@ const preview = async () => {
     if (owner !== user.userInfo?.id) return
     if (key !== snapshot()) { ElMessage.info('配置已变化，请重新预览'); return }
     plan.value = result; step.value = 3
+    if (kind.value === 'cleanup') { await router.replace({ query: { plan: result.id } }); poll() }
   } catch { error.value = '预览失败，请检查规则、目标目录及页面提示后重试' }
   finally { busy.value = false }
 }
@@ -196,7 +201,7 @@ let pollTimer: ReturnType<typeof setTimeout> | undefined
 let disposed = false
 const poll = () => {
   clearTimeout(pollTimer)
-  if (!plan.value || !['queued', 'running'].includes(plan.value.status) || disposed) return
+  if (!plan.value || !['queued', 'running', 'scan_queued', 'scanning'].includes(plan.value.status) || disposed) return
   pollTimer = setTimeout(async () => {
     const id = plan.value?.id
     try {

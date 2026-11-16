@@ -44,9 +44,7 @@ class FindDuplicatePhotosStrategy(BaseTaskStrategy):
                     except (ValueError, TypeError, AttributeError):
                         continue
                 photos_query = photos_query.filter(Photo.id.in_(parsed_ids)) if parsed_ids else photos_query.filter(False)
-            photos = photos_query.all()
-
-            total_photos = len(photos)
+            total_photos = photos_query.count()
             task.total_items = total_photos
             task.processed_items = 0
             db.commit()
@@ -62,8 +60,13 @@ class FindDuplicatePhotosStrategy(BaseTaskStrategy):
             updated_count = 0
             batch_size = max(1, disk_budget.limit * 2)  # Bound submitted hash jobs as well as active reads.
 
-            for i in range(0, total_photos, batch_size):
-                batch_photos = photos[i:i + batch_size]
+            cursor = None
+            while True:
+                page = photos_query.filter(Photo.id > cursor) if cursor else photos_query
+                batch_photos = page.order_by(Photo.id).limit(batch_size).all()
+                if not batch_photos:
+                    break
+                cursor = batch_photos[-1].id
             
                 # Create async tasks for MD5 calculation
                 md5_tasks = []
