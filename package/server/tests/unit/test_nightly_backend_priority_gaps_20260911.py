@@ -236,11 +236,20 @@ def test_get_filter_options_dedupes_and_sorts_database_facets():
         SimpleNamespace(year=2025.0, city=None, make=None, model=None),
         SimpleNamespace(year=2026.0, city="上海", make="Canon", model="EOS R5"),
     ]
+    # 城市（单 join）与类别（显式 PhotoTagRelation 双 join）频率查询链式路径不同。
+    select_from = db.query.return_value.select_from.return_value
+    select_from.join.return_value.filter.return_value.group_by.return_value.all.return_value = [
+        ("上海", 5), ("杭州", 2),
+    ]
+    select_from.join.return_value.join.return_value.filter.return_value.group_by.return_value.all.return_value = [
+        ("风景", 3), ("人像", 1),
+    ]
 
     options = get_filter_options(db, uuid4())
 
     assert options["years"] == [2026, 2025]
     assert options["cities"] == ["上海", "杭州"]
+    assert options["categories"] == ["风景", "人像"]
     assert options["makes"] == ["Apple", "Canon"]
     assert options["models"] == ["EOS R5", "iPhone 15"]
     assert options["image_types"] == ["Screenshot", "Camera", "Other"]

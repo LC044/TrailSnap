@@ -27,6 +27,7 @@ from app.crud.cluster import remove_photo_from_clusters, remove_photos_from_clus
 from app.crud.search_vector import get_search_vectors
 from app.crud.photo_paths import escape_like, normalized_file_path
 from app.db.models import Photo, PhotoMetadata, ImageVector, Album, Face, PhotoTag, ImageDescription, Scene, PhotoDeclutterRecord
+from app.db.models.tag import PhotoTagRelation
 from app.db.models.album import AlbumPhoto
 from app.db.models.photo import FileType, ImageType
 from app.schemas import photo as photo_schemas
@@ -412,12 +413,17 @@ def get_filter_options(db: Session, user_id: UUID):
 
     from app.db.models.face import FaceIdentity
     # 类别同样按使用频率排序（前端只平铺前面若干项）。
+    # 显式走 PhotoTagRelation 连接：PhotoTag.photos 是 Photo.tags 的 backref，
+    # 依赖 mapper 配置时机，导入早期访问会 AttributeError。
     category_rows = db.query(
         PhotoTag.tag_name, func.count(Photo.id).label('photo_count')
     ).select_from(PhotoTag).join(
-        PhotoTag.photos
+        PhotoTagRelation, PhotoTagRelation.tag_id == PhotoTag.id
+    ).join(
+        Photo, Photo.id == PhotoTagRelation.photo_id
     ).filter(
         PhotoTag.is_deleted.is_(False),
+        PhotoTagRelation.is_deleted.is_(False),
         Photo.owner_id == user_id,
         Photo.is_deleted.is_(False),
     ).group_by(PhotoTag.tag_name).all()
