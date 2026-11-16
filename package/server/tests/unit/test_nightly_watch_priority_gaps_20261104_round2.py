@@ -54,8 +54,9 @@ def test_live_photo_video_path_rejects_unsupported_extensions(image_path, video_
 # app/service/tasks/similar.py -- strategy contract and small-input boundary
 # ---------------------------------------------------------------------------
 
-def test_similar_photo_strategy_timeout_is_one_hour():
-    assert similar.SimilarPhotoClusteringStrategy().timeout == 60 * 60
+def test_similar_photo_strategy_timeout_allows_full_library_scans():
+    # Full-library cleanup scans checkpoint between batches and may take a day.
+    assert similar.SimilarPhotoClusteringStrategy().timeout == 60 * 60 * 24
 
 
 def test_similar_photo_strategy_skips_singleton_segment_without_cluster_rows():
