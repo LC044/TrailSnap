@@ -21,35 +21,20 @@
 - 主色与危险色分开：删除等操作使用 `--ts-color-danger`、danger 按钮或动作行，不因主题变色失去语义。
 - 系统字体栈包含 Inter、Segoe UI、苹方和微软雅黑；默认继承 `--ts-font-sans`，不为普通页面引入装饰字体。年度报告、日记本等已有专用视觉场景可沿用自身样式。
 
-## Token 快照
+## 样式入口
 
-这些值用于理解层级；CSS 使用变量，而不是抄写十六进制颜色或尺寸。
+使用变量与共享类，不复制扫描时的色值和尺寸。按用途查阅当前 CSS：
 
-| Token | 浅色 | 深色 |
-| --- | --- | --- |
-| `--ts-color-page` | `#f5f6f8` | `#101318` |
-| `--ts-color-surface` | `#ffffff` | `#1b2028` |
-| `--ts-color-surface-muted` | `#f3f4f6` | `#252c36` |
-| `--ts-color-surface-raised` | `#ffffff` | `#242b35` |
-| `--ts-color-text` | `#111827` | `#f8fafc` |
-| `--ts-color-text-secondary` | `#64748b` | `#cbd5e1` |
-| `--ts-color-text-tertiary` | `#94a3b8` | `#94a3b8` |
-| `--ts-color-border` | `#e5e7eb` | `#334155` |
-| `--ts-color-divider` | `#eef0f3` | `#273449` |
-
-| 维度 | 当前基础 |
+| 用途 | 入口 |
 | --- | --- |
-| 间距 | `--ts-space-1/2/3/4/5/6/8/10` = 4/8/12/16/20/24/32/40px |
-| 圆角 | `--ts-radius-control/card/dialog/pill` = 12/20/24/9999px |
-| 控件高度 | `--ts-control-sm/md/lg` = 36/44/48px |
-| 页面边距 | `--ts-page-gutter` 基础 16px，≥768px 为 24px，≥1280px 为 32px |
-| 区块间距 | `--ts-section-gap` 基础 24px，≥768px 为 32px |
-| 标题 | `.ts-page-title` 24px/700；紧凑标题 16px；`.ts-section-title` 18px/600 |
-| 卡片标题 | `.ts-card-title` 14px/600，移动端随小字号变量缩放 |
-| 动效 | `--ts-motion-fast/normal/page` = 160/240/300ms；`--ts-ease` 统一缓动 |
-| 玻璃模糊 | clear/base/panel = 6/20/36px；饱和度 145% |
+| 背景、正文、边框与分隔线 | `--ts-color-*` |
+| 间距、圆角与控件高度 | `--ts-space-*`、`--ts-radius-*`、`--ts-control-*` |
+| 页面边距与区块间距 | `--ts-page-gutter`、`--ts-section-gap` |
+| 标题层级 | `.ts-page-title`、`.ts-section-title`、`.ts-card-title` |
+| 动效 | `--ts-motion-*`、`--ts-ease` |
+| 玻璃控制层 | `.ts-liquid-glass`、`.ts-glass-toolbar`、`.ts-glass-button` |
 
-移动端按 440px 设计宽度适配，间距最多缩小 10%；Tailwind 的 padding/margin/gap 等已接入缩放。不要缩放根字号、整页 transform 或缩小控件命中区域。移动端 small 普通按钮提升到 44px；共享玻璃工具栏的按钮高度为 40px，复用其样式，不能据此缩小所有触控操作。移动输入字体为 16px。
+移动间距已由共享样式适配，不缩放根字号或整页 transform。控件沿用共享命中尺寸，不为压缩界面缩小触控区域。
 
 ## 主题接入
 
@@ -95,3 +80,9 @@ CSS 使用 `text-primary-500`、`bg-primary-50`、`border-primary-500` 等。低
 | `.ts-action-row` | 图标与文字菜单行动作；危险项加 `.danger` |
 
 AdaptiveMenu、SettingsSection、MobilePageHeader 等未在 `ui/index.ts` 导出；使用具体路径，不假设 barrel 已导出所有组件。
+
+## 下拉选择
+
+- 普通业务选择框默认使用 `el-select` / `el-option`，继承 `src/styles/ui.css`，不另用原生 `<select>` 搭配 `.ts-input` 建立一套样式。动作菜单接入见页面模式文档。
+- 选项多时限高滚动，长文本不撑破窄屏布局。沿用组件的 Teleport 配置，检查祖先裁切与弹层层级；不要不分场景强制修改挂载目标。
+- 替换选择器时保留值类型、选中态与联动行为，并检查展开后的明暗及窄屏效果。参考 `src/views/settings/sections/MapSettingsSection.vue`、`src/views/album/location/stats/StatsAnnualTrendCard.vue`（均相对于 `package/website/`）。
