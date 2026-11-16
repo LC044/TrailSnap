@@ -235,8 +235,10 @@ def get_identities_with_details(
     owner_id: Optional[UUID] = None,
     include_named_below_threshold: bool = False,
 ) -> List[FaceIdentitySchema]:
-    # 1. 子查询：统计每个人脸身份的人脸数（按photo_id筛选并去重）
-    face_counts_subq = _identity_photo_counts(db, owner_id, photo_id)
+    # 1. 子查询：统计每个人脸身份的人脸数（按photo_id筛选并去重）。
+    # active_only：与详情页照片列表/合影相册同口径，排除软删除照片与软删除人脸，
+    # 否则删除进回收站的照片仍计入列表数量，与详情页不一致（REQ-266）。
+    face_counts_subq = _identity_photo_counts(db, owner_id, photo_id, active_only=True)
 
     # 2. 主查询：关联FaceIdentity + 统计数 + 默认人脸 + 照片
     count_condition = func.coalesce(face_counts_subq.c.count, 0) >= min_photos
@@ -342,13 +344,17 @@ def get_identities_by_photo_id(db: Session, photo_id: UUID, owner_id: Optional[U
     if not rows:
         return []
 
-    # 2. 单次聚合：取所有相关 identity 的总 face 数（替代原 N+1 循环 count）
+    # 2. 单次聚合：取所有相关 identity 的总 face 数（替代原 N+1 循环 count）。
+    # 与主查询同口径：排除软删除照片上的人脸（REQ-266）。
     identity_ids = {identity.id for _, identity, _ in rows}
     count_rows = db.query(
         Face.face_identity_id, func.count(Face.id)
+    ).join(
+        Photo, Face.photo_id == Photo.id
     ).filter(
         Face.face_identity_id.in_(identity_ids),
-        Face.is_deleted == False
+        Face.is_deleted == False,
+        Photo.is_deleted == False
     ).group_by(Face.face_identity_id).all()
     face_counts = {fid: cnt for fid, cnt in count_rows}
 

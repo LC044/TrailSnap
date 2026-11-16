@@ -26,12 +26,15 @@ class SimilarPhotoClusteringStrategy(BaseTaskStrategy):
 
     @property
     def timeout(self) -> int:
-        return 60 * 60  # 1 hour timeout
+        return 60 * 60 * 24  # Full-library scans checkpoint between batches.
 
     async def process(self, worker, task: Task, db: Session):
         """
         Handle similar photo clustering task
         """
+        if (task.payload or {}).get("cleanup_scan_id"):
+            from app.service.cleanup_scan import process_scan
+            return await process_scan(task, db)
         try:
             user_id = str(task.owner_id)
             threshold = task.payload.get('threshold', 0.9)

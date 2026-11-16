@@ -56,6 +56,8 @@ addopts = "-q"
 # 统一 marker 体系：覆盖度(smoke/regression/slow) × 资源(postgres/model) × 模块(module_*)
 # 由 tests/scripts/run-tests.ps1 通过 -m 选择，变量集中在 tests/.env.test
 markers = [
+    "module_cleanup_scale: 全量照片清理双数据库规模验收",
+    "module_cleanup_index_scale: 相似索引大型重复组规模验收",
     "module_portable_upgrade: 历史桌面图库与 Docker 数据库升级验收",
     "module_bundled_ai: 完整桌面安装与内置 AI 实机验收",
     "smoke: P0 关键路径，秒级",

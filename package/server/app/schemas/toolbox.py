@@ -64,6 +64,7 @@ class ToolConfig(BaseModel):
     cleanup_mode: Literal["duplicate", "similar", "quality"] = "duplicate"
     compare_all: bool = False
     similarity: float = Field(default=0.95, ge=0.8, le=1)
+    scan_mode: Literal["fast", "complete"] = "fast"
     quality_max: float = Field(default=40, ge=0, le=200)
     time_mode: Literal["none", "auto", "custom"] = "auto"
     custom_time: str | None = None
@@ -97,6 +98,12 @@ class ExecuteRequest(BaseModel):
     version: int
     confirmed: bool = False
     selected_items: list[int] | None = Field(default=None, max_length=10000)
+
+
+class CleanupSelectionRequest(BaseModel):
+    version: int
+    item_ids: list[int] = Field(min_length=1, max_length=500)
+    selected: bool
 
 
 class ToolPreset(BaseModel):

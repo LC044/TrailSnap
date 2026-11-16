@@ -1,5 +1,6 @@
 """Scoped toolbox API. New routes always return the shared response envelope."""
 from uuid import UUID
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -8,7 +9,7 @@ from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.db.models.toolbox import ToolboxPlan, ToolboxPlanItem
 from app.dependencies import BaseResponse, get_db
-from app.schemas.toolbox import ExecuteRequest, MediaScope, OrganizeRule, PlanRequest, ToolboxPreferences
+from app.schemas.toolbox import ExecuteRequest, MediaScope, OrganizeRule, PlanRequest, ToolboxPreferences, CleanupSelectionRequest
 from app.service.toolbox_scope import resolve_browser_folder, scope_preview
 from app.service.toolbox_plans import create_plan, group_options, item_view, plan_view, validate_template
 from app.service.toolbox_execution import get_plan, recovery_plan, start_plan
@@ -44,6 +45,13 @@ def options(request: PlanRequest, db: Session = Depends(get_db), user: User = De
 
 @router.post("/plans", response_model=BaseResponse[dict])
 def preview(request: PlanRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if request.config.kind == "cleanup":
+        from app.service.cleanup_scan import enqueue_scan
+        def enqueue():
+            plan = enqueue_scan(db, user, request)
+            TaskManager.get_instance().start_worker_if_needed()
+            return plan_view(plan)
+        return response_call(db, enqueue)
     return response_call(db, lambda: plan_view(create_plan(db, user, request)))
 
 
@@ -51,9 +59,9 @@ def preview(request: PlanRequest, db: Session = Depends(get_db), user: User = De
 def history(offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100),
             active_only: bool = False,
             db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    query = db.query(ToolboxPlan).filter(ToolboxPlan.owner_id == user.id, ToolboxPlan.status != "preview")
+    query = db.query(ToolboxPlan).filter(ToolboxPlan.owner_id == user.id)
     if active_only:
-        query = query.filter(ToolboxPlan.status.in_(["queued", "running"]))
+        query = query.filter(ToolboxPlan.status.in_(["queued", "running", "scan_queued", "scanning"]))
     rows = query.order_by(ToolboxPlan.created_at.desc()).offset(offset).limit(limit).all()
     return BaseResponse.success([plan_view(row) for row in rows])
 
@@ -67,12 +75,18 @@ def detail(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(ge
 def items(plan_id: UUID, offset: int = Query(0, ge=0), limit: int = Query(40, ge=1, le=100),
           status: str | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     def load():
-        get_plan(db, user.id, plan_id)
+        plan = get_plan(db, user.id, plan_id)
         query = db.query(ToolboxPlanItem).filter(ToolboxPlanItem.plan_id == plan_id)
         if status:
             query = query.filter(ToolboxPlanItem.status == status)
-        return {"total": query.count(), "items": [item_view(row) for row in
-                query.order_by(ToolboxPlanItem.id).offset(offset).limit(limit)]}
+        if plan.kind != "cleanup" or not plan.summary.get("phase"):
+            return {"total": query.count(), "items": [item_view(row) for row in query.order_by(ToolboxPlanItem.id).offset(offset).limit(limit)]}
+        from app.db.models.toolbox import CleanupSelection
+        selected = db.query(CleanupSelection.item_id).filter_by(plan_id=plan_id)
+        rows = query.order_by(ToolboxPlanItem.id).offset(offset).limit(limit).all()
+        selected_ids = {pid for (pid,) in selected.filter(CleanupSelection.item_id.in_([r.id for r in rows]))}
+        return {"total": query.count(), "selected_count": selected.count(), "items": [
+            {**item_view(row), "selected": row.id in selected_ids} for row in rows]}
     return response_call(db, load)
 
 
@@ -89,7 +103,7 @@ def execute(plan_id: UUID, request: ExecuteRequest, db: Session = Depends(get_db
 def stop(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     def request_stop():
         plan = get_plan(db, user.id, plan_id)
-        if plan.status not in {"queued", "running"}:
+        if plan.status not in {"queued", "running", "scan_queued", "scanning"}:
             raise ValueError("此任务已结束")
         plan.stop_requested = True
         db.commit()
@@ -99,7 +113,92 @@ def stop(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_
 
 @router.post("/plans/{plan_id}/retry", response_model=BaseResponse[dict])
 def retry(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return response_call(db, lambda: plan_view(recovery_plan(db, user, get_plan(db, user.id, plan_id))))
+    def recover():
+        plan = get_plan(db, user.id, plan_id)
+        if plan.status in {"scan_stopped", "scan_failed"}:
+            from app.service.cleanup_scan import queue_scan
+            queue_scan(db, plan)
+            TaskManager.get_instance().start_worker_if_needed()
+            return plan_view(plan)
+        if plan.kind == "cleanup" and plan.summary.get("phase") == "done":
+            from app.service.cleanup_execution import prepare_retry
+            return plan_view(prepare_retry(db, plan))
+        return plan_view(recovery_plan(db, user, plan))
+    return response_call(db, recover)
+
+
+@router.put("/plans/{plan_id}/selection", response_model=BaseResponse[dict])
+def selection(plan_id: UUID, request: CleanupSelectionRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    def update():
+        from app.db.models.toolbox import CleanupSelection
+        # Serialize selection edits and execution on both databases.
+        db.query(User).filter(User.id == user.id).update({User.is_active: User.is_active}, synchronize_session=False)
+        plan = get_plan(db, user.id, plan_id)
+        db.refresh(plan)
+        if plan.kind != "cleanup" or plan.status != "preview" or plan.version != request.version or plan.expires_at < datetime.utcnow():
+            raise ValueError("预览已变化，请刷新")
+        ids = set(request.item_ids)
+        rows = db.query(ToolboxPlanItem.id).filter(ToolboxPlanItem.plan_id == plan.id,
+            ToolboxPlanItem.status == "candidate", ToolboxPlanItem.id.in_(ids)).all()
+        if len(rows) != len(ids):
+            raise ValueError("所选项目不属于此计划的候选")
+        query = db.query(CleanupSelection).filter(CleanupSelection.plan_id == plan.id)
+        existing = {row.item_id for row in query.filter(CleanupSelection.item_id.in_(ids))}
+        if request.selected:
+            db.add_all([CleanupSelection(plan_id=plan.id, item_id=pid) for pid in ids - existing])
+        else:
+            query.filter(CleanupSelection.item_id.in_(ids)).delete(synchronize_session=False)
+        db.commit()
+        return {"selected_count": query.count()}
+    return response_call(db, update)
+
+
+@router.get("/plans/{plan_id}/groups/{group_id}/members", response_model=BaseResponse[dict])
+def group_members(plan_id: UUID, group_id: int, offset: int = Query(0, ge=0), limit: int = Query(24, ge=1, le=100),
+                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    def load():
+        from app.db.models.toolbox import CleanupGroup, CleanupMember
+        from app.db.models.photo import Photo
+        get_plan(db, user.id, plan_id)
+        group = db.query(CleanupGroup).filter_by(id=group_id, plan_id=plan_id).first()
+        if not group:
+            raise ValueError("分组不存在")
+        query = db.query(CleanupMember.photo_id, CleanupMember.in_scope).join(Photo, Photo.id == CleanupMember.photo_id).filter(
+            CleanupMember.plan_id == plan_id, CleanupMember.group_id == group_id,
+            Photo.owner_id == user.id, Photo.is_deleted.is_(False))
+        return {"total": query.count(), "representative_id": str(group.representative_id), "items": [
+            {"photo_id": str(pid), "in_scope": inside} for pid, inside in query.order_by(CleanupMember.photo_id).offset(offset).limit(limit)]}
+    return response_call(db, load)
+
+
+@router.get("/plans/{plan_id}/export")
+def export_plan(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+    get_plan(db, user.id, plan_id)
+    bind = db.get_bind()
+    def stream():
+        yield '\ufeff'
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        def emit(values):
+            buffer.seek(0)
+            buffer.truncate()
+            writer.writerow(["'" + str(value) if str(value).startswith(('=', '+', '-', '@', '\t', '\r')) else str(value) for value in values])
+            return buffer.getvalue()
+        yield emit(["原路径", "目标", "状态", "说明"])
+        with Session(bind) as session:
+            cursor = 0
+            while True:
+                rows = session.query(ToolboxPlanItem).filter(ToolboxPlanItem.plan_id == plan_id,
+                    ToolboxPlanItem.id > cursor).order_by(ToolboxPlanItem.id).limit(250).all()
+                if not rows:
+                    break
+                for row in rows:
+                    yield emit([row.source, row.target, row.status, row.reason])
+                cursor = rows[-1].id
+    return StreamingResponse(stream(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="toolbox-{plan_id}.csv"'})
 
 
 @router.post("/plans/{plan_id}/undo", response_model=BaseResponse[dict])

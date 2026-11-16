@@ -53,3 +53,43 @@ class ToolboxPlanItem(Base):
         Index("ix_toolbox_items_plan_status", "plan_id", "status", "id"),
         Index("ix_toolbox_items_photo", "photo_id"),
     )
+
+
+class CleanupScope(Base):
+    """Frozen comparison population; outside references can never be selected."""
+    __tablename__ = "cleanup_scope"
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("toolbox_plans.id", ondelete="CASCADE"), primary_key=True)
+    photo_id = Column(UUID(as_uuid=True), primary_key=True)
+    in_scope = Column(Boolean, nullable=False)
+
+
+class CleanupGroup(Base):
+    __tablename__ = "cleanup_groups"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("toolbox_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    representative_id = Column(UUID(as_uuid=True), nullable=False)
+    key = Column(String(128), nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+
+
+class CleanupMember(Base):
+    __tablename__ = "cleanup_members"
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("toolbox_plans.id", ondelete="CASCADE"), primary_key=True)
+    photo_id = Column(UUID(as_uuid=True), primary_key=True)
+    group_id = Column(Integer, ForeignKey("cleanup_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    in_scope = Column(Boolean, nullable=False)
+
+
+class CleanupSelection(Base):
+    __tablename__ = "cleanup_selections"
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("toolbox_plans.id", ondelete="CASCADE"), primary_key=True)
+    item_id = Column(Integer, ForeignKey("toolbox_plan_items.id", ondelete="CASCADE"), primary_key=True)
+
+
+class CleanupHash(Base):
+    __tablename__ = "cleanup_hashes"
+    photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="CASCADE"), primary_key=True)
+    size = Column(String(32), nullable=False)
+    mtime_ns = Column(String(32), nullable=False)
+    md5 = Column(String(32), nullable=False)
+    path_digest = Column(String(64), nullable=False)

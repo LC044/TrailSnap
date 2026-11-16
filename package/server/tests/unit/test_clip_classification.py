@@ -79,8 +79,8 @@ def test_threshold_uses_model_override_or_default(strictness, adjustment, thresh
 def test_catalog_complete_and_single_membership():
     data = svc.load_catalog()
     assert len(data["groups"]) == 11
-    assert data["version"] == 2
-    assert len(data["categories"]) == 173
+    assert data["version"] == 3
+    assert len(data["categories"]) == 166
     cats = {c["name"]: c for c in data["categories"]}
     assert len(cats) == len(data["categories"])
     assert len({c["key"] for c in cats.values()}) == len(cats)
@@ -89,6 +89,7 @@ def test_catalog_complete_and_single_membership():
     assert cats["机场"]["groups"] == cats["站台"]["groups"] == ["交通出行"]
     assert "桥梁道路" not in cats and "网络海报" not in cats
     assert "海洋 / 海面" in cats and "雪景" in cats
+    assert not {"开阔风景", "动物园场景", "花朵特写", "植物特写", "赛车", "道路", "交通设施"} & cats.keys()
     assert all(1 <= len(c["descriptions"]) <= 5 for c in cats.values())
 
 

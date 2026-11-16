@@ -95,6 +95,7 @@ const router = useRouter(), store = useToolboxStore()
 const titles: Record<string, string> = { organize: '影像整理', rename: '批量重命名', album: '相册归类', cleanup: '照片清理', metadata: '拍摄信息修复', undo: '恢复原路径' }
 const paths: Record<ToolKind, string> = { organize: '/toolbox/organize', rename: '/toolbox/rename', album: '/toolbox/albums', cleanup: '/toolbox/duplicate', metadata: '/toolbox/time-from-filename' }
 const labels: Record<string, string> = { queued: '排队中', running: '处理中', completed: '完成', partial: '部分失败', failed: '失败', stopped: '已停止' }
+Object.assign(labels, { preview: '待核对', scan_queued: '等待扫描', scanning: '扫描中', scan_stopped: '扫描已停止', scan_failed: '扫描失败' })
 const mainTools = [
   { path: '/toolbox/organize', title: '影像整理', desc: '只整理选中的影像，按日期、地点、人物或分类归档。', note: '移动或复制实际文件', icon: FolderOpen },
   { path: '/toolbox/rename', title: '批量重命名', desc: '统一文件名，记住常用模板，执行前核对真实变化。', note: '仅修改原文件名', icon: Tag },

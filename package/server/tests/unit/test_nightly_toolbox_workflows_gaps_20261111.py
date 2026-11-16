@@ -185,7 +185,7 @@ def test_stop_rejects_a_finished_plan(db, user):
 
 def test_retry_and_undo_use_the_recovery_plan(db, user):
     plan_id = uuid4()
-    plan = SimpleNamespace(id=plan_id)
+    plan = SimpleNamespace(id=plan_id, status="failed", kind="rename")
     with patch.object(workflows, "get_plan", return_value=plan), \
             patch.object(workflows, "recovery_plan", return_value=plan) as recovery, \
             patch.object(workflows, "plan_view", return_value={"id": str(plan_id)}):

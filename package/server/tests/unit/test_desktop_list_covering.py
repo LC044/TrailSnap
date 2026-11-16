@@ -117,7 +117,9 @@ def test_person_count_deduplicates_and_preserves_existing_deleted_face_semantics
         assert not any("face_feature" in sql for sql, _ in statements)
         plan = " ".join(row[3] for row in db.connection().exec_driver_sql(
             "EXPLAIN QUERY PLAN " + statements[0][0], statements[0][1]))
-        assert "COVERING INDEX ix_faces_photo_identity" in plan
+        # REQ-266 后人物列表统计与合影相册同为活跃口径（active_only），SQLite 选
+        # 部分覆盖索引 ix_faces_identity_alive，仍不触碰 face_feature。
+        assert "COVERING INDEX ix_faces_identity_alive" in plan or "USING INDEX ix_faces_identity_alive" in plan
         group_sql, group_params = statements[-1]
         group_plan = " ".join(row[3] for row in db.connection().exec_driver_sql(
             "EXPLAIN QUERY PLAN " + group_sql, group_params))

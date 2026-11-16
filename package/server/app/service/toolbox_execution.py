@@ -42,6 +42,9 @@ def start_plan(db, user, plan_id, request):
         raise ValueError("预览已过期或已变化，请重新生成")
     if not request.confirmed:
         raise ValueError("请先确认已查看变更预览")
+    if plan.kind == "cleanup" and plan.summary.get("phase") == "done":
+        from app.service.cleanup_execution import start_cleanup
+        return start_cleanup(db, user, plan, request)
     if plan.kind == "cleanup":
         selected = set(request.selected_items or [])
         candidates = db.query(ToolboxPlanItem).filter(ToolboxPlanItem.plan_id == plan.id,
@@ -307,6 +310,16 @@ async def execute_plan(worker, task, db):
     plan = get_plan(db, task.owner_id, UUID(task.payload["toolbox_plan_id"]))
     if plan.task_id != task.id or plan.status not in {"queued", "running"}:
         raise ValueError("任务未通过此计划的执行确认")
+    if plan.kind == "cleanup" and plan.summary.get("phase") == "done":
+        from app.service.cleanup_execution import execute_cleanup
+        try:
+            return await execute_cleanup(task, db, plan)
+        except Exception:
+            db.rollback()
+            db.refresh(plan)
+            plan.status = "failed"
+            db.commit()
+            raise
     user = db.get(User, task.owner_id)
     config = ToolConfig.model_validate(plan.request["config"]) if plan.kind != "undo" else None
     plan.status = "running"
