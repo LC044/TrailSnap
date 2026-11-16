@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "groups": [
     "人物",
     "自然风景",
@@ -1110,50 +1110,6 @@
           "fp": 0,
           "fn": 0,
           "tn": 3
-        },
-        "no_positive_evidence": false
-      }
-    },
-    {
-      "key": "builtin-027",
-      "name": "开阔风景",
-      "groups": [
-        "自然风景"
-      ],
-      "descriptions": [
-        "一张开阔风景的实拍照片",
-        "视野开阔的自然山水风光",
-        "从远处拍摄广阔自然景观"
-      ],
-      "thresholds": {
-        "chinese-clip-ViT-B-16": 0.405
-      },
-      "calibration": {
-        "status": "reviewed",
-        "reviewed": 18,
-        "positive": 8,
-        "negative": 10,
-        "uncertain": 0,
-        "method": "visual-stratified-f0.5-grid0.005-v2",
-        "train_samples": 14,
-        "validation_samples": 4,
-        "date": "2026-11-12",
-        "model": "chinese-clip-ViT-B-16",
-        "photos_scored": 75041,
-        "description_sha256": "f5b7b03a413d4ea5f236ee18ec64c6426f3a0f6ce1db141fb257c7621a63c3a6",
-        "train_positive": 6,
-        "train_negative": 8,
-        "training": {
-          "tp": 6,
-          "fp": 0,
-          "fn": 0,
-          "tn": 8
-        },
-        "validation": {
-          "tp": 2,
-          "fp": 0,
-          "fn": 0,
-          "tn": 2
         },
         "no_positive_evidence": false
       }
@@ -3359,50 +3315,6 @@
       }
     },
     {
-      "key": "builtin-082",
-      "name": "动物园场景",
-      "groups": [
-        "动物"
-      ],
-      "descriptions": [
-        "一张动物园场景的实拍照片",
-        "动物园展区中的动物与围栏",
-        "游客隔着玻璃观看动物展舍"
-      ],
-      "thresholds": {
-        "chinese-clip-ViT-B-16": 0.415
-      },
-      "calibration": {
-        "status": "limited",
-        "reviewed": 18,
-        "positive": 7,
-        "negative": 11,
-        "uncertain": 0,
-        "method": "visual-stratified-f0.5-grid0.005-v2",
-        "train_samples": 14,
-        "validation_samples": 4,
-        "date": "2026-11-12",
-        "model": "chinese-clip-ViT-B-16",
-        "photos_scored": 75041,
-        "description_sha256": "a285affed2c34c9659a602b23bdfd4076c3ca79ef05973a57e4011ca443f7101",
-        "train_positive": 6,
-        "train_negative": 8,
-        "training": {
-          "tp": 6,
-          "fp": 1,
-          "fn": 0,
-          "tn": 7
-        },
-        "validation": {
-          "tp": 1,
-          "fp": 1,
-          "fn": 0,
-          "tn": 2
-        },
-        "no_positive_evidence": false
-      }
-    },
-    {
       "key": "builtin-083",
       "name": "海洋动物",
       "groups": [
@@ -3486,50 +3398,6 @@
           "fp": 0,
           "fn": 1,
           "tn": 1
-        },
-        "no_positive_evidence": false
-      }
-    },
-    {
-      "key": "builtin-085",
-      "name": "花朵特写",
-      "groups": [
-        "植物花卉"
-      ],
-      "descriptions": [
-        "一张花朵特写的实拍照片",
-        "一朵花的近距离特写",
-        "花瓣和花蕊清晰可见"
-      ],
-      "thresholds": {
-        "chinese-clip-ViT-B-16": 0.42
-      },
-      "calibration": {
-        "status": "limited",
-        "reviewed": 18,
-        "positive": 10,
-        "negative": 8,
-        "uncertain": 0,
-        "method": "visual-stratified-f0.5-grid0.005-v2",
-        "train_samples": 14,
-        "validation_samples": 4,
-        "date": "2026-11-12",
-        "model": "chinese-clip-ViT-B-16",
-        "photos_scored": 75041,
-        "description_sha256": "c7ccd24941a28f7402205acd0a140b8666749f60088bb932d4e4e80f6c267bd6",
-        "train_positive": 9,
-        "train_negative": 5,
-        "training": {
-          "tp": 9,
-          "fp": 0,
-          "fn": 0,
-          "tn": 5
-        },
-        "validation": {
-          "tp": 1,
-          "fp": 1,
-          "fn": 0,
-          "tn": 2
         },
         "no_positive_evidence": false
       }
@@ -3836,50 +3704,6 @@
         "validation": {
           "tp": 1,
           "fp": 1,
-          "fn": 0,
-          "tn": 2
-        },
-        "no_positive_evidence": false
-      }
-    },
-    {
-      "key": "builtin-093",
-      "name": "植物特写",
-      "groups": [
-        "植物花卉"
-      ],
-      "descriptions": [
-        "一张植物特写的实拍照片",
-        "近距离拍摄植物叶茎细节",
-        "植物局部结构特写"
-      ],
-      "thresholds": {
-        "chinese-clip-ViT-B-16": 0.41
-      },
-      "calibration": {
-        "status": "limited",
-        "reviewed": 18,
-        "positive": 11,
-        "negative": 7,
-        "uncertain": 0,
-        "method": "visual-stratified-f0.5-grid0.005-v2",
-        "train_samples": 14,
-        "validation_samples": 4,
-        "date": "2026-11-12",
-        "model": "chinese-clip-ViT-B-16",
-        "photos_scored": 75041,
-        "description_sha256": "d62637c4b0d7cf30cbb0ea8cb793e4b2f11d242965efadafdfc8d1f5405071e4",
-        "train_positive": 9,
-        "train_negative": 5,
-        "training": {
-          "tp": 6,
-          "fp": 0,
-          "fn": 3,
-          "tn": 5
-        },
-        "validation": {
-          "tp": 2,
-          "fp": 0,
           "fn": 0,
           "tn": 2
         },
@@ -4943,50 +4767,6 @@
       }
     },
     {
-      "key": "builtin-119",
-      "name": "赛车",
-      "groups": [
-        "交通出行"
-      ],
-      "descriptions": [
-        "一张赛车的实拍照片",
-        "赛道上带赛车涂装的汽车",
-        "赛车号码和空气动力套件"
-      ],
-      "thresholds": {
-        "chinese-clip-ViT-B-16": 0.48
-      },
-      "calibration": {
-        "status": "limited",
-        "reviewed": 18,
-        "positive": 3,
-        "negative": 15,
-        "uncertain": 0,
-        "method": "visual-stratified-f0.5-grid0.005-v2",
-        "train_samples": 14,
-        "validation_samples": 4,
-        "date": "2026-11-12",
-        "model": "chinese-clip-ViT-B-16",
-        "photos_scored": 75041,
-        "description_sha256": "1e4c4bd949533052ae7a9f1883111e872c46f178b64da6f6becb46fb088fdfe3",
-        "train_positive": 3,
-        "train_negative": 11,
-        "training": {
-          "tp": 2,
-          "fp": 0,
-          "fn": 1,
-          "tn": 11
-        },
-        "validation": {
-          "tp": 0,
-          "fp": 0,
-          "fn": 0,
-          "tn": 4
-        },
-        "no_positive_evidence": false
-      }
-    },
-    {
       "key": "builtin-120",
       "name": "自行车",
       "groups": [
@@ -5163,50 +4943,6 @@
       }
     },
     {
-      "key": "builtin-124",
-      "name": "道路",
-      "groups": [
-        "交通出行"
-      ],
-      "descriptions": [
-        "一张道路的实拍照片",
-        "公路向远处延伸",
-        "道路车道线与路面标记"
-      ],
-      "thresholds": {
-        "chinese-clip-ViT-B-16": 0.405
-      },
-      "calibration": {
-        "status": "limited",
-        "reviewed": 18,
-        "positive": 10,
-        "negative": 8,
-        "uncertain": 0,
-        "method": "visual-stratified-f0.5-grid0.005-v2",
-        "train_samples": 14,
-        "validation_samples": 4,
-        "date": "2026-11-12",
-        "model": "chinese-clip-ViT-B-16",
-        "photos_scored": 75041,
-        "description_sha256": "864fd84e49a6cc61022e6b1ede38b2100f0bac90d7001e810003f3777088d9dc",
-        "train_positive": 8,
-        "train_negative": 6,
-        "training": {
-          "tp": 7,
-          "fp": 0,
-          "fn": 1,
-          "tn": 6
-        },
-        "validation": {
-          "tp": 2,
-          "fp": 0,
-          "fn": 0,
-          "tn": 2
-        },
-        "no_positive_evidence": false
-      }
-    },
-    {
       "key": "builtin-125",
       "name": "停车场",
       "groups": [
@@ -5246,50 +4982,6 @@
           "fp": 1,
           "fn": 0,
           "tn": 2
-        },
-        "no_positive_evidence": false
-      }
-    },
-    {
-      "key": "builtin-127",
-      "name": "交通设施",
-      "groups": [
-        "交通出行"
-      ],
-      "descriptions": [
-        "一张交通设施的实拍照片",
-        "道路旁交通标志和信号灯",
-        "交通护栏路牌和道路指示设施"
-      ],
-      "thresholds": {
-        "chinese-clip-ViT-B-16": 0.4
-      },
-      "calibration": {
-        "status": "reviewed",
-        "reviewed": 18,
-        "positive": 10,
-        "negative": 7,
-        "uncertain": 1,
-        "method": "visual-stratified-f0.5-grid0.005-v2",
-        "train_samples": 14,
-        "validation_samples": 4,
-        "date": "2026-11-12",
-        "model": "chinese-clip-ViT-B-16",
-        "photos_scored": 75041,
-        "description_sha256": "d3e6c8de0509467a3169b4dca2daeb65a3fdf4b945bd265e4c308922082a2a69",
-        "train_positive": 8,
-        "train_negative": 6,
-        "training": {
-          "tp": 8,
-          "fp": 0,
-          "fn": 0,
-          "tn": 6
-        },
-        "validation": {
-          "tp": 2,
-          "fp": 0,
-          "fn": 0,
-          "tn": 1
         },
         "no_positive_evidence": false
       }
