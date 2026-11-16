@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-11-16 (0.21.0)
+
+### New
+
+- Smart CLIP photo classification with 166 calibrated categories in 11 groups; custom rules combine text descriptions and cropped reference images, with preview before apply and history re-runs.
+- Full-library photo cleanup: duplicate and similar scans run in the background with no count limit, resumable from checkpoints, fast/full similarity modes, cross-page selection and CSV export.
+- "Find more photos of this person" gains custom match and removal thresholds; similar-face lookup adds advanced options.
+- Migrate a Docker deployment to the fnOS installer, taking over the existing database and photo folders.
+- Ticket recognition supports N/V-prefix train codes and compact date formats.
+
+### Improvements
+
+- Task events are merged into batched pushes with shared status refresh, making progress updates more timely.
+- Simplified toolbox flow with centralized template management and collapsed history.
+- Similar-face candidates sorted by similarity; people bulk action renamed to "Edit People".
+
+### Bug Fixes
+
+- Fix people list photo counts not updating after photos are deleted.
+- Fix cleanup scans hanging in rare edge cases.
+- Fix classification tasks falsely failing while AI models are still loading.
+- Fix the timeline tab on the person detail page being covered by the timeline rail.
+
 ## 2026-11-10 (0.20.2)
 
 ### New
