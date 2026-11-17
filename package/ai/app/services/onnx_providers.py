@@ -48,6 +48,12 @@ def _coreml_options() -> dict:
 @functools.lru_cache(maxsize=1)
 def get_onnx_providers():
     """返回 (providers, provider_options)，按可用性筛选并保持优先级。DISABLE_COREML=1 可强制禁用 CoreML。"""
+    if "TS_AI_BACKEND" in os.environ:
+        from app.services.desktop_device import desktop_device
+        state = desktop_device()
+        provider = state["provider"]
+        options = {"device_type": state["device"]} if state["backend"] == "openvino" else {"device_id": 0} if state["backend"] == "cuda" else {}
+        return ([provider, "CPUExecutionProvider"], [options, {}]) if provider != "CPUExecutionProvider" else ([provider], [{}])
     try:
         import onnxruntime as ort
         available = set(ort.get_available_providers())
@@ -143,14 +149,53 @@ _coreml_blacklist: set[str] = set()
 def _make_session(model_path, sess_options, providers, provider_options):
     """sess_options 为 None 时不传该 kwarg，保持 ORT 默认行为。"""
     import onnxruntime as ort
-    if sess_options is None:
-        return ort.InferenceSession(
-            model_path, providers=providers, provider_options=provider_options,
-        )
-    return ort.InferenceSession(
-        model_path, sess_options=sess_options,
-        providers=providers, provider_options=provider_options,
-    )
+    session_kwargs = {"sess_options": sess_options} if sess_options is not None else {}
+    if "TS_AI_BACKEND" not in os.environ:
+        return ort.InferenceSession(model_path, providers=providers, provider_options=provider_options, **session_kwargs)
+    from app.services.desktop_device import record_session
+    # Keep the InferenceSession type required by RapidOCR, while retaining a
+    # private CPU session after a device-side execution error (e.g. CUDA OOM).
+    class DesktopInferenceSession(ort.InferenceSession):
+        def __init__(self, *args, **kwargs):
+            import threading
+            self._desktop_cpu = None
+            self._desktop_fallback_lock = threading.Lock()
+            super().__init__(*args, **kwargs)
+            self.disable_fallback()
+
+        def get_providers(self):
+            if self._desktop_cpu is not None:
+                return self._desktop_cpu.get_providers()
+            return super().get_providers()
+
+        def run(self, output_names, input_feed, run_options=None):
+            if self._desktop_cpu is not None:
+                return self._desktop_cpu.run(output_names, input_feed, run_options)
+            try:
+                return super().run(output_names, input_feed, run_options)
+            except Exception as exc:
+                if super().get_providers() == ["CPUExecutionProvider"]:
+                    raise
+                with self._desktop_fallback_lock:
+                    if self._desktop_cpu is None:
+                        self._desktop_cpu = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"], **session_kwargs)
+                        record_session(model_path, ["CPUExecutionProvider"], str(exc))
+                        logger.warning("Device inference failed for %s; using CPU: %s", model_path, exc)
+                return self._desktop_cpu.run(output_names, input_feed, run_options)
+
+    error = None
+    try:
+        session = DesktopInferenceSession(model_path, providers=providers, provider_options=provider_options, **session_kwargs)
+        if session.get_providers()[0] != providers[0]:
+            error = f"{providers[0]} 初始化失败，模型使用 {session.get_providers()[0]}"
+    except Exception as exc:
+        if "TS_AI_BACKEND" not in os.environ or providers == ["CPUExecutionProvider"]:
+            raise
+        error = str(exc)
+        logger.warning("Accelerator failed for %s, using CPU: %s", model_path, exc)
+        session = ort.InferenceSession(model_path, sess_options=sess_options, providers=["CPUExecutionProvider"])
+    record_session(model_path, session.get_providers(), error)
+    return session
 
 def create_inference_session(model_path: str, sess_options=None):
     """创建 ort.InferenceSession，带 CoreML 创建失败 → CPU-only 降级。"""

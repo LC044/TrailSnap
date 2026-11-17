@@ -11,6 +11,7 @@
     </SettingsPageHeader>
 
     <BasicSettings v-if="group === 'local'" category="service" embedded />
+    <DesktopAIRuntime v-if="group === 'local'" />
     <BasicSettings v-if="group === 'local'" category="recognition" embedded />
 
     <section v-if="group === 'llm'" class="space-y-4" aria-label="大模型连接与文案生成">
@@ -149,6 +150,7 @@ import { settingsApi } from '@/api/settings'
 import BasicSettings from './BasicSettings.vue'
 import { useUserStore } from '@/stores/user'
 import LLMSettings from './LLMSettings.vue'
+import DesktopAIRuntime from './DesktopAIRuntime.vue'
 
 type TaskSelection = { name: string; selected: string; pending?: string; recommended: string; available: string[] }
 

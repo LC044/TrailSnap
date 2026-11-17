@@ -32,6 +32,71 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  ai-runtime:
+    name: Build Windows AI ${{ matrix.backend }} runtime
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '构建桌面')
+    runs-on: windows-latest
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [cuda, openvino]
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install signer
+        run: pnpm --dir package/desktop install --frozen-lockfile
+      - name: Build isolated accelerator runtime
+        shell: pwsh
+        run: |
+          pwsh package/desktop/scripts/build-ai-acceleration.ps1 -Backend '${{ matrix.backend }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Accelerator build failed' }
+      - name: Verify frozen startup on CPU
+        shell: pwsh
+        run: |
+          $executable = (Resolve-Path 'package/ai/dist/${{ matrix.backend }}/trailsnap-ai/trailsnap-ai.exe').Path
+          $process = Start-Process -FilePath $executable -ArgumentList '--startup-check' -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Frozen accelerator startup failed' }
+          $env:TS_AI_BACKEND = if ('${{ matrix.backend }}' -eq 'openvino') { 'openvino' } else { 'cpu' }
+          $env:OPENVINO_DEVICE = 'CPU'
+          $report = Join-Path $env:RUNNER_TEMP 'ai-device-check.json'
+          $process = Start-Process -FilePath $executable -ArgumentList '--device-check', $report -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Frozen runtime inference check failed' }
+          $device = Get-Content -Raw $report | ConvertFrom-Json
+          if ($device.backend -ne $env:TS_AI_BACKEND) { throw 'Frozen runtime silently fell back to another provider' }
+      - name: Sign accelerator archive
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            if ('${{ github.ref }}'.StartsWith('refs/tags/v')) { throw 'Release signing key is required' }
+            $keyPath = Join-Path $env:RUNNER_TEMP 'ai-signing.key'
+            pnpm --dir package/desktop exec tauri signer generate --ci --write-keys $keyPath
+            if ($LASTEXITCODE -ne 0) { throw 'Temporary key generation failed' }
+            $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -Raw -LiteralPath $keyPath
+          }
+          $archive = Get-ChildItem package/desktop/dist/ai/*.zip
+          $password = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD')
+          pnpm --dir package/desktop exec tauri signer sign "--password=$password" $archive.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'AI runtime signing failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TrailSnap-ai-${{ matrix.backend }}
+          path: package/desktop/dist/ai/*
+          if-no-files-found: error
+
   fnos:
     name: Build fnOS x86 installer
     if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '构建飞牛') || github.event_name == 'workflow_dispatch'
@@ -396,7 +461,7 @@ jobs:
 
   release:
     name: Add desktop installers to GitHub release
-    needs: [build, fnos]
+    needs: [build, fnos, ai-runtime]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -441,6 +506,7 @@ jobs:
         run: |
           tag='${{ github.ref_name }}'
           version=${tag#v}
+          python package/desktop/scripts/package_ai_runtime.py catalog --directory release-assets --version "$version"
           jq -n --arg version "$version" '{version: $version, platforms: {}}' > release-assets/latest.json
           while IFS=$'\t' read -r platform filename signature; do
             url="https://github.com/${{ github.repository }}/releases/download/$tag/$filename"
@@ -475,6 +541,9 @@ jobs:
             release-assets/*-portable-update.zip
             release-assets/*-portable-update.zip.sig
             release-assets/portable-latest.json
+            release-assets/*-ai-*-windows-x64.zip
+            release-assets/*-ai-*-windows-x64.zip.sig
+            release-assets/ai-runtimes.json
             release-assets/*.fpk
             release-assets/*.fpk.sha256
             release-assets/*.images.json

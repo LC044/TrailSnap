@@ -14,3 +14,15 @@ The desktop installer includes the AI runtime for faces, OCR, tickets, classific
 AI starts on demand and exits when idle. Local language model inference dependencies are prepared automatically. Initial model preparation requires an internet connection.
 
 Existing users can upgrade directly. Keep existing models; there is no need to uninstall or import an AI extension. Independently deployed Docker services retain their existing configuration.
+
+## GPU and OpenVINO acceleration
+
+CPU is included by default. Open **Settings → Local recognition models → Inference device** to see the current device. Windows x64 supports optional NVIDIA CUDA and Intel OpenVINO packages.
+
+1. Download a package. TrailSnap automatically selects a download mirror, reports progress, retries failures and verifies the release signature and integrity. Your current runtime stays available.
+2. Select **Use this device** after downloading. OpenVINO offers CPU, GPU and NPU; compatible hardware and drivers are required.
+3. TrailSnap waits for current AI requests and model downloads, then validates and switches the device. A failed validation restores CPU and shows the reason.
+
+CUDA requires a compatible NVIDIA driver; Python, CUDA Toolkit and PyTorch do not need separate installation. Per-model providers and fallback reasons appear under model runtime details. This selection applies to recognition models, independently of local language model inference.
+
+Updates preserve models, packages and your selection. Packages must match the application version; an incompatible package uses CPU until you download the matching version. Other desktop platforms continue using the bundled runtime.

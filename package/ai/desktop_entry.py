@@ -31,7 +31,18 @@ def main() -> None:
     parser.add_argument("--parent-pid", type=int)
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--startup-check", action="store_true")
+    parser.add_argument("--device-check", metavar="REPORT_PATH")
     args = parser.parse_args()
+
+    if args.device_check:
+        from pathlib import Path
+        from app.services.desktop_device import desktop_device
+        try:
+            result = desktop_device()
+        except Exception as error:
+            result = {"backend": None, "error": str(error)}
+        Path(args.device_check).write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+        raise SystemExit(1 if result.get("error") else 0)
 
     if args.self_check:
         from desktop_app import app

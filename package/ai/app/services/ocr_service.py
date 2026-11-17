@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import logging
+import os
 import sys
 import threading
 import time
@@ -72,6 +73,21 @@ def load_paddleocr_model():
         if runtime.get("recKeysFile"):
             params["Rec.rec_keys_path"] = base / runtime["recKeysFile"]
         _ocr_engine_is_openvino = False
+        if "TS_AI_BACKEND" in os.environ:
+            # RapidOCR's native OpenVINO engine hardcodes CPU. Inject the shared
+            # ORT sessions so OCR honours the same CPU/GPU/NPU selection.
+            from app.services.onnx_providers import create_inference_session
+
+            class DesktopRapidOCR(RapidOCR):
+                def _load_config(self, config_path, params):
+                    cfg = super()._load_config(config_path, params)
+                    cfg._set_flag("allow_objects", True)
+                    for stage in ("Det", "Cls", "Rec"):
+                        cfg[stage].session = create_inference_session(str(cfg[stage].model_path))
+                    return cfg
+
+            params["EngineConfig.onnxruntime.use_cuda"] = False
+            return DesktopRapidOCR(params=params)
         try:
             from openvino import Core  # noqa: F401
 

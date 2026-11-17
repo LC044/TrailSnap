@@ -1,4 +1,4 @@
-"""CPU-only desktop AI application exposing the complete AI service API."""
+"""Desktop AI application exposing the complete AI service API."""
 
 import asyncio
 import os
@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.config import settings
+from app.desktop_response import BaseResponse, success
 from app.core.runtime_limits import configure_inference_runtime
 from app.core.model_phase import ModelPhaseMiddleware
 
@@ -33,6 +34,8 @@ from app.services.unified_model_manager import ai_model_manager
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     listener = setup_logging("desktop-ai")
+    from app.services.desktop_device import desktop_device
+    await asyncio.to_thread(desktop_device)
     if os.environ.get("TS_AI_SKIP_AUTO_DOWNLOAD") != "1":
         ai_model_manager.start_selected_downloads()
     llm_idle_task = asyncio.create_task(llm_manager.idle_checker())
@@ -51,7 +54,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="TrailSnap Desktop AI Extension",
     version="0.21.0",
-    description="Optional CPU extension providing the complete TrailSnap AI service.",
+    description="Local runtime providing the complete TrailSnap AI service.",
     lifespan=lifespan,
 )
 app.add_middleware(ModelPhaseMiddleware)
@@ -93,6 +96,12 @@ def health_check():
             "emotion",
         ],
     }
+
+
+@app.get("/runtime-device", tags=["System"], response_model=BaseResponse[dict])
+def runtime_device():
+    from app.services.desktop_device import runtime_status
+    return success(runtime_status())
 
 
 @app.get("/version", tags=["System"])

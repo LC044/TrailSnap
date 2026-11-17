@@ -4,6 +4,23 @@
 直接内嵌到 WebView，Rust 首次分配并保存服务端口、启动后端、执行健康检查，并在退出
 时清理后端进程树。桌面端使用本地 SQLite 数据库，无需安装 PostgreSQL。
 
+## AI 加速包
+
+默认安装包内置 CPU AI 运行时。在“设置 → 本地识别模型 → 推理设备”查看当前设备、各已加载模型的后端与回退原因。Windows x64 可按需下载 CUDA 或 OpenVINO 加速包，下载复用桌面更新的加速源、自动选源、有限重试与进度反馈。
+
+下载完成后点击“使用此设备”；OpenVINO 可选 CPU、GPU、NPU，最终可用性以真实推理验证为准。CUDA 需要兼容的 NVIDIA 驱动，加速包包含 CUDA/cuDNN 运行库。切换会等待 AI 请求与模型下载结束，再验证新设备；失败恢复内置 CPU。此设置不控制 llama.cpp 本地大模型。
+
+加速包保存在桌面数据根的 `runtime/ai/<客户端版本>/<后端>`，选择保存在同根目录的 `ai-runtime.json`，不会覆盖模型和图库。升级保留下载和选择；旧包不兼容时使用 CPU，并提示重新下载。安装前校验发布签名、SHA256、大小、平台与版本。
+
+Windows x64 构建命令（仓库根目录）：
+
+```powershell
+pwsh package/desktop/scripts/build-ai-acceleration.ps1 -Backend cuda
+pwsh package/desktop/scripts/build-ai-acceleration.ps1 -Backend openvino
+```
+
+两种加速包使用独立 uv 环境，默认 CPU 环境不变。脚本生成 `package/desktop/dist/ai/*.zip`；发布流水线通过 Tauri signer 签名，并由 `package_ai_runtime.py catalog` 生成 `ai-runtimes.json`。同一 `v<版本>` Release 上传两个 ZIP、签名与清单后客户端才可下载。PR 临时签名不能用于正式客户端安装。
+
 ## Windows 安装版与 ZIP
 
 **旧版应用内更新一直等待时**：Server 不可连接不等于所有维护步骤完成；后台任务停止后还要等待 AI 请求、模型下载和子进程退出。若多次“继续等待”仍无进展，先保留日志并关闭窗口，从原目录 `TrailSnap.exe` 重开恢复当前版本；若应用内升级仍卡住，退出后使用完整新版安装包覆盖安装到同一个目录。不要卸载、删除 `instance.json` / `userdata` / `maintenance` 或另建空目录。存在未完成写入时不可直接强杀进程。新版将 AI 回收放在独立阻塞线程，进程终止和退出等待均有限时，失败保留句柄并阻止升级；`userdata/logs/desktop-maintenance.json`（独立数据根则位于实际数据根的 `logs`）记录最近等待阶段和错误。该诊断文件用于定位，不能据此单独判定可以删除或修改数据。
