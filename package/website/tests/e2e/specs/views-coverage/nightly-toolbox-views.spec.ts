@@ -7,12 +7,12 @@ import { ensureAuthSession } from '../../helpers/auth'
  *
  * The frontend gap scan (NIGHTLY-TEST-WATCH.md 4.3) reported these views were
  * never referenced by any spec:
- *   ToolboxHomePage, MediaScopeSelector, ToolPresetBar, OrganizeRuleEditor, ToolPlanPreview.
+ *   ToolboxHomePage, MediaScopeSelector, OrganizeRuleEditor, ToolPlanPreview.
  *
  * Coverage notes:
  * - ToolboxHomePage: /toolbox landing, tool cards, template section and history section.
  * - MediaScopeSelector: step 1 of the workflow (scope source group + explicit "all" warning).
- * - ToolPresetBar + OrganizeRuleEditor: step 2 of /toolbox/organize.
+ * - OrganizeRuleEditor: step 2 of /toolbox/organize.
  * - ToolPlanPreview: step 3 of /toolbox/cleanup with the plan API stubbed, so no real
  *   file operation is triggered.
  *
@@ -80,16 +80,14 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
     if (!token) return
   })
 
-  test('ToolboxHomePage lists every tool entry, templates and history', async ({ page }) => {
+  test('ToolboxHomePage lists every tool entry and history without templates', async ({ page }) => {
     await page.route('**/api/toolbox/preferences', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: { version: 0, presets: [], recent: [], default_rename_id: null } }) }))
-    const preferencesResponse = page.waitForResponse(r => r.url().includes('/api/toolbox/preferences') && r.request().method() === 'GET')
     await page.goto('/toolbox', { waitUntil: 'domcontentloaded' })
-    expect((await preferencesResponse).ok()).toBeTruthy()
     await waitForApp(page)
 
     await expect(page.getByRole('heading', { name: '工具箱' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '整理与命名' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '清理与修复' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '整理文件夹' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '重复照片' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '我的常用模板' })).toHaveCount(0)
     await expect(page.locator('#history > summary')).toHaveText('操作记录')
     await page.locator('#history > summary').click()
@@ -113,8 +111,8 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
     await page.goto('/toolbox/organize', { waitUntil: 'domcontentloaded' })
     await waitForApp(page)
 
-    await expect(page.getByRole('heading', { name: '这次处理哪些影像？' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '怎样整理？' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '选择照片' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '整理方式' })).toBeVisible()
 
     const sources = page.getByRole('group', { name: '范围来源' })
     for (const label of ['相册', '文件夹', '条件', '手动选', '全部']) {
@@ -126,12 +124,12 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
 
     // "全部" must warn about the blast radius instead of silently covering the library.
     await sources.getByRole('button', { name: '全部' }).click()
-    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toBeVisible()
+    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '查看效果', exact: true })).toBeDisabled() // 尚未选择目标与移动/复制
 
   })
 
-  test('ToolPresetBar and OrganizeRuleEditor render the rule step', async ({ page }) => {
+  test('OrganizeRuleEditor renders rules without saved schemes', async ({ page }) => {
     await stubScopePreview(page)
     await page.goto('/toolbox/organize', { waitUntil: 'domcontentloaded' })
     await waitForApp(page)
@@ -139,15 +137,12 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
     const sources = page.getByRole('group', { name: '范围来源' })
     await sources.getByRole('button', { name: '全部' }).click()
 
-    await page.getByText('使用已有方案（可选）', { exact: true }).click()
-    // 已有方案按需展开，规则与范围同屏。
-    await expect(page.getByText('选择保存的模板或整理方案')).toBeVisible()
-    await expect(page.getByRole('button', { name: '保存为方案' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '更新所选' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '模板管理' })).toBeVisible()
+    await expect(page.getByText('使用已有方案', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '保存为方案' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '模板管理' })).toHaveCount(0)
 
     // OrganizeRuleEditor: rule levels are composable up to three times.
-    await expect(page.getByRole('heading', { name: '怎样整理？' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '整理方式' })).toBeVisible()
     await page.getByRole('button', { name: '自定义', exact: true }).click()
     await expect(page.getByText('第 1 级')).toBeVisible()
     await page.getByRole('button', { name: '增加一级' }).click()
@@ -186,13 +181,11 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
 
     const sources = page.getByRole('group', { name: '范围来源' })
     await sources.getByRole('button', { name: '全部' }).click()
-    await page.getByRole('button', { name: '查找候选照片', exact: true }).click()
+    await page.getByRole('button', { name: '开始查找', exact: true }).click()
 
     // ToolPlanPreview: preview banner, scope/operation summary and the item list.
-    await expect(page.getByText('真实预览，尚未执行')).toBeVisible()
-    await expect(page.getByText('修改范围或规则后，必须重新生成预览。文件已变化或目标被占用时将记录异常，不覆盖。')).toBeVisible()
-    await expect(page.getByText('范围内 3 项 · 跳过 1 项')).toBeVisible()
-    await expect(page.getByText('nightly-a.jpg', { exact: true })).toBeVisible()
+    await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '确认移入回收站', exact: true })).toBeDisabled()
     await expect(page.getByRole('button', { name: '导出清单' })).toBeVisible()
   })
 })

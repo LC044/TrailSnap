@@ -1,7 +1,10 @@
 <template>
-  <section class="space-y-5">
+  <section class="space-y-4">
+    <details :open="scopeExpanded" @toggle="scopeExpanded = ($event.target as HTMLDetailsElement).open">
+      <summary class="cursor-pointer py-3 font-medium">照片范围 · {{ sources.find(item => item.value === scope.source)?.label || "请选择" }}<span v-if="count !== null" class="ts-muted ml-2 text-sm">{{ count }} 张</span></summary>
+      <div class="space-y-4 pt-3">
     <div>
-      <h2 class="ts-section-title">这次处理哪些影像？</h2>
+      <h2 class="ts-section-title">选择照片</h2>
 
     </div>
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-5" role="group" aria-label="范围来源">
@@ -23,7 +26,6 @@
         <p v-if="albumError" class="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
           {{ albumError }} <button type="button" class="underline" @click="searchAlbums('')">重试</button>
         </p>
-        <p class="ts-muted mt-2 text-xs">仅支持你拥有的普通相册。选择相册不会修改其成员。</p>
       </el-form-item>
 
       <div v-if="scope.source === 'folders'" class="space-y-3">
@@ -40,15 +42,15 @@
       </div>
 
       <div v-if="scope.source === 'selected'" class="flex flex-wrap items-center gap-3">
-        <el-button @click="photoPicker = true">手动选择影像</el-button>
-        <span class="ts-muted text-sm">已明确选择 {{ scope.photo_ids.length }} 项</span>
+        <el-button @click="photoPicker = true">选择照片</el-button>
+        <span class="ts-muted text-sm">已选 {{ scope.photo_ids.length }} 项</span>
       </div>
-      <el-alert v-if="scope.source === 'all'" title="你已主动选择全部影像，请特别注意执行前的影响范围。" type="warning" :closable="false" show-icon />
+
 
       <details :open="scope.source === 'filter' || !!scope.start_date || !!scope.end_date || scope.upload_time_fallback || scope.media_type !== 'image'" class="mt-4">
         <summary class="cursor-pointer py-3 text-sm">缩小范围<span v-if="scope.start_date || scope.end_date"> · 已设置日期</span></summary>
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <span class="text-sm font-semibold">附加条件{{ scope.source === 'filter' ? '（请至少指定日期）' : '（可选）' }}</span>
+          <span class="text-sm font-semibold">附加条件{{ scope.source === 'filter' ? '（请至少指定日期）' : '' }}</span>
           <div class="flex flex-wrap gap-2">
             <el-button v-for="year in years" :key="year" size="small" @click="update({ start_date: `${year}-01-01`, end_date: `${year}-12-31` })">{{ year }} 年</el-button>
             <el-button size="small" @click="update({ start_date: null, end_date: null })">清除日期</el-button>
@@ -73,12 +75,14 @@
     </el-form>
     <div class="ts-divider flex flex-wrap items-center justify-between gap-3 border-t pt-4">
       <p v-if="count !== null" class="text-sm"><strong class="text-primary-600 dark:text-primary-400">{{ count.toLocaleString() }}</strong> 项符合当前范围</p>
-      <p v-else class="ts-muted text-sm">选择后核对范围与数量</p>
-      <el-button :loading="checking" :disabled="!valid" @click="$emit('check')">查看范围内影像</el-button>
+      <p v-else class="ts-muted text-sm">请选择照片</p>
+      <el-button :loading="checking" :disabled="!valid" @click="$emit('check')">查看照片</el-button>
     </div>
 
+      </div>
+    </details>
     <DirectoryPickerDialog v-model:visible="folderPicker" :model-value="chosenFolder" @update:model-value="addFolder" />
-    <PhotoSelectorDialog v-model="photoPicker" title="明确选择本次处理的影像" :store="selectionStore"
+    <PhotoSelectorDialog v-model="photoPicker" title="选择照片" :store="selectionStore"
       @select="ids => { update({ photo_ids: ids }); photoPicker = false }" />
   </section>
 </template>
@@ -109,6 +113,7 @@ const valid = computed(() => {
     || (s.source === 'folders' && s.folders.length > 0) || (s.source === 'selected' && s.photo_ids.length > 0)
     || (s.source === 'filter' && !!(s.start_date || s.end_date))
 })
+const scopeExpanded = ref(!valid.value)
 const years = [new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2]
 const dateRange = computed(() => props.scope.start_date && props.scope.end_date ? [props.scope.start_date, props.scope.end_date] : null)
 const setDates = (value: unknown) => {

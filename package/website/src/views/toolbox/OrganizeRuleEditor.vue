@@ -1,6 +1,7 @@
 <template>
   <div class="space-y-5">
-    <h2 class="ts-section-title">怎样整理？</h2>
+    <p class="ts-muted text-sm">{{ config.kind === 'organize' ? '将原文件按日期或地点放入文件夹。' : '按日期或地点创建相册，原文件位置不变。' }}</p>
+    <h2 class="ts-section-title">整理方式</h2>
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="常用整理方案">
       <button v-for="preset in quickPresets" :key="preset.id" type="button" class="ts-button ts-button-secondary"
         :aria-pressed="currentPreset === preset.id" :class="{ 'preset-selected': currentPreset === preset.id }" @click="applyPreset(preset.id)"><Check v-if="currentPreset === preset.id" class="h-4 w-4 shrink-0" aria-hidden="true" />{{ preset.label }}</button>
@@ -41,29 +42,22 @@
     </div>
     <el-form label-position="top">
       <template v-if="config.kind === 'organize'">
-        <el-form-item label="目标目录">
+        <el-form-item label="存放位置">
           <div class="flex w-full flex-wrap gap-2">
-            <el-input v-model="config.target" readonly placeholder="选择已配置存储中的目标目录" class="min-w-0 flex-1" />
+            <el-input v-model="config.target" readonly placeholder="选择已配置存储中的存放位置" class="min-w-0 flex-1" />
             <el-button @click="targetPicker = true">选择目录</el-button>
           </div>
         </el-form-item>
-        <el-form-item label="原文件如何处理（请明确选择）">
+        <el-form-item label="处理方式">
           <el-radio-group v-model="config.action">
             <el-radio value="copy">复制，保留原文件</el-radio><el-radio value="move">移动，改变原文件位置</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-alert v-if="config.action === 'move'" title="移动会改变实际文件位置，外部软件依赖的原路径可能失效。执行前请检查真实预览。" type="warning" :closable="false" />
       </template>
-      <el-form-item v-else label="相册名前缀（可选）"><el-input v-model="config.album_prefix" maxlength="40" placeholder="例如：旅行 · " class="max-w-md" /></el-form-item>
-      <details class="mt-4">
+      <el-form-item v-else label="相册名前缀"><el-input v-model="config.album_prefix" maxlength="40" placeholder="例如：旅行 · " class="max-w-md" /></el-form-item>
+      <details v-if="config.kind !== 'organize'" class="mt-4">
         <summary class="cursor-pointer py-3 text-sm">高级设置 · {{ advancedSummary }}</summary>
-        <el-form-item v-if="config.kind === 'organize'" label="怎样生成目录">
-          <el-select v-model="config.layout" class="w-full">
-            <el-option label="重新归档：仅按新规则生成目录" value="rebuild" />
-            <el-option label="保留原文件夹层级，再继续细分" value="preserve" :disabled="scope.source !== 'folders' || scope.folders.length !== 1" />
-          </el-select>
-          <p class="ts-muted mt-2 text-xs">{{ config.layout === 'preserve' ? '保留相对于所选源文件夹的月/日等目录，再追加新分组。目标选源文件夹即可在原位置细分。' : '原有月份/日期目录不会自动保留在新结构中。' }}</p>
-        </el-form-item>
       <el-form-item class="mt-4" label="缺少归档信息">
         <el-select v-model="config.missing" class="w-full max-w-md"><el-option label="跳过并在预览中说明" value="skip" /><el-option label="归入未知信息分组" value="placeholder" /><el-option label="缺少拍摄时间时使用上传时间，其他缺失跳过" value="upload" /></el-select>
       </el-form-item>
@@ -85,6 +79,13 @@ import { workflowApi, type MediaScope, type ToolConfig, type OrganizeRule } from
 import DirectoryPickerDialog from '@/components/DirectoryPickerDialog.vue'
 const props = defineProps<{ scope: MediaScope }>()
 const config = defineModel<ToolConfig>({ required: true })
+// Folder organization has one predictable policy, including when loading older presets.
+watch(() => [config.value.kind, config.value.layout, config.value.missing, config.value.multi_group], () => {
+  if (config.value.kind !== 'organize') return
+  config.value.layout = 'rebuild'
+  config.value.missing = 'skip'
+  config.value.multi_group = 'skip'
+}, { immediate: true, flush: 'sync' })
 const customRules = ref(false)
 const quickPresets = [{ id: 'month', label: '按年月' }, { id: 'city', label: '按城市' }, { id: 'year-city', label: '按年份和城市' }]
 const presetRules = (id: string): OrganizeRule[] => id === 'month'
