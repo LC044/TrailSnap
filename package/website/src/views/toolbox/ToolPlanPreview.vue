@@ -8,30 +8,29 @@
         <span v-else>{{ labels[plan.status] || plan.status }} · {{ plan.summary.success || 0 }} 项</span>
         <span v-if="plan.summary.failed" class="ml-2 text-red-600 dark:text-red-400">失败 {{ plan.summary.failed }} 项</span>
       </div>
-      <el-button :loading="exporting" @click="exportResult"><Download class="mr-1 h-4 w-4" />导出清单</el-button>
     </div>
     <p v-if="plan.summary.error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ plan.summary.error }}</p>
-    <el-button v-if="['scan_stopped', 'scan_failed'].includes(plan.status)" @click="$emit('recover', 'retry')">继续扫描</el-button>
+    <el-button v-if="['scan_stopped', 'scan_failed'].includes(plan.status)" @click="$emit('recover', 'retry')">继续</el-button>
     <p v-if="!isCleanup && plan.request.config.target" class="ts-muted break-all text-sm">{{ plan.request.config.target }}</p>
     <div class="flex flex-wrap items-center gap-2">
-      <el-select v-model="status" placeholder="所有结果" clearable class="w-full sm:!w-44" @change="page = 1; load()">
-        <el-option label="将变更" value="ready" /><el-option v-if="isCleanup" label="待核对候选" value="candidate" />
-        <el-option label="跳过" value="skipped" /><el-option label="失败" value="failed" /><el-option label="成功" value="success" />
+      <el-select v-if="resultFilters.length" v-model="status" placeholder="全部" clearable class="w-full sm:!w-44" @change="page = 1; load()">
+        <el-option :label="isPreview ? (isCleanup ? '待选' : '待确认') : '全部'" value="" />
+        <el-option v-for="option in resultFilters" :key="option.value" :label="option.label" :value="option.value" />
       </el-select>
       <el-button v-if="error" :loading="loading" @click="load">重试</el-button>
     </div>
     <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
     <div v-loading="loading" class="space-y-2">
       <template v-if="isCleanup">
-        <section v-for="group in photoGroups" :key="group.key" class="py-3">
-          <h3 class="mb-3 text-sm font-medium">{{ group.title }} · {{ group.groupId && references[group.groupId] ? references[group.groupId].total : group.items.length }} 张</h3>
+        <section v-for="(group, groupIndex) in photoGroups" :key="group.key" class="py-3">
+          <h3 v-if="plan.request.config.cleanup_mode !== 'quality'" class="ts-muted mb-3 text-sm">第 {{ (page - 1) * 40 + groupIndex + 1 }} 组</h3>
           <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             <article v-for="item in group.items" :key="item.id" class="relative min-w-0">
               <el-image :src="thumbnailUrl(item.photo_id)" :preview-src-list="group.items.map(photo => thumbnailToFileUrl(thumbnailUrl(photo.photo_id)))" :initial-index="group.items.indexOf(item)" preview-teleported fit="cover" class="aspect-square w-full rounded-xl" :class="{ 'photo-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :alt="basename(item.source)" />
               <button v-if="isPreview && item.status === 'candidate'" type="button" role="checkbox" class="photo-choice" :class="{ 'is-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :aria-checked="!!(isAsyncCleanup ? item.selected : selected.includes(item.id))" :disabled="selecting" :aria-label="`将 ${basename(item.source)} 移入回收站`" @click="toggle(item.id, !(isAsyncCleanup ? item.selected : selected.includes(item.id)))">
                 <span class="photo-choice-mark"><Check v-if="isAsyncCleanup ? item.selected : selected.includes(item.id)" :size="20" :stroke-width="3" /></span>
               </button>
-              <details class="ts-muted mt-1 text-xs"><summary class="cursor-pointer py-2">详情</summary><p class="break-all">{{ item.source }}</p><p>{{ item.reason }}</p></details>
+              <details class="ts-muted mt-1 text-xs"><summary class="cursor-pointer py-2">详情</summary><p class="break-all">{{ item.source }}</p><p v-if="item.status === 'failed' || item.status === 'skipped'">{{ item.reason }}</p></details>
             </article>
           </div>
           <div v-if="group.groupId && references[group.groupId] && (references[group.groupId].total > 24 || references[group.groupId].items.some(photo => !group.items.some(item => item.photo_id === photo.photo_id)))" class="mt-2">
@@ -41,7 +40,7 @@
             </div>
             <el-pagination v-if="references[group.groupId].total > 24" :current-page="referencePages[group.groupId] || 1" :page-size="24" :total="references[group.groupId].total" layout="prev, next" @current-change="page => loadReferences(group.groupId!, page)" />
           </div>
-          <el-button v-if="group.groupId && !references[group.groupId]" link @click="loadReferences(group.groupId)">查看同组参考照片</el-button>
+          <el-button v-if="group.groupId && !references[group.groupId]" link @click="loadReferences(group.groupId)">参考</el-button>
         </section>
       </template>
       <template v-else>
@@ -52,7 +51,7 @@
         <div class="min-w-0 flex-1 text-sm">
           <p class="break-all">{{ basename(item.source) }}</p>
           <p v-if="item.target" class="mt-1 break-all font-medium text-primary-600 dark:text-primary-400">→ {{ plan.kind === 'rename' ? basename(item.target) : item.target }}</p>
-          <p v-if="item.reason" class="ts-muted mt-1 text-xs">{{ item.reason }}</p>
+          <p v-if="item.reason && (item.status === 'failed' || item.status === 'skipped')" class="ts-muted mt-1 text-xs">{{ item.reason }}</p>
           <p v-if="item.detail.label" class="mt-1 text-xs">{{ item.detail.label }}</p>
           <p v-if="plan.kind === 'metadata'" class="mt-1 break-all text-xs">{{ item.detail.time || '不改时间' }} · {{ item.detail.make }} {{ item.detail.model }}</p>
           <details :open="isCleanup" class="ts-muted mt-2 text-xs" @toggle="referenceToggle($event, item)"><summary class="cursor-pointer">照片详情</summary><p class="mt-2 break-all">原位置：{{ item.source }}</p>
@@ -76,36 +75,41 @@
       <p v-if="!rows.length && !loading && !error" class="ts-muted py-8 text-center text-sm">没有这类结果</p>
     </div>
     <div class="flex justify-center"><el-pagination v-model:current-page="page" :page-size="40" :total="total" layout="prev, pager, next" :pager-count="5" @current-change="load" /></div>
-    <div v-if="isPreview" class="ts-surface sticky bottom-0 z-10 space-y-3 p-3">
-      <el-checkbox v-model="confirmed" class="plan-confirmation">确认以上变更</el-checkbox>
+    <div v-if="isPreview" class="plan-actions sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 py-3">
+      <el-checkbox v-model="confirmed" class="plan-confirmation">已核对</el-checkbox>
       <div class="flex flex-wrap justify-end gap-2">
-        <el-button @click="$emit('back')">返回修改</el-button>
+        <el-button @click="$emit('back')">返回</el-button>
         <el-button type="primary" :loading="executing" :disabled="!confirmed || !actionCount || loading || selecting || !!error" @click="$emit('execute', isCleanup && !isAsyncCleanup ? selected : undefined)">
-          确认{{ operationVerb }}
+          确认
         </el-button>
       </div>
     </div>
     <div v-else class="flex flex-wrap justify-end gap-2">
-      <el-button v-if="['queued', 'running', 'scan_queued', 'scanning'].includes(plan.status)" :disabled="plan.stop_requested" @click="$emit('stop')">{{ plan.stop_requested ? '正在停止' : '停止' }}</el-button>
+      <el-button v-if="['queued', 'running', 'scan_queued', 'scanning'].includes(plan.status)" :disabled="plan.stop_requested" @click="$emit('stop')">{{ plan.stop_requested ? '停止中' : '停止' }}</el-button>
       <el-button v-if="plan.summary.failed || (plan.status === 'stopped' && plan.summary.ready)" @click="$emit('recover', 'retry')">重试</el-button>
       <el-button v-if="undoAllowed" @click="$emit('recover', 'undo')">撤销</el-button>
-      <el-button @click="$emit('again')">重新开始</el-button>
+      <el-button @click="$emit('again')">重来</el-button>
     </div>
   </section>
 </template>
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Check, Download } from 'lucide-vue-next'
+import { Check } from 'lucide-vue-next'
 import { workflowApi, type ToolPlan, type ToolPlanItem } from '@/api/toolboxWorkflows'
 import { thumbnailUrl, thumbnailToFileUrl } from '@/utils/mediaUrl'
-import { ElMessage } from 'element-plus'
 const props = defineProps<{ plan: ToolPlan; executing: boolean }>()
 defineEmits<{ execute: [selected?: number[]]; back: []; stop: []; recover: [mode: 'retry' | 'undo']; again: [] }>()
-const labels: Record<string, string> = { preview: '待确认', queued: '排队中', running: '处理中', completed: '已完成', partial: '部分失败', stopped: '已停止', ready: '将变更', candidate: '待核对', skipped: '跳过', success: '成功', failed: '失败' }
+const labels: Record<string, string> = { preview: '待确认', queued: '排队中', running: '处理中', completed: '已完成', partial: '部分失败', stopped: '已停止', ready: '待确认', candidate: '待选', skipped: '跳过', success: '成功', failed: '失败' }
 const isPreview = computed(() => props.plan.status === 'preview')
 Object.assign(labels, { scan_queued: '等待扫描', scanning: '扫描中', scan_stopped: '扫描已停止', scan_failed: '扫描失败' })
 const isCleanup = computed(() => props.plan.kind === 'cleanup')
 const isAsyncCleanup = computed(() => isCleanup.value && !!props.plan.summary.phase)
+const resultFilters = computed(() => {
+  const options: { label: string; value: string }[] = []
+  if (!isAsyncCleanup.value && props.plan.summary.skipped) options.push({ label: '跳过', value: 'skipped' })
+  if (props.plan.summary.failed) options.push({ label: '失败', value: 'failed' })
+  return options
+})
 const scanning = computed(() => ['scan_queued', 'scanning'].includes(props.plan.status))
 const serverSelected = ref(0), selecting = ref(false)
 const selectedCount = computed(() => isAsyncCleanup.value ? serverSelected.value : selected.value.length)
@@ -126,13 +130,12 @@ const photoGroups = computed(() => {
   return [...groups.values()]
 })
 const loading = ref(false), error = ref('')
-const exporting = ref(false)
 let sequence = 0
 const load = async () => {
   const version = ++sequence
   loading.value = true
   try {
-    const result = await workflowApi.items(props.plan.id, (page.value - 1) * 40, status.value || undefined)
+    const result = await workflowApi.items(props.plan.id, (page.value - 1) * 40, status.value || (isPreview.value ? (isCleanup.value ? 'candidate' : 'ready') : undefined))
     if (version !== sequence) return
     rows.value = result.items; total.value = result.total; serverSelected.value = result.selected_count || 0; error.value = ''
     references.value = {}; referencePages.value = {}
@@ -147,7 +150,7 @@ const load = async () => {
   finally { if (version === sequence) loading.value = false }
 }
 watch(() => props.plan.id, () => { selected.value = []; confirmed.value = false; page.value = 1; status.value = ''; load() }, { immediate: true })
-watch(() => props.plan.status, load)
+watch(() => props.plan.status, () => { status.value = ''; page.value = 1; load() })
 const basename = (path: string) => path.split(/[\\/]/).at(-1) || path
 const operationVerb = computed(() => props.plan.kind === 'rename' ? '重命名' : props.plan.kind === 'cleanup' ? '移入回收站'
   : props.plan.kind === 'album' ? '归类到相册' : props.plan.kind === 'metadata' ? '写入拍摄信息' : props.plan.kind === 'undo' ? '恢复原路径'
@@ -182,16 +185,6 @@ const loadReferences = async (groupId: number, page = 1, requestSequence = seque
 const referenceToggle = (event: Event, item: ToolPlanItem) => {
   if ((event.target as HTMLDetailsElement).open && item.detail.group_id) loadReferences(item.detail.group_id)
 }
-const exportResult = async () => {
-  exporting.value = true
-  try {
-    const blob = await workflowApi.export(props.plan.id)
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a'); link.href = url; link.download = `toolbox-${props.plan.id}.csv`; link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  } catch { ElMessage.error('清单导出失败') }
-  finally { exporting.value = false }
-}
 </script>
 
 <style scoped>
@@ -210,6 +203,10 @@ const exportResult = async () => {
 .photo-choice:focus-visible { outline: 3px solid var(--theme-primary); border-radius: 50%; }
 .photo-choice:disabled { cursor: wait; opacity: .6; }
 .photo-selected { outline: 3px solid var(--theme-primary); outline-offset: -3px; }
+.plan-actions {
+  background: var(--ts-color-surface);
+  border-top: 1px solid var(--ts-color-divider);
+}
 .plan-confirmation {
   max-width: 100%;
   height: auto;

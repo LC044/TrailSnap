@@ -181,7 +181,6 @@ test('organize preserves file decisions and normalizes removed advanced settings
   assert.equal(ctx.state.currentPreset.value, 'year-city')
   config.rules[1].groups = ['city-id']
   assert.equal(ctx.state.currentPreset.value, undefined)
-  assert.match(ctx.state.ruleSummary.value, /指定分组/)
   ctx.unmount()
 })
 
@@ -213,5 +212,22 @@ test('rename style switches between simple choices and custom rules without accu
   ctx.state.chooseStyle('IMG_{date}_{time}')
   assert.equal(config.template, 'IMG_{date}_{time}')
   assert.equal(ctx.state.selectedStyle.value, 'IMG_{date}_{time}')
+  ctx.unmount()
+})
+
+test('active tasks open each cleanup mode and undo in the matching tool with its plan', () => {
+  const calls = []
+  const component = load('views/toolbox/ToolboxHomePage.vue', {
+    '@/utils/mediaUrl': { thumbnailUrl: id => id },
+    'vue-router': { useRouter: () => ({ push: value => calls.push(value) }), useRoute: () => ({ query: {} }) },
+    '@/api/toolboxWorkflows': { workflowApi: { history: async () => [] } },
+  }).default
+  const ctx = mount(component)
+  for (const [mode, path] of [['duplicate', '/toolbox/duplicate'], ['similar', '/toolbox/similar'], ['quality', '/toolbox/cleanup']]) {
+    ctx.state.open({ id: mode, kind: 'cleanup', request: { config: { cleanup_mode: mode } } })
+    assert.deepEqual(calls.at(-1), { path, query: { plan: mode } })
+  }
+  ctx.state.open({ id: 'undo', kind: 'undo', request: { config: { kind: 'rename' } } })
+  assert.deepEqual(calls.at(-1), { path: '/toolbox/rename', query: { plan: 'undo' } })
   ctx.unmount()
 })

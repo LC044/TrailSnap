@@ -39,20 +39,20 @@ test.describe('P1 - 照片与工具箱视图合同', () => {
     await expect(page.locator('h1.ts-page-title', { hasText: '低质量照片' })).toBeVisible()
 
     // 旧页的 sort_by=asc/desc 请求随直连列表页移除，候选改由预览计划生成。
-    const next = page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })
+    const next = page.getByRole('button', { name: /^(预览|查找)$/ })
     await expect(next).toBeDisabled()
     await page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '全部' }).click()
     await expect(next).toBeEnabled()
-    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toBeVisible()
+    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toHaveCount(0)
   })
 
   test('OrganizePage 使用范围与规则分离的工作流骨架', async ({ page }) => {
     await page.goto('/toolbox/organize')
-    await expect(page.locator('h1.ts-page-title', { hasText: '影像整理' })).toBeVisible()
+    await expect(page.locator('h1.ts-page-title', { hasText: '整理文件夹' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
     // 规则与范围同屏，无需点击下一步。
-    await expect(page.getByRole('heading', { name: '怎样整理？' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled()
+    await expect(page.getByRole('heading', { name: '整理方式' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
   })
 
   test('修正拍摄信息页同屏显示范围和设置', async ({ page }) => {
@@ -60,7 +60,7 @@ test.describe('P1 - 照片与工具箱视图合同', () => {
     await expect(page.locator('h1.ts-page-title', { hasText: '修正拍摄信息' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
     await expect(page.getByText('时间处理', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
     await expect(page.getByRole('button', { name: '开始修改拍摄信息' })).toHaveCount(0)
   })
 })

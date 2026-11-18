@@ -31,7 +31,7 @@ test.describe('Smoke - 工具箱子页面 @smoke', () => {
     // 旧版「对比照片」弹窗 /「标记删除」按钮已由持久化预览计划替代；
     // 首屏不再拉取聚类结果，也不会默认处理整个图库。
     await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '相册', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled();
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled();
     await expect(page.getByRole('button', { name: '对比照片' })).toHaveCount(0);
   });
 
@@ -44,15 +44,15 @@ test.describe('Smoke - 工具箱子页面 @smoke', () => {
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible();
   });
 
-  test('批量重命名页面正常加载 - 标题与工作流骨架可见', async ({ page }) => {
+  test('批量修改文件名页面正常加载 - 标题与工作流骨架可见', async ({ page }) => {
     await page.goto('/toolbox/rename');
     await expect(page).toHaveURL(/\/toolbox\/rename/);
     await expect(page.locator('body')).toBeVisible();
-    await expect(page.locator('h1.ts-page-title', { hasText: '批量重命名' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1.ts-page-title', { hasText: '批量修改文件名' })).toBeVisible({ timeout: 10_000 });
     // 模板说明（YYYYMMDD_HHMMSS 等）现在属于第二步的 RenameTemplateEditor，首屏只显示范围选择。
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible();
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled();
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled();
   });
 
   test('图片文件整理页面正常加载', async ({ page }) => {
