@@ -148,7 +148,12 @@ def get_tags_with_stats(db: Session, owner_id: UUID, skip: int = 0, limit: int =
 
 def resolve_tag(db, owner_id, tag_name, tag_id=None):
     if tag_id is None:
-        return get_tag_by_name(db, tag_name, owner_id)
+        # 软删除的标签不得再被解析出来：按 id 查找本来就过滤了 is_deleted，
+        # 按名称查找必须保持一致，否则已删除标签仍能参与筛选/封面/移除。
+        tag = get_tag_by_name(db, tag_name, owner_id)
+        if tag is not None and getattr(tag, "is_deleted", False):
+            return None
+        return tag
     return db.query(PhotoTag).filter_by(id=tag_id, owner_id=owner_id, is_deleted=False).first()
 
 
