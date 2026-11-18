@@ -18,12 +18,12 @@ test.describe('P1 - 低质量照片清理工作流 @toolbox-cleanup', () => {
     await page.goto('/toolbox/cleanup')
     await expect(page).toHaveURL(/\/toolbox\/cleanup/)
     await expect(page.locator('h1.ts-page-title', { hasText: '低质量照片' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '找出候选，由你决定保留' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '查找设置' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '相册' }))
       .toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '相册', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
   })
 
   test('切换范围来源会更新范围摘要并解锁下一步', async ({ page }) => {
@@ -31,14 +31,14 @@ test.describe('P1 - 低质量照片清理工作流 @toolbox-cleanup', () => {
     const sources = page.getByRole('group', { name: '范围来源' })
 
     await sources.getByRole('button', { name: '文件夹' }).click()
-    await expect(page.getByRole('button', { name: '选择文件夹' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '选择', exact: true })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '文件夹', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
 
     await sources.getByRole('button', { name: '全部' }).click()
-    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toBeVisible()
-    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeEnabled()
+    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toHaveCount(0)
+    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeEnabled()
   })
 
   test('范围核对失败时显示错误提示并保持页面可用', async ({ page }) => {
@@ -48,7 +48,7 @@ test.describe('P1 - 低质量照片清理工作流 @toolbox-cleanup', () => {
 
     await page.goto('/toolbox/cleanup')
     await page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '全部' }).click()
-    await page.getByRole('button', { name: '查看范围内影像' }).click()
+    await page.getByRole('button', { name: '查看', exact: true }).click()
 
     await expect(page.getByText('范围核对失败，请检查选择并重试')).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('h1.ts-page-title', { hasText: '低质量照片' })).toBeVisible()
