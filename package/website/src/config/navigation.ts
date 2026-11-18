@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import {
   Home,
   BookHeart,
+  Footprints,
   Image as ImageIcon,
   Images,
   Layers,
@@ -51,6 +52,7 @@ export const desktopNavSections: AppNavSection[] = [
       { label: '人物', href: '/album/people', icon: Users, navGroup: 'albums', activeMatch: 'path' },
       { label: '分类', href: '/album/classification', icon: Tags, navGroup: 'albums', activeMatch: 'path' },
       { label: '地图', href: '/album/location', icon: MapPin, navGroup: 'albums', activeMatch: 'path' },
+      { label: '足迹', href: '/footprints', icon: Footprints, navGroup: 'albums', activeMatch: 'path' },
       { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums', activeMatch: 'path' },
       { label: '票夹', href: '/ticket', icon: Ticket, navGroup: 'tickets', activeMatch: 'exact' },
@@ -75,6 +77,7 @@ export const mobileMoreSections: AppNavSection[] = [
       { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums' },
       { label: '地图', href: '/album/location', icon: MapPin, navGroup: 'albums' },
+      { label: '足迹', href: '/footprints', icon: Footprints, navGroup: 'albums' },
     ],
   },
   {

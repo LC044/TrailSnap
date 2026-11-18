@@ -48,7 +48,7 @@ onBeforeUnmount(() => { cleanup?.(); preloadTimers.forEach(clearTimeout); preloa
                 <p class="hero-desc">把电脑里的照片接入行影集，按人物、场景和时间整理；用一句话查找照片，在地图上回顾足迹，还能让 AI 帮你写旅行日记</p>
                 <p class="hosting-note">安装在自己的电脑或服务器上，照片由自己保存</p>
                 <div class="actions">
-                    <a class="btn" href="https://demo.siyuan.ink" target="_blank" rel="noopener">在线体验相册 <span>↗</span></a>
+                    <a class="btn" href="https://demo.trailsnap.cn" target="_blank" rel="noopener">在线体验相册 <span>↗</span></a>
                     <a class="btn secondary" href="/download">下载安装 <span>↓</span></a>
                 </div>
                 <div class="fine"><a href="#product">了解安装与使用 →</a></div>
@@ -83,7 +83,7 @@ onBeforeUnmount(() => { cleanup?.(); preloadTimers.forEach(clearTimeout); preloa
                     </div>
                     <div class="cap-preview-foot">也可以按时间，回看某一天</div>
                 </div>
-                <a class="cap-link" href="https://demo.siyuan.ink" target="_blank" rel="noopener">体验智能相册 <span aria-hidden="true">↗</span></a>
+                <a class="cap-link" href="https://demo.trailsnap.cn" target="_blank" rel="noopener">体验智能相册 <span aria-hidden="true">↗</span></a>
             </article>
             <article>
                 <span class="cap-icon" aria-hidden="true">⌕</span><span class="cap-label">02 / 查找</span>
@@ -97,7 +97,7 @@ onBeforeUnmount(() => { cleanup?.(); preloadTimers.forEach(clearTimeout); preloa
                     </div>
                     <div class="cap-search-hint"><Sun aria-hidden="true" /><span>从画面线索开始<small>还可结合人物、时间与地点查找</small></span></div>
                 </div>
-                <a class="cap-link" href="https://demo.siyuan.ink/search?q=海边日落" target="_blank" rel="noopener">试试照片搜索 <span aria-hidden="true">↗</span></a>
+                <a class="cap-link" href="https://demo.trailsnap.cn/search?q=海边日落" target="_blank" rel="noopener">试试照片搜索 <span aria-hidden="true">↗</span></a>
             </article>
             <article>
                 <span class="cap-icon" aria-hidden="true">⌁</span><span class="cap-label">03 / 回顾</span>
@@ -225,7 +225,7 @@ onBeforeUnmount(() => { cleanup?.(); preloadTimers.forEach(clearTimeout); preloa
                 <div class="tool-copy"><span class="eyebrow">断舍离 / 轻一点的相册</span>
                     <h3>留下喜欢的，放下多余的</h3>
                     <p>向右保留，向左丢弃，给相册做个断舍离</p>
-                    <a href="https://demo.siyuan.ink/swipe-filter" target="_blank" rel="noopener">在演示站打开断舍离 ↗</a>
+                    <a href="https://demo.trailsnap.cn/swipe-filter" target="_blank" rel="noopener">在演示站打开断舍离 ↗</a>
                 </div>
                 <iframe src="/showcase/swipe-fragment.html" title="断舍离本地交互示例，操作不会删除照片" loading="lazy"></iframe>
             </article>

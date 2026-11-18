@@ -35,6 +35,10 @@ function open(channel: typeof channels[number], event: Event) {
       </div></div>
     </div>
     <div class="contact-bottom"><span>© {{ new Date().getFullYear() }} TrailSnap 行影集</span><span>{{ english ? 'Your photos and memories, always yours.' : '照片与回忆，始终属于你' }}</span></div>
+    <div class="contact-registration">
+      <a href="https://beian.miit.gov.cn/#/Integrated/recordQuery" target="_blank" rel="noopener noreferrer">陕ICP备2023017789号</a>
+      <a href="https://blog.siyuan.ink/category/%E8%A1%8C%E5%BD%B1%E9%9B%86" target="_blank" rel="noopener noreferrer">陕公网安备61019002002696号</a>
+    </div>
     <dialog class="contact-dialog" aria-labelledby="contact-dialog-title" @click="($event.target === $event.currentTarget) && ($event.currentTarget as HTMLDialogElement).close()">
       <form method="dialog"><button class="contact-close" aria-label="关闭二维码">×</button></form>
       <template v-if="active"><h2 id="contact-dialog-title">{{ active.name }}</h2><img :src="active.image" :alt="`${active.name}二维码`"><p>使用对应应用扫码关注或加入</p></template>
@@ -43,6 +47,8 @@ function open(channel: typeof channels[number], event: Event) {
 </template>
 
 <style scoped>
+.contact-registration{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 20px;margin-top:16px;color:var(--contact-muted);font-size:12px}
+.contact-registration a:hover{text-decoration:underline;text-underline-offset:3px}
 .contact-footer{--contact-ink:var(--ink,var(--vp-c-text-1));--contact-muted:var(--muted,var(--vp-c-text-2));--contact-line:var(--line,var(--vp-c-divider));padding:64px max(24px,calc((100% - 1200px)/2)) 26px;border-top:1px solid var(--contact-line);background:var(--bg,var(--vp-c-bg));color:var(--contact-ink);font-family:var(--vp-font-family-base);font-size:13px;line-height:1.8}
 .contact-grid{display:grid;grid-template-columns:1.25fr .9fr 1fr 1.15fr;gap:40px}.contact-footer a,.contact-footer button{color:inherit;text-decoration:none}.contact-brand>a:first-child{display:flex;align-items:center;gap:12px}.contact-brand strong{font-size:22px}.contact-brand small{display:block;font-size:9px;letter-spacing:2px;line-height:1}.contact-brand p{margin:18px 0 8px;color:var(--contact-muted)}.contact-footer h2{font:600 14px var(--vp-font-family-base);margin:0 0 20px;border:0;padding:0;letter-spacing:.04em}.contact-footer nav{display:grid;gap:10px;color:var(--contact-muted)}.contact-channels{grid-template-columns:1fr;column-gap:18px}.contact-footer button{font:inherit;text-align:left;padding:0;border:0;background:none;cursor:pointer}.contact-footer nav a:hover,.contact-footer nav button:hover{color:var(--contact-ink)}.contact-footer button:focus-visible,.contact-footer a:focus-visible{outline:2px solid currentColor;outline-offset:5px}.contact-channels span{opacity:.5}.contact-bottom{display:flex;justify-content:space-between;border-top:1px solid var(--contact-line);margin-top:48px;padding-top:20px;color:var(--contact-muted);font-size:11px}.contact-dialog{position:fixed;inset:0;margin:auto;padding:32px;border:1px solid var(--contact-line);border-radius:16px;background:var(--bg,var(--vp-c-bg));color:var(--contact-ink);width:min(360px,calc(100vw - 32px));max-height:90svh;overflow:auto;text-align:center}.contact-dialog::backdrop{background:#15251db3;backdrop-filter:blur(5px)}.contact-dialog h2{margin:8px 0 22px}.contact-dialog img{width:100%;height:auto;border-radius:8px;object-fit:contain}.contact-dialog p{font-size:12px;color:var(--contact-muted);margin:16px 0 0}.contact-dialog .contact-close{position:absolute;right:14px;top:8px;font-size:28px;padding:0 8px}.contact-dialog form{margin:0}
 @media(max-width:900px){.contact-grid{grid-template-columns:1fr 1fr;gap:32px}.contact-channels{max-width:300px}}@media(max-width:520px){.contact-footer{padding-top:40px}.contact-grid{grid-template-columns:1fr 1fr;gap:28px 20px}.contact-brand{grid-column:1/-1}.contact-channels{grid-template-columns:1fr}.contact-bottom{gap:16px;flex-direction:column;margin-top:32px}}

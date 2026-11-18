@@ -10,4 +10,4 @@
 - `showcase-data.json` 仅包含城市汇总与本地示例照片路径，不包含账号、令牌或乘客信息。
 - `echarts.min.js` 沿用项目依赖的 ECharts 发行文件，许可见文件头。
 
-首页的相册和 3D 足迹仍来自 demo.siyuan.ink。免点击登录依赖演示站部署新版前端，以及后端启用 `DEMO_MODE=true`；普通私有部署继续使用正常登录。
+首页的相册和 3D 足迹仍来自 demo.trailsnap.cn。免点击登录依赖演示站部署新版前端，以及后端启用 `DEMO_MODE=true`；普通私有部署继续使用正常登录。

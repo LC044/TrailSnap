@@ -1,10 +1,8 @@
 # AGENTS.md
 
-本文件适用于在 TrailSnap（行影集）仓库中工作的编码代理，仅保留执行约束和文档入口。
-
 ## 按需查阅
 
-- 需求规格、AC、Agent 编码交付与提交：[.agents/skills/trailsnap-commit/SKILL.md](.agents/skills/trailsnap-commit/SKILL.md)。受信任 Agent 按此流程使用 MCP；普通用户 AI 反馈与 Fork 贡献使用需求平台 `/api/agent-guide` 的公开 HTTP 流程，无需登录或配置 MCP。
+- 需求规格、AC、Agent 编码交付与提交：[.agents/skills/trailsnap-commit/SKILL.md](.agents/skills/trailsnap-commit/SKILL.md)。
 - 开发环境与贡献流程：[CONTRIBUTING.md](CONTRIBUTING.md)。
 - 安装与部署：[README.md](README.md)；架构概览：[doc/architecture_design.md](doc/architecture_design.md)。
 - 各模块的启动与构建命令：对应的 `package/<模块>/README.md`。
@@ -34,3 +32,10 @@
 ```powershell
 pwsh .\tests\scripts\run-tests.ps1 -Layer unit -Level smoke
 ```
+
+## 模块说明
+
+- 前端：`package/website`
+- 后端：`package/server`
+- AI微服务：`package/ai`
+- 官网：`package/official-site`

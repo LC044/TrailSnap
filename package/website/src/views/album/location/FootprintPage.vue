@@ -83,6 +83,7 @@
 <script setup lang="ts">
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { onClickOutside } from '@vueuse/core'
 import { CalendarDays, ChartNoAxesColumnIncreasing, ChevronDown, ChevronRight, Eye, EyeOff, Globe2, Images, Layers, LoaderCircle, LocateFixed, MapPin, Maximize, Minimize, Minus, Orbit, Pause, Play, Plus, Search, Settings2, X } from 'lucide-vue-next'
@@ -98,6 +99,7 @@ import FootprintFallback from '@/components/footprint/FootprintFallback.vue'
 const FootprintGlobe = defineAsyncComponent(() => import('@/components/footprint/FootprintGlobe.vue'))
 const PhotoLightbox = defineAsyncComponent(() => import('@/components/PhotoLightbox.vue'))
 const { themeStyle } = injectTheme()
+const route = useRoute()
 const store = useFootprintStore()
 const { data, mapCities, mapRoutes, year, mode, layers, selectedCityId, selectedCity, loading, offline, cachedAt, error } = storeToRefs(store)
 const pageRoot = ref<HTMLElement>()
@@ -249,7 +251,11 @@ function onKeydown(event: KeyboardEvent) {
 function onVisibility() { if (document.hidden) { pause(); rotating.value = false } }
 function onOnline() { if (offline.value) void store.load() }
 onMounted(() => {
-  void store.load()
+  // 从足迹卡片页带 ?city= 进入时，加载完成后直接展开该城市的详情面板。
+  void store.load().then(() => {
+    const cityId = route.query.city
+    if (typeof cityId === 'string' && cityId) selectCity(cityId)
+  })
   document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('visibilitychange', onVisibility)

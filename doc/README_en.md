@@ -44,7 +44,7 @@
   </a>
 <br/>
 
-> 🎉 **Try it online**: Don't want to self-host yet? Explore the full feature set on the demo site 👉 **[https://demo.siyuan.ink](https://demo.siyuan.ink)** (account / password are both `trailsnap`)
+> 🎉 **Try it online**: Don't want to self-host yet? Explore the full feature set on the demo site 👉 **[https://demo.trailsnap.cn](https://demo.trailsnap.cn)** (account / password are both `trailsnap`)
 
 ## ✨ Key Features
 

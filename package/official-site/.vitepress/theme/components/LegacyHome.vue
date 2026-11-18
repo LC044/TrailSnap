@@ -92,7 +92,7 @@
             <!-- Actions -->
             <div class="flex flex-col sm:flex-row justify-center lg:justify-start gap-4">
               <button class="px-8 py-3 rounded-lg bg-primary text-white font-bold hover:bg-primary-dark hover:scale-105 transition-all shadow-lg hover:shadow-xl" @click="goLink(lang === 'zh-CN' ? '/download' : '/en/download')">{{ t.hero.download }}</button>
-              <a href="https://demo.siyuan.ink" target="_blank" rel="noopener" class="px-8 py-3 rounded-lg border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white hover:scale-105 transition-all flex items-center justify-center gap-1">{{ t.hero.demo }} <span class="text-xl">→</span></a>
+              <a href="https://demo.trailsnap.cn" target="_blank" rel="noopener" class="px-8 py-3 rounded-lg border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white hover:scale-105 transition-all flex items-center justify-center gap-1">{{ t.hero.demo }} <span class="text-xl">→</span></a>
               <!-- <button class="px-8 py-3 text-neutral-dark dark:text-gray-200 hover:text-primary dark:hover:text-primary transition-colors font-medium flex items-center justify-center gap-1" @click="goLink(lang === 'zh-CN' ? '/docs/guide/overview' : '/en/docs/guide/overview')">{{ t.hero.details }} <span class="text-xl">→</span></button> -->
             </div>
 
@@ -484,6 +484,10 @@
             <a href="#" class="hover:text-primary transition-colors" @click.prevent="goLink(lang === 'zh-CN' ? '/docs/guide/preflight' : '/en/docs/guide/preflight')">{{ t.footer.agreement }}</a>
           </p>
         </div>
+      </div>
+      <div class="flex flex-wrap justify-center gap-x-5 gap-y-2 px-6 pt-4 text-xs text-white/60">
+        <a href="https://beian.miit.gov.cn/#/Integrated/recordQuery" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">陕ICP备2023017789号</a>
+        <a href="https://blog.siyuan.ink/category/%E8%A1%8C%E5%BD%B1%E9%9B%86" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">陕公网安备61019002002696号</a>
       </div>
     </footer>
   </div>

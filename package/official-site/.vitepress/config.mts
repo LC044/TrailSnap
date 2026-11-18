@@ -179,7 +179,7 @@ export default defineConfig({
         },
         footer: {
           message: '基于 AGPL-3.0 许可发布',
-          copyright: '版权所有 © 2025-至今 TrailSnap'
+          copyright: '版权所有 © 2025-至今 TrailSnap<br><a href="https://beian.miit.gov.cn/#/Integrated/recordQuery" target="_blank" rel="noopener noreferrer">陕ICP备2023017789号</a> · <a href="https://blog.siyuan.ink/category/%E8%A1%8C%E5%BD%B1%E9%9B%86" target="_blank" rel="noopener noreferrer">陕公网安备61019002002696号</a>'
         }
       }
     },
@@ -299,7 +299,7 @@ export default defineConfig({
         },
         footer: {
           message: 'Released under the AGPL-3.0 License',
-          copyright: 'Copyright © 2025-present TrailSnap'
+          copyright: 'Copyright © 2025-present TrailSnap<br><a href="https://beian.miit.gov.cn/#/Integrated/recordQuery" target="_blank" rel="noopener noreferrer">陕ICP备2023017789号</a> · <a href="https://blog.siyuan.ink/category/%E8%A1%8C%E5%BD%B1%E9%9B%86" target="_blank" rel="noopener noreferrer">陕公网安备61019002002696号</a>'
         }
       }
     }

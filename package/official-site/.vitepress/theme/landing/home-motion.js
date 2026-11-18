@@ -37,7 +37,7 @@ document.querySelectorAll('.desktop-viewport').forEach(viewport=>previewObserver
 listen(window,'resize',fitDesktopPreviews);
 fitDesktopPreviews();
 
-const demoOrigin='https://demo.siyuan.ink';
+const demoOrigin='https://demo.trailsnap.cn';
 const homeFrame=document.getElementById('live-home');
 
 document.querySelectorAll('[data-reload]').forEach(button=>button.addEventListener('click',()=>{

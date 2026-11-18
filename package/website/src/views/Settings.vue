@@ -15,11 +15,11 @@
                 :data-tab="item.key"
                 type="button"
                 class="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-gray-700"
-                :class="activeTab === item.key ? 'bg-primary-50 text-primary-600 dark:bg-gray-700 dark:text-primary-400' : ''"
+                :class="activeTab === item.key ? 'bg-primary-50 text-primary-600 dark:bg-gray-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-200'"
                 @click="selectItem(item.key)"
               >
-                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
-                  <component :is="item.icon" class="h-4 w-4" />
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center">
+                  <component :is="item.icon" class="h-5 w-5" />
                 </span>
                 <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ item.label }}</span>
               </button>
@@ -58,7 +58,7 @@
                 :class="index > 0 ? 'border-t border-gray-100 dark:border-gray-700' : ''"
                 @click="selectItem(item.key)"
               >
-                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"><component :is="item.icon" class="h-[18px] w-[18px]" /></span>
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center"><component :is="item.icon" class="h-5 w-5" /></span>
                 <span class="min-w-0 flex-1">
                   <span class="block text-[15px] font-medium">{{ item.label }}</span>
                   <span class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{{ item.description }}</span>
@@ -92,7 +92,7 @@ import { resolveSettingsTab } from '@/config/settingsNavigation'
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Activity, ChevronRight, CloudUpload, Database, FolderOpen, Info, Key, List, MessageSquare, Settings as SettingsIcon, Smartphone, User, UserCircle } from 'lucide-vue-next'
+import { Activity, ChevronRight, CloudUpload, FolderOpen, HardDrive, Info, KeyRound, ListChecks, MapPin, MessageSquare, Palette, ScanFace, Smartphone, Sparkles, UserCircle, UsersRound, Wrench } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
@@ -121,24 +121,24 @@ const contentRef = ref<HTMLElement | null>(null)
 const baseGroups: Array<{ label: string; items: MenuItem[] }> = [
 { label: '我的设置', items: [
 { key: 'profile', label: '个人资料', description: '头像、昵称与账号信息', icon: UserCircle },
-{ key: 'basic', label: '外观与浏览', description: '主题、明暗模式与原图加载', icon: SettingsIcon },
-{ key: 'tokens', label: '外部工具授权', description: '管理工具访问当前账号的令牌', icon: Key },
+{ key: 'basic', label: '外观与浏览', description: '主题、明暗模式与原图加载', icon: Palette },
+{ key: 'tokens', label: '外部工具授权', description: '管理工具访问当前账号的令牌', icon: KeyRound },
 ] },
 { label: '照片与图库', items: [
 { key: 'external', label: '照片文件夹', description: '添加目录、自动扫描与图库选项', icon: FolderOpen },
 { key: 'mobile-app', label: '连接手机 App', description: '下载 App 并连接服务器', icon: Smartphone, hideInMobileApp: true },
 { key: 'mobile-backup', label: '手机备份', description: '进度与自动备份', icon: CloudUpload, mobileOnly: true },
-{ key: 'data-directory', label: '照片与数据位置', description: '保存位置、备份与找回照片', icon: Database, desktopOnly: true },
-{ key: 'map', label: '地图与地点', description: '地点解析与离线城市数据', icon: FolderOpen },
+{ key: 'data-directory', label: '照片与数据位置', description: '保存位置、备份与找回照片', icon: HardDrive, desktopOnly: true },
+{ key: 'map', label: '地图与地点', description: '地点解析与离线城市数据', icon: MapPin },
 ] },
 { label: '智能功能', items: [
-{ key: 'recognition', label: '本地识别模型', description: 'AI 服务地址、识别模型与人脸参数', icon: User },
-{ key: 'ai-models', label: '大模型与文案', description: '模型连接、提示词与自动文案', icon: Database },
+{ key: 'recognition', label: '本地识别模型', description: 'AI 服务地址、识别模型与人脸参数', icon: ScanFace },
+{ key: 'ai-models', label: '大模型与文案', description: '模型连接、提示词与自动文案', icon: Sparkles },
 ] },
 { label: '管理与维护', items: [
-{ key: 'user', label: '成员与注册', description: '管理成员、权限与开放注册', icon: User, superuserOnly: true },
-{ key: 'tasks', label: '后台任务', description: '处理进度、重试与性能模式', icon: List },
-{ key: 'maintenance', label: '高级维护', description: '索引修复、性能测试与配置迁移', icon: Activity },
+{ key: 'user', label: '成员与注册', description: '管理成员、权限与开放注册', icon: UsersRound, superuserOnly: true },
+{ key: 'tasks', label: '后台任务', description: '处理进度、重试与性能模式', icon: ListChecks },
+{ key: 'maintenance', label: '高级维护', description: '索引修复、性能测试与配置迁移', icon: Wrench },
 ] },
 { label: '帮助与关于', items: [
 { key: 'feedback', label: '帮助与反馈', description: '提交需求、反馈问题并跟进', icon: MessageSquare },

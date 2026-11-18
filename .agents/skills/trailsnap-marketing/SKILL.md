@@ -11,7 +11,7 @@ description: 为 TrailSnap（行影集）制作新版本宣传与日常运营内
 - 首要目标为产品曝光和 GitHub Star。体验、收藏、评论是辅助信号，不擅自改为付费转化或投放目标。
 - 账号从零开始，尚无固定文风。初始采用清楚、亲切、具体的表达，测试实用教程、开发者分享、生活记录三种方向；不要把临时选择固化为用户偏好。
 - 小红书与抖音默认图文/plog，不生成视频脚本或视频，除非用户另有要求。公众号承担深入介绍、教程和版本解读。
-- 官网：https://trailsnap.cn/；演示：https://demo.siyuan.ink/；源码：https://github.com/LC044/TrailSnap 。使用前核验相关页面，不把访问失败当作服务下线。
+- 官网：https://trailsnap.cn/；演示：https://demo.trailsnap.cn/；源码：https://github.com/LC044/TrailSnap 。使用前核验相关页面，不把访问失败当作服务下线。
 
 ## 按需读取
 

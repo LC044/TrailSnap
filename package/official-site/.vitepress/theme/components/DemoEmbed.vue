@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(defineProps<{ id: string; path: string; title: string; eager?: boolean; active?: boolean; preload?: boolean }>(), { active: true, eager: false, preload: false })
-const origin = 'https://demo.siyuan.ink'
+const origin = 'https://demo.trailsnap.cn'
 const url = `${origin}${props.path}${props.path.includes('?') ? '&' : '?'}demo=1`
 const frame = ref<HTMLIFrameElement>()
 const src = ref<string>()
