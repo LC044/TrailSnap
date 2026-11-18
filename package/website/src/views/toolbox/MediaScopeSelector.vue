@@ -14,7 +14,7 @@
 
     <el-form label-position="top">
       <el-form-item v-if="scope.source === 'albums'">
-        <el-select :model-value="scope.album_ids" multiple filterable remote :remote-method="searchAlbums"
+        <el-select :model-value="scope.album_ids" aria-label="搜索相册" multiple filterable remote :remote-method="searchAlbums"
           :loading="albumsLoading" placeholder="搜索相册" class="w-full" @update:model-value="update({ album_ids: $event })"
           @visible-change="value => value && searchAlbums('')">
           <el-option v-for="album in albums" :key="album.id" :value="album.id" :label="`${album.name} · ${album.num_photos} 项`" />

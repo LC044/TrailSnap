@@ -28,7 +28,7 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
   test('相册命名与日期筛选只展示当前简化控件', async ({ page }) => {
     await page.goto('/toolbox/albums')
     await expect(page.getByRole('heading', { name: '相册命名', exact: true })).toBeVisible()
-    await expect(page.getByPlaceholder('搜索相册')).toBeVisible()
+    await expect(page.getByRole('combobox', { name: '搜索相册', exact: true })).toBeVisible()
     await page.locator('summary').filter({ hasText: /^日期与类型$/ }).click()
     await expect(page.getByText('拍摄日期', { exact: true })).toHaveCount(1)
     await expect(page.getByRole('button', { name: /^20\d{2} 年$/ })).toHaveCount(0)
