@@ -1,5 +1,6 @@
 ---
 title: Zspace Deployment
+description: "Run TrailSnap on Zspace NAS: Compose deployment, library mounting, and long-term maintenance."
 ---
 
 # Zspace Deployment

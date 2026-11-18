@@ -1,5 +1,6 @@
 ---
 outline: [2, 3]
+description: "Install the TrailSnap Skill in OpenClaw or Roo Code so the agent can query your albums through the API."
 ---
 
 # OpenClaw / Roo Code

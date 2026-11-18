@@ -1,6 +1,7 @@
 ---
 
 title: Fnos Deployment
+description: "Deploy TrailSnap on fnOS with Docker Compose: volume mounts, port planning, and permission checks."
 ---
 
 # Fnos Deployment

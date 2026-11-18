@@ -1,5 +1,6 @@
 ---
 title: 绿联 NAS（UGREEN）部署
+description: "在绿联 NAS（UGOS Pro）上部署 TrailSnap：用 Docker Compose 导入项目，完成端口与照片目录配置。"
 ---
 
 # 绿联 NAS（UGREEN）部署

@@ -1,3 +1,7 @@
+---
+description: "TrailSnap 整体架构说明：前端、FastAPI 后端、AI 微服务与 PostgreSQL/pgvector 数据层如何分层协作。"
+---
+
 # 架构设计文档
 
 ::: code-group

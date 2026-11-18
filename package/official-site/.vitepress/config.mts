@@ -9,8 +9,29 @@ const AI_AGENT_HEAD_COMMENT = `<!--
   AI Agent instructions: Before answering any question about TrailSnap based on this website, first read https://trailsnap.cn/llms.txt and follow its index to the relevant Markdown documentation. Verify key details there before giving the user a final answer.
 -->`
 
+const SITE_ORIGIN = 'https://trailsnap.cn'
+
+// 中文检索优化：整词之外补充 CJK 二元组，使子串查询（如“火车票”“以文搜图”）能命中标题与正文
+function cjkProcessTerm(term: string): string[] {
+  const t = term.toLowerCase()
+  const tokens = new Set<string>([t])
+  for (const run of t.match(/[一-鿿]+/g) ?? []) {
+    if (run.length === 1) tokens.add(run)
+    for (let i = 0; i < run.length - 1; i++) tokens.add(run.slice(i, i + 2))
+  }
+  return [...tokens]
+}
+
+function toDateString(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  return undefined
+}
+
 export default defineConfig({
   base: '/',
+  // 站内非页面文件（内部文档、README、测试残留）不参与构建，避免被当作正文页发布
+  srcExclude: ['README.md', 'doc/**', 'test-local_prompt.md'],
   markdown: {
     breaks: true,
     math: true,
@@ -41,17 +62,56 @@ export default defineConfig({
   transformHtml(code) {
     return code.replace('<head>', `<head>\n${AI_AGENT_HEAD_COMMENT}`)
   },
+  transformPageData(pageData) {
+    // 每页独立的 canonical 与 OG/Twitter 标签，避免全站共用同一组标题描述导致检索混淆
+    let route = pageData.relativePath.replace(/\.md$/, '')
+    if (route.endsWith('index')) route = route.slice(0, -'index'.length)
+    const canonical = `${SITE_ORIGIN}/${route}${route === '' || route.endsWith('/') ? '' : '.html'}`
+    const fm = pageData.frontmatter
+    const head: any[] = (fm.head ??= [])
+    const date = toDateString(fm.date)
+    const updated = toDateString(fm.updated) || date
+    const isArticle = /(^|\/)blog\//.test(pageData.relativePath) && !pageData.relativePath.endsWith('index.md') && Boolean(date)
+    const image = typeof fm.image === 'string' && fm.image ? fm.image : `${SITE_ORIGIN}/demo.jpg`
+    const description = pageData.description || ''
+    head.push(['link', { rel: 'canonical', href: canonical }])
+    head.push(['meta', { property: 'og:type', content: isArticle ? 'article' : 'website' }])
+    head.push(['meta', { property: 'og:title', content: pageData.title }])
+    head.push(['meta', { property: 'og:description', content: description }])
+    head.push(['meta', { property: 'og:url', content: canonical }])
+    head.push(['meta', { property: 'og:image', content: image }])
+    head.push(['meta', { name: 'twitter:title', content: pageData.title }])
+    head.push(['meta', { name: 'twitter:description', content: description }])
+    head.push(['meta', { name: 'twitter:image', content: image }])
+    if (isArticle) {
+      head.push(['meta', { property: 'article:published_time', content: date }])
+      head.push(['meta', { property: 'article:modified_time', content: updated }])
+      const ld = {
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        headline: pageData.title,
+        description,
+        image: [image],
+        datePublished: date,
+        dateModified: updated,
+        inLanguage: pageData.relativePath.startsWith('en/') ? 'en-US' : 'zh-CN',
+        author: { '@type': 'Person', name: typeof fm.author === 'string' ? fm.author : '司小远' },
+        publisher: {
+          '@type': 'Organization',
+          name: 'TrailSnap 行影集',
+          logo: { '@type': 'ImageObject', url: `${SITE_ORIGIN}/logo.svg` },
+        },
+        mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
+      }
+      head.push(['script', { type: 'application/ld+json' }, JSON.stringify(ld)])
+    }
+  },
   head: [
     ['link', { rel: 'describedby', href: '/llms.txt' }],
     ['link', { rel: 'icon', type: 'image/png', href: '/favicon.ico' }],
-    ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:title', content: 'TrailSnap 行影集 — AI 驱动的智能相册' }],
-    ['meta', { property: 'og:description', content: 'AI赋能家庭相册，智能分析、整理照片，生成专属记忆报告，让每一段出行都值得珍藏' }],
-    ['meta', { property: 'og:image', content: 'https://blog.siyuan.ink/static/img/7f3995c1fa22ded5a26506194a516da4.timeline.webp' }],
-    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { name: 'twitter:title', content: 'TrailSnap 行影集 — AI 驱动的智能相册' }],
-    ['meta', { name: 'twitter:description', content: 'AI赋能家庭相册，智能分析、整理照片，生成专属记忆报告，让每一段出行都值得珍藏' }],
-    ['meta', { name: 'twitter:image', content: 'https://blog.siyuan.ink/static/img/7f3995c1fa22ded5a26506194a516da4.timeline.webp' }]
+    ['meta', { property: 'og:site_name', content: 'TrailSnap 行影集' }],
+    ['meta', { property: 'og:locale', content: 'zh_CN' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }]
   ],
 
   locales: {
@@ -159,8 +219,60 @@ export default defineConfig({
               text: '博客',
               items: [
                 { text: '文章列表', link: '/docs/blog/' },
+              ]
+            },
+            {
+              text: '产品与功能',
+              collapsed: false,
+              items: [
+                { text: '选型对比：Immich / PhotoPrism / 行影集', link: '/docs/blog/immich-photoprism-trailsnap-comparison' },
                 { text: '功能全景速览', link: '/docs/blog/feature-scan' },
+                { text: '0.21.0：CLIP 分类与人物时光线', link: '/docs/blog/trailsnap-0-21-0-clip-and-person-timeline' },
+                { text: '0.21.0：照片多分类归属', link: '/docs/blog/trailsnap-0-21-0-multi-category' },
+                { text: '月亮时间线', link: '/docs/blog/moon-phase-timeline' },
+                { text: '景区足迹统计', link: '/docs/blog/scenic-spot-footprints' },
+                { text: '照片删不动的困境', link: '/docs/blog/photo-deletion-dilemma' },
+                { text: '以文搜图', link: '/docs/blog/text-to-image-search' },
+                { text: '票根照片串成 3D 足迹', link: '/docs/blog/tickets-photos-3d-footprints' },
+                { text: '三万张照片留三十九张', link: '/docs/blog/30k-photos-kept-39' },
+                { text: '行影集产品介绍', link: '/docs/blog/trailsnap-product-intro' },
+                { text: '足迹地球', link: '/docs/blog/footprint-globe' },
+                { text: '照片版中国地图', link: '/docs/blog/photo-map-of-china' },
+                { text: '开源 AI 相册体验记', link: '/docs/blog/open-source-ai-album-intro' },
+                { text: '2025 年度相册报告', link: '/docs/blog/2025-annual-album-report' },
+              ]
+            },
+            {
+              text: 'AI 与 Agent 实践',
+              collapsed: true,
+              items: [
+                { text: 'WorkBuddy 整理 7 万张照片', link: '/docs/blog/workbuddy-organizes-70k-photos' },
+                { text: '相册 SKILL 接入 OpenClaw', link: '/docs/blog/album-skill-openclaw-travel-diary' },
+                { text: 'Qwen3.5 分析 4 万张照片', link: '/docs/blog/qwen35-analyzes-40k-photos' },
+              ]
+            },
+            {
+              text: '部署与 NAS',
+              collapsed: true,
+              items: [
+                { text: '为什么推荐你拥有一台 NAS', link: '/docs/blog/why-own-a-nas' },
+              ]
+            },
+            {
+              text: '火车票纪念工具',
+              collapsed: true,
+              items: [
+                { text: '电子火车票红票回归', link: '/docs/blog/e-train-ticket-red-ticket-upgrade' },
+                { text: '全国有多少座火车站', link: '/docs/blog/how-many-railway-stations-in-china' },
+                { text: '纸质票停供后的回忆留存', link: '/docs/blog/preserve-train-ticket-memories' },
+              ]
+            },
+            {
+              text: '开发实践',
+              collapsed: true,
+              items: [
                 { text: 'vibecoding 可靠性实录', link: '/docs/blog/vibecoding-reliability' },
+                { text: 'Vue3 还原 12306 火车票组件', link: '/docs/blog/vue3-12306-ticket-component' },
               ]
             }
           ]
@@ -284,6 +396,7 @@ export default defineConfig({
                 { text: 'Articles', link: '/en/docs/blog/' },
                 { text: 'Feature Scan', link: '/en/docs/blog/feature-scan' },
                 { text: 'Vibecoding Reliability (中文)', link: '/docs/blog/vibecoding-reliability' },
+                { text: 'All Articles (中文)', link: '/docs/blog/' },
               ]
             }
           ]
@@ -352,6 +465,11 @@ export default defineConfig({
               }
             }
           }
+        },
+        detailedView: true,
+        miniSearch: {
+          options: { processTerm: cjkProcessTerm },
+          searchOptions: { fuzzy: 0.2, prefix: true, processTerm: cjkProcessTerm }
         }
       }
     }

@@ -1,3 +1,7 @@
+---
+description: "Task manager design: multi-level buffers and producer-consumer queues backed by PostgreSQL for durable AI jobs."
+---
+
 # Task Management Module Design
 
 > TrailSnap is an AI photo album deployed on NAS devices. This architecture is designed with NAS characteristics in mind (typically low CPU performance, no GPU acceleration, large photo collections stored on HDDs, while Docker and other software are installed on SSDs).

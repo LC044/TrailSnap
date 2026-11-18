@@ -1,3 +1,7 @@
+---
+description: "Frontend stack: Vue 3, TypeScript and Vite, with Element Plus and TailwindCSS, plus the project directory layout."
+---
+
 # Frontend Framework Analysis Document
 
 ## 1. Tech Stack Breakdown

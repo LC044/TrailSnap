@@ -1,3 +1,7 @@
+---
+description: "访问令牌设置：创建令牌、设置过期时间，供 CLI、MCP 等第三方工具调用 TrailSnap 后端 API。"
+---
+
 # 设置访问令牌
 
 ::: info Token 设置

@@ -33,6 +33,7 @@ const categoryLabels: Record<string, Record<Language, string>> = {
   reference: { 'zh-CN': '参考信息', en: 'Reference' },
   agent: { 'zh-CN': 'Agent 集成', en: 'Agent integration' },
   developer: { 'zh-CN': '开发者文档', en: 'Developer documentation' },
+  blog: { 'zh-CN': '博客', en: 'Blog' },
 }
 
 const categoryOrder = [
@@ -45,6 +46,7 @@ const categoryOrder = [
   'reference',
   'agent',
   'developer',
+  'blog',
 ]
 
 function walkMarkdownFiles(dir: string): string[] {
@@ -128,6 +130,7 @@ function extractDescription(content: string): string {
 function categoryForPath(relativePath: string): string {
   const normalized = relativePath.replace(/\\/g, '/')
   if (normalized === 'public/install.md') return 'agent'
+  if (normalized.includes('/blog/')) return 'blog'
   if (normalized.includes('/guide/ai-access.md')) return 'ai-access'
   if (normalized.includes('/guide/agent/')) return 'agent'
   if (normalized.includes('/guide/docker/')) return 'docker'
@@ -171,7 +174,7 @@ function collectDocuments(): AiDocument[] {
     const localeDirectory = language === 'zh-CN' ? path.join(siteRoot, 'docs') : path.join(siteRoot, 'en', 'docs')
     const markdownPrefix = language === 'zh-CN' ? '/docs' : '/en/docs'
 
-    for (const section of ['guide', 'dev']) {
+    for (const section of ['guide', 'dev', 'blog']) {
       for (const file of walkMarkdownFiles(path.join(localeDirectory, section))) {
         const relativeToLocale = path.relative(localeDirectory, file)
         if (relativeToLocale.replace(/\\/g, '/').startsWith('dev/prompt/')) continue
@@ -245,7 +248,7 @@ function llmsFullText(documents: AiDocument[]): string {
   return [
     '# TrailSnap documentation for AI agents',
     '',
-    `This file combines the official TrailSnap user guide, deployment guide, agent guide, and core developer documentation. Updated: ${today}.`,
+    `This file combines the official TrailSnap user guide, deployment guide, agent guide, product blog, and core developer documentation. Updated: ${today}.`,
     '',
     chunks.join('\n\n---\n\n\n'),
     '',
@@ -278,15 +281,20 @@ function aiDocsJson(documents: AiDocument[]): string {
   )}\n`
 }
 
+function documentLastmod(document: AiDocument): string {
+  return frontmatterValue(document.content, 'updated') || frontmatterValue(document.content, 'date') || today
+}
+
 function sitemap(documents: AiDocument[]): string {
   const urls = [
-    { path: '/', priority: '1.0' },
-    { path: '/download', priority: '0.9' },
-    { path: '/cli', priority: '0.8' },
-    { path: '/install.md', priority: '0.8' },
+    { path: '/', priority: '1.0', lastmod: today },
+    { path: '/download', priority: '0.9', lastmod: today },
+    { path: '/cli', priority: '0.8', lastmod: today },
+    { path: '/install.md', priority: '0.8', lastmod: today },
     ...documents.map((document) => ({
       path: document.htmlPath,
-      priority: document.categoryKey === 'agent' ? '0.9' : '0.7',
+      priority: document.categoryKey === 'agent' ? '0.9' : document.markdownPath.endsWith('/blog/index.md') ? '0.8' : '0.7',
+      lastmod: documentLastmod(document),
     })),
   ]
 
@@ -296,7 +304,7 @@ function sitemap(documents: AiDocument[]): string {
     ...urls.map((url) => [
       '  <url>',
       `    <loc>${siteUrl}${url.path}</loc>`,
-      `    <lastmod>${today}</lastmod>`,
+      `    <lastmod>${url.lastmod}</lastmod>`,
       `    <priority>${url.priority}</priority>`,
       '  </url>',
     ].join('\n')),

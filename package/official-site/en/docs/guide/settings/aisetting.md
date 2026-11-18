@@ -1,3 +1,7 @@
+---
+description: "AI model settings: the built-in multimodal model, remote OpenAI or Ollama endpoints, and per-task model assignment."
+---
+
 # AI / LLM Settings
 
 ::: tip Desktop users

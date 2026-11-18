@@ -1,5 +1,6 @@
 ---
 title: 极空间部署
+description: "在极空间 NAS 上长期运行 TrailSnap：Docker Compose 部署、照片库挂载与日常维护。"
 ---
 
 # 极空间部署

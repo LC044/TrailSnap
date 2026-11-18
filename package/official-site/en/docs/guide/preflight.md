@@ -1,5 +1,6 @@
 ---
 outline: [2, 3]
+description: "Pre-deployment checklist: photo paths, Docker permissions, port conflicts, and backups before the first scan."
 ---
 
 # Pre-deployment checklist

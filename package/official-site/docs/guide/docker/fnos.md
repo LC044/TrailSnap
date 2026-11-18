@@ -1,5 +1,6 @@
 ---
 title: 飞牛OS（fnOS）部署
+description: "在飞牛 OS（fnOS）上用 Docker Compose 部署 TrailSnap：目录挂载、端口规划与权限校验。"
 ---
 
 # 飞牛OS（fnOS）部署

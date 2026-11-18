@@ -1,3 +1,7 @@
+---
+description: "在 Claude Code 中接入 TrailSnap CLI：获取访问令牌、安装 Skill，让 AI 直接查询你的相册数据。"
+---
+
 # Claude Code
 
 > 在 Claude Code 中使用 trailsnap-cli skill 使用 AI 管理相册。

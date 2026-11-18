@@ -1,3 +1,7 @@
+---
+description: "Complete TrailSnap feature list: albums, AI search, footprint maps, tickets, yearly reports, and toolbox utilities."
+---
+
 # Feature List
 
 This document lists the complete feature set of TrailSnap, helping you quickly understand all its capabilities.

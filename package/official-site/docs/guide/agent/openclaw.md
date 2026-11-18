@@ -1,5 +1,6 @@
 ---
 outline: [2, 3]
+description: "在 OpenClaw / Roo Code 等 IDE Agent 中安装 TrailSnap Skill，通过令牌让 AI 查询个人相册。"
 ---
 
 # OpenClaw / Roo Code

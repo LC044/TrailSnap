@@ -1,3 +1,7 @@
+---
+description: "TrailSnap architecture overview: frontend, FastAPI backend, AI microservice, and PostgreSQL/pgvector data layers."
+---
+
 # Architecture Design Document
 
 ## 1. Overall Architecture Diagram
