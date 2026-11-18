@@ -76,7 +76,7 @@
     </div>
     <div class="flex justify-center"><el-pagination v-model:current-page="page" :page-size="40" :total="total" layout="prev, pager, next" :pager-count="5" @current-change="load" /></div>
     <div v-if="isPreview" class="plan-actions sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 py-3">
-      <el-checkbox v-model="confirmed" class="plan-confirmation">已核对</el-checkbox>
+      <el-checkbox v-model="confirmed" class="plan-confirmation">已悉知变更情况</el-checkbox>
       <div class="flex flex-wrap justify-end gap-2">
         <el-button @click="$emit('back')">返回</el-button>
         <el-button type="primary" :loading="executing" :disabled="!confirmed || !actionCount || loading || selecting || !!error" @click="$emit('execute', isCleanup && !isAsyncCleanup ? selected : undefined)">

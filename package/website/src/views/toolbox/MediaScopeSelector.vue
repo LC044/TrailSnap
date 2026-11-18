@@ -15,7 +15,7 @@
     <el-form label-position="top">
       <el-form-item v-if="scope.source === 'albums'">
         <el-select :model-value="scope.album_ids" multiple filterable remote :remote-method="searchAlbums"
-          :loading="albumsLoading" placeholder="输入相册名称搜索" class="w-full" @update:model-value="update({ album_ids: $event })"
+          :loading="albumsLoading" placeholder="搜索相册" class="w-full" @update:model-value="update({ album_ids: $event })"
           @visible-change="value => value && searchAlbums('')">
           <el-option v-for="album in albums" :key="album.id" :value="album.id" :label="`${album.name} · ${album.num_photos} 项`" />
         </el-select>
@@ -44,13 +44,6 @@
 
       <details :open="scope.source === 'filter' || !!scope.start_date || !!scope.end_date || scope.upload_time_fallback || scope.media_type !== 'image'" class="mt-4">
         <summary class="cursor-pointer py-3 text-sm">日期与类型</summary>
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <span class="text-sm font-semibold">拍摄日期</span>
-          <div class="flex flex-wrap gap-2">
-            <el-button v-for="year in years" :key="year" size="small" @click="update({ start_date: `${year}-01-01`, end_date: `${year}-12-31` })">{{ year }} 年</el-button>
-            <el-button size="small" @click="update({ start_date: null, end_date: null })">清除</el-button>
-          </div>
-        </div>
         <el-form-item label="拍摄日期">
           <UnifiedDatePicker :model-value="dateRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期"
             end-placeholder="结束日期" class="w-full max-w-md" @update:model-value="setDates" />
@@ -99,7 +92,6 @@ const valid = computed(() => {
     || (s.source === 'filter' && !!(s.start_date || s.end_date))
 })
 const scopeExpanded = ref(!valid.value)
-const years = [new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2]
 const dateRange = computed(() => props.scope.start_date && props.scope.end_date ? [props.scope.start_date, props.scope.end_date] : null)
 const setDates = (value: unknown) => {
   const range = Array.isArray(value) ? value as string[] : []

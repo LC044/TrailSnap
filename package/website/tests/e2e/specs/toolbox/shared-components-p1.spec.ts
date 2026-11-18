@@ -19,10 +19,22 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
       await page.goto(`/toolbox/${tool.path}`)
       await expect(page.locator('h1.ts-page-title', { hasText: tool.title })).toBeVisible({ timeout: 10_000 })
       await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
-      await expect(page.getByRole('link', { name: '操作记录' })).toHaveAttribute('href', '/toolbox')
+      await expect(page.getByRole('link', { name: '操作记录' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '查看', exact: true })).toBeDisabled()
       await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
     })
   }
+
+  test('相册命名与日期筛选只展示当前简化控件', async ({ page }) => {
+    await page.goto('/toolbox/albums')
+    await expect(page.getByRole('heading', { name: '相册命名', exact: true })).toBeVisible()
+    await expect(page.getByPlaceholder('搜索相册')).toBeVisible()
+    await page.locator('summary').filter({ hasText: /^日期与类型$/ }).click()
+    await expect(page.getByText('拍摄日期', { exact: true })).toHaveCount(1)
+    await expect(page.getByRole('button', { name: /^20\d{2} 年$/ })).toHaveCount(0)
+    await expect(page.getByText('高级设置', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '预览', exact: true })).toBeDisabled()
+  })
 
   test('范围来源切换不会隐式带入目录，文件夹需显式选择', async ({ page }) => {
     await page.goto('/toolbox/rename')

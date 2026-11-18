@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-5">
-    <h2 class="ts-section-title">整理方式</h2>
+    <h2 class="ts-section-title">{{ config.kind === 'album' ? '相册命名' : '整理方式' }}</h2>
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="常用整理方案">
       <button v-for="preset in quickPresets" :key="preset.id" type="button" class="ts-button ts-button-secondary"
         :aria-pressed="currentPreset === preset.id" :class="{ 'preset-selected': currentPreset === preset.id }" @click="applyPreset(preset.id)"><Check v-if="currentPreset === preset.id" class="h-4 w-4 shrink-0" aria-hidden="true" />{{ preset.label }}</button>
