@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 # Keep this fast startup check in sync with the SQLite Alembic head.
-DESKTOP_SCHEMA_REVISION = "cleanup_sqlite_0027"
+DESKTOP_SCHEMA_REVISION = "llm_usage_sqlite_0028"
 
 # The desktop UI talks to the sidecar exactly like the production web UI talks
 # to nginx: all API calls start with /api. The bundled server has no reverse
