@@ -6,7 +6,7 @@
       <div class="ts-browse-header mx-auto flex items-center gap-3">
         <BackButton label="返回" @click="goBack" />
         <div>
-          <h1 class="text-lg font-bold text-gray-900 dark:text-white leading-tight">
+          <h1 class="journal-page-title">
             {{ title }}
           </h1>
           <p class="text-xs text-gray-500">{{ subtitle }}</p>

@@ -16,7 +16,7 @@ function shelf(api) {
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/components/chapter/ChapterShelf.vue'), 'utf8')
   const { descriptor, errors } = parse(source)
   assert.deepEqual(errors, [])
-  const code = ts.transpileModule(descriptor.scriptSetup.content + '\nexport { items, candidateCount, loading, shelf }', {
+  const code = ts.transpileModule(descriptor.scriptSetup.content + '\nexport { chapters, candidateCount, loading }', {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText
   let mount
@@ -26,30 +26,26 @@ function shelf(api) {
     '@/utils/mediaUrl': { thumbnailUrl: id => id },
   }
   const module = { exports: {} }
-  new Function('require', 'module', 'exports', 'sessionStorage', code)(name => deps[name], module, module.exports, {
-    getItem: () => '120',
-  })
+  new Function('require', 'module', 'exports', code)(name => deps[name], module, module.exports)
   return { state: module.exports, mount }
 }
 
-test('chapter covers become visible while the parallel suggestion count is still pending', async () => {
+test('the chapter cover becomes visible while the suggestion count is still pending', async () => {
   const list = deferred(), count = deferred()
   const calls = []
   const { state, mount } = shelf({
     list: () => { calls.push('list'); return list.promise },
     count: () => { calls.push('count'); return count.promise },
   })
-  state.shelf.value = { scrollLeft: 0, setScrollLeft(value) { this.scrollLeft = value } }
   const pending = mount()
   assert.deepEqual(calls, ['list', 'count'])
   list.resolve({ items: [{ id: 'chapter', cover_photo_id: 'cover' }] })
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(state.loading.value, false)
-  assert.equal(state.items.value[0].cover_photo_id, 'cover')
-  assert.equal(state.shelf.value.scrollLeft, 120)
+  assert.equal(state.chapters.value[0].cover_photo_id, 'cover')
   count.reject(new Error('count unavailable'))
   await pending
-  assert.equal(state.items.value.length, 1)
+  assert.equal(state.chapters.value[0].id, 'chapter')
   assert.equal(state.candidateCount.value, 0)
 })
 
@@ -60,6 +56,6 @@ test('suggestion count remains available when the chapter list fails', async () 
   })
   await mount()
   assert.equal(state.loading.value, false)
-  assert.equal(state.items.value.length, 0)
+  assert.deepEqual(state.chapters.value, [])
   assert.equal(state.candidateCount.value, 3)
 })

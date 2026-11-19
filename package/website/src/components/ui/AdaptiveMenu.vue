@@ -6,7 +6,7 @@
     <span ref="anchorRef" hidden />
     <Teleport to="body">
       <Transition :css="false" @enter="morphEnter" @leave="morphLeave" @enter-cancelled="interruptMorph" @leave-cancelled="interruptMorph">
-        <div v-if="modelValue" ref="menuRef" role="menu" :aria-label="title" class="ts-liquid-glass ts-desktop-menu" :style="menuStyle" @click="closeAfterAction"><div class="ts-menu-content"><slot /></div></div>
+        <div v-if="modelValue" v-glass-refraction ref="menuRef" role="menu" :aria-label="title" class="ts-liquid-glass ts-desktop-menu" :style="menuStyle" @click="closeAfterAction"><div class="ts-menu-content"><slot /></div></div>
       </Transition>
     </Teleport>
   </template>

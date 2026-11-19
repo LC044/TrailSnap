@@ -1,9 +1,9 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
-    <el-card class="w-full max-w-md shadow-lg">
+  <main class="auth-page">
+    <el-card class="auth-panel recovery-panel">
       <template #header>
         <div class="text-center">
-          <h2 class="text-xl font-bold text-gray-800 dark:text-white">找回密码</h2>
+          <h1 class="journal-page-title">找回密码</h1>
         </div>
       </template>
 
@@ -171,10 +171,11 @@
         <router-link to="/login" class="text-blue-600 hover:underline text-sm">返回登录</router-link>
       </div>
     </el-card>
-  </div>
+  </main>
 </template>
 
 <script setup lang="ts">
+import './auth.css'
 import { ref, reactive, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';

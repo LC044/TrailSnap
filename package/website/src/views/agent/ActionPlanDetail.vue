@@ -7,7 +7,7 @@
         <div class="rounded-xl bg-primary-500/10 p-2.5 text-primary-600"><ShieldCheck class="h-6 w-6" /></div>
         <div>
           <p class="text-sm font-medium text-primary-600">安全操作与任务详情</p>
-          <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">AI 相册操作方案</h1>
+          <h1 class="journal-page-title mt-1">AI 相册操作方案</h1>
           <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">Agent 只能提出方案，确认前不会写入。页面会明确标出后台任务、可撤销操作和回收站清理；磁盘原文件不会被 Agent 删除。</p>
         </div>
       </div>

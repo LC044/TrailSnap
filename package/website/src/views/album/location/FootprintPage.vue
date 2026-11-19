@@ -25,7 +25,7 @@
           <div ref="searchBox" class="search-box glass"><Search /><input v-model="search" aria-label="搜索足迹城市" placeholder="搜索你的足迹城市…" @focus="searchFocused = true" @keydown.escape="searchFocused = false" />
             <div v-if="searchFocused && search.trim()" class="search-results glass"><button v-for="city in searchResults" :key="city.id" @click="selectCity(city.id); searchFocused = false; search = ''"><MapPin /><span>{{ city.name }}<small>{{ city.province || city.country }}</small></span><small>{{ format(city.photo_count) }} 张</small></button><p v-if="!searchResults.length">这个时间范围内没有匹配的足迹</p></div>
           </div>
-          <div class="ts-liquid-glass ts-glass-toolbar footprint-actions">
+          <div v-glass-refraction class="ts-liquid-glass ts-glass-toolbar footprint-actions">
           <button class="ts-glass-button panel-toggle" :aria-expanded="showPanel" aria-label="切换足迹统计面板" @click="showPanel = !showPanel"><ChartNoAxesColumnIncreasing /></button>
           <div ref="layerMenu" class="layer-control"><button class="ts-glass-button" aria-label="地图图层" :aria-expanded="showLayers" @click="showLayers = !showLayers"><Layers /></button>
             <div v-if="showLayers" class="layer-menu glass"><strong>地图图层</strong><label v-for="item in layerOptions" :key="item.key"><input v-model="layers[item.key]" type="checkbox" />{{ item.label }}</label><p>地形需要网络；底图不可用时自动显示本地地球。</p></div>
@@ -83,7 +83,6 @@
 <script setup lang="ts">
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { onClickOutside } from '@vueuse/core'
 import { CalendarDays, ChartNoAxesColumnIncreasing, ChevronDown, ChevronRight, Eye, EyeOff, Globe2, Images, Layers, LoaderCircle, LocateFixed, MapPin, Maximize, Minimize, Minus, Orbit, Pause, Play, Plus, Search, Settings2, X } from 'lucide-vue-next'
@@ -99,7 +98,6 @@ import FootprintFallback from '@/components/footprint/FootprintFallback.vue'
 const FootprintGlobe = defineAsyncComponent(() => import('@/components/footprint/FootprintGlobe.vue'))
 const PhotoLightbox = defineAsyncComponent(() => import('@/components/PhotoLightbox.vue'))
 const { themeStyle } = injectTheme()
-const route = useRoute()
 const store = useFootprintStore()
 const { data, mapCities, mapRoutes, year, mode, layers, selectedCityId, selectedCity, loading, offline, cachedAt, error } = storeToRefs(store)
 const pageRoot = ref<HTMLElement>()
@@ -251,11 +249,7 @@ function onKeydown(event: KeyboardEvent) {
 function onVisibility() { if (document.hidden) { pause(); rotating.value = false } }
 function onOnline() { if (offline.value) void store.load() }
 onMounted(() => {
-  // 从足迹卡片页带 ?city= 进入时，加载完成后直接展开该城市的详情面板。
-  void store.load().then(() => {
-    const cityId = route.query.city
-    if (typeof cityId === 'string' && cityId) selectCity(cityId)
-  })
+  void store.load()
   document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('visibilitychange', onVisibility)

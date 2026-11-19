@@ -9,7 +9,7 @@
           <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled && !stableTitle ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
             <BackButton label="返回" v-if="showBack" @click="$emit('back')" />
             <div v-if="!loadingTitle" class="ts-title-block min-w-0 transition-colors duration-200" :class="[stableTitle ? 'ts-liquid-glass rounded-full px-3 py-1.5' : headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2', { 'ts-title-block--compact': subtitle && (stableTitle || !headerScrolled) }]">
-              <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': headerScrolled && !stableTitle }">
+              <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': (headerScrolled && !stableTitle) || subtitle }">
                 <span class="truncate">{{ title }}</span>
                 <slot name="title-extra"></slot>
               </h1>
@@ -22,7 +22,7 @@
         </slot>
 
         <!-- Controls -->
-        <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center justify-end ml-auto">
+        <div v-glass-refraction class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center justify-end ml-auto">
 
           <!-- 年月日视图切换按钮 -->
           <button v-if="enableTimeBrowse" type="button" class="ts-glass-button photo-time-view-button font-medium"
@@ -1120,12 +1120,12 @@ defineExpose({
 .photo-choice-grid { display: grid; gap: 4px; padding: 4px; border-radius: 12px; background: var(--ts-color-surface-muted); }
 .photo-choice { display: flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 4px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--ts-color-text-secondary); transition: background-color 160ms ease, color 160ms ease; }
 .photo-choice:hover { color: var(--ts-color-text); }
-.photo-choice[aria-pressed="true"] { background: var(--ts-color-surface); color: var(--theme-primary); box-shadow: 0 1px 4px rgb(0 0 0 / 8%); }
+.photo-choice[aria-pressed="true"] { background: var(--ts-color-surface); color: var(--ts-journal-accent-text); box-shadow: 0 1px 4px rgb(0 0 0 / 8%); }
 .photo-size-choice { flex-direction: column; gap: 5px; min-height: 58px; font-size: 12px; }
 .photo-layout-options { display: grid; gap: 2px; }
 .photo-option-row { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 10px; border-radius: 10px; text-align: left; font-size: 14px; font-weight: 500; color: var(--ts-color-text-secondary); transition: background-color 160ms ease, color 160ms ease; }
 .photo-option-row:hover { background: var(--ts-color-surface-muted); color: var(--ts-color-text); }
-.photo-option-row[aria-pressed="true"] { background: rgba(var(--theme-rgb), .1); color: var(--theme-primary); }
+.photo-option-row[aria-pressed="true"] { background: rgba(var(--theme-rgb), .1); color: var(--ts-journal-accent-text); }
 .photo-view-actions { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--ts-color-divider); }
 .photo-choice:focus-visible, .photo-option-row:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
 @media (max-width: 767px) { .photo-choice { min-height: 44px; } }

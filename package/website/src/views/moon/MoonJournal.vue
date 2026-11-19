@@ -1,25 +1,23 @@
 <template>
-  <div class="moon-journal min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" data-testid="moon-journal">
+  <div class="moon-journal journal-neutral-page min-h-screen" data-testid="moon-journal">
     <div class="mx-auto max-w-screen-2xl ts-page-inset ts-browse-page">
       <div class="ts-browse-header flex items-center gap-3">
-        <h1 class="ts-page-title">月迹</h1>
+        <h1 class="journal-page-title">月迹</h1>
       </div>
-      <header class="relative isolate min-h-[168px] overflow-hidden rounded-3xl bg-gray-950 text-white shadow-lg md:min-h-[190px]">
+      <header class="moon-observatory relative isolate min-h-[168px] overflow-hidden rounded-3xl text-white md:min-h-[190px]">
         <img
           v-if="heroPhoto"
           :src="heroPhoto.preview || heroPhoto.thumbnail"
           alt=""
           class="absolute inset-0 -z-20 h-full w-full object-cover object-center opacity-30"
         />
-        <div class="absolute inset-0 -z-10 bg-gradient-to-br from-gray-950/95 via-gray-950/75 to-gray-800/40"></div>
-        <div class="absolute -right-20 -top-24 -z-10 h-72 w-72 rounded-full bg-primary-500/20 blur-3xl"></div>
+        <div class="moon-observatory-shade absolute inset-0 -z-10"></div>
 
         <div class="flex h-full min-h-[168px] flex-col justify-between p-4 sm:p-5 md:min-h-[190px] md:p-6">
           <div class="flex items-start justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
               <div class="min-w-0">
-                <p class="text-xl font-bold tracking-wide sm:text-2xl">月相观察</p>
-                <p class="mt-0.5 truncate text-xs text-gray-300 dark:text-gray-300 sm:text-sm">记录每一次阴晴圆缺</p>
+                <p class="journal-cover-serif text-2xl font-bold tracking-wide sm:text-3xl">月相观察</p>
               </div>
             </div>
             <div class="hidden rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-gray-200 backdrop-blur md:block">
@@ -43,13 +41,13 @@
         </div>
       </header>
 
-      <nav class="sticky top-2 z-40 mx-auto mt-4 flex w-fit rounded-full border border-gray-200/70 bg-white/90 p-1 shadow-sm backdrop-blur dark:border-gray-700/70 dark:bg-gray-900/90" aria-label="月迹视图">
+      <nav class="moon-view-nav sticky top-2 z-40 mx-auto mt-4 flex w-fit rounded-full p-1" aria-label="月迹视图">
         <button
           v-for="tab in viewTabs"
           :key="tab.value"
           type="button"
           class="min-w-[76px] rounded-full px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-w-[92px]"
-          :class="selectedView === tab.value ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'"
+          :class="{ 'is-selected': selectedView === tab.value }"
           :aria-current="selectedView === tab.value ? 'page' : undefined"
           @click="selectedView = tab.value"
         >
@@ -554,4 +552,12 @@ onMounted(loadPhotos)
 .moon-phase-scroller::-webkit-scrollbar {
   display: none;
 }
+</style>
+<style scoped>
+.moon-observatory { background: #101827; }
+.moon-observatory-shade { background: linear-gradient(104deg, #101827 4%, rgb(15 23 42 / 84%) 50%, rgb(15 23 42 / 25%)); }
+.moon-view-nav { border: 1px solid var(--ts-color-border); background: var(--ts-glass-bg); backdrop-filter: blur(14px); }
+.moon-view-nav button { min-height: 44px; color: var(--ts-color-text-secondary); }
+.moon-view-nav button.is-selected { background: var(--ts-journal-active); color: var(--ts-journal-accent-text); font-weight: 700; }
+.moon-view-nav button:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
 </style>

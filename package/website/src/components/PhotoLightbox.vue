@@ -6,6 +6,8 @@
       class="photo-lightbox-shell fixed inset-0 z-[100] flex"
       :class="{
         'viewer-immersive': !controlsVisible && !isEditing,
+        'viewer-framed': controlsVisible && !isEditing && !isCurrentVideo && !panoramaActive,
+        'viewer-has-strip': thumbnailWindow.length > 0,
         'details-active': mobileDetailsProgress > 0.01,
         'details-settling': isMobileDetailsSettling,
       }"
@@ -17,15 +19,17 @@
       <!-- Top Toolbar (Desktop) — hidden in edit mode；移动端见下方专用布局 -->
       <Transition name="viewer-controls">
       <div v-if="!isEditing && controlsVisible" data-testid="photo-lightbox-toolbar" class="fixed top-0 left-0 right-0 z-[102] p-2 hidden md:flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
-         <button
-            @click.stop="close"
-            class="pointer-events-auto w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0"
-            title="关闭 (Esc)"
-        >
-            <X class="w-6 h-6" />
-        </button>
+        <div class="viewer-ident">
+            <button type="button" @click.stop="close" class="viewer-close pointer-events-auto" aria-label="关闭照片查看器" title="关闭 (Esc)">
+                <X class="w-5 h-5" />
+            </button>
+            <div class="viewer-caption min-w-0">
+                <div class="truncate" :title="image?.filename">{{ image?.filename || '照片' }}</div>
+                <div v-if="captureDateText || captureLocationText" class="truncate">{{ [captureDateText, captureLocationText].filter(Boolean).join(' · ') }}</div>
+            </div>
+        </div>
 
-        <div class="viewer-desktop-actions ts-liquid-glass ts-glass-toolbar flex items-center pointer-events-auto" role="group" aria-label="照片工具栏">
+        <div class="viewer-desktop-actions viewer-chrome-pill flex items-center pointer-events-auto" role="group" aria-label="照片工具栏">
             <button v-if="isPanoramaPhoto" type="button" class="ts-glass-button" :disabled="panoramaState.busy" :aria-pressed="panoramaActive" :aria-label="panoramaActive ? '切换平面查看' : '切换360°全景查看'" :title="panoramaActive ? '切换平面查看' : '切换360°全景查看'" @click.stop="panoramaViewerRef?.toggleMode()"><Globe2 class="h-5 w-5" /></button>
             <!-- Zoom Controls -->
             <button v-if="canShowFaces" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': showFaces }" :aria-pressed="showFaces" :aria-label="showFaces ? '隐藏人物' : '显示人物'" :title="showFaces ? '隐藏人物' : '显示人物'" @click.stop="toggleFaces"><ScanFace class="h-5 w-5" /></button>
@@ -375,17 +379,20 @@
             </div>
           </div>
 
-          <div
+          <button
             v-if="image && image.file_type === 'live_photo' && controlsVisible"
             data-testid="photo-lightbox-live-badge"
+            type="button"
+            :aria-label="isPlayingLive ? '暂停实况照片' : '播放实况照片'"
+            :aria-pressed="isPlayingLive"
             class="viewer-live-badge absolute left-4 md:left-8 z-[101] cursor-pointer"
             @click.stop="toggleLivePlayback"
           >
-            <div class="flex items-center gap-1 bg-gray-900/60 backdrop-blur-md rounded-full px-2 py-1 text-white/90 hover:bg-gray-800/80 transition-colors">
+            <span class="flex items-center gap-1 bg-gray-900/60 backdrop-blur-md rounded-full px-2 py-1 text-white/90 hover:bg-gray-800/80 transition-colors">
               <span class="icon-[tabler--live-photo] w-4 h-4 text-white drop-shadow-md opacity-90" :class="{ 'animate-spin': isPlayingLive }"></span>
               <span class="text-xs font-medium">LIVE</span>
-                </div>
-            </div>
+            </span>
+          </button>
         </div>
       </div>
 
@@ -398,10 +405,10 @@
           class="mobile-viewer-toolbar md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,var(--ts-safe-area-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
         >
           <div class="flex items-start gap-1 min-w-0">
-            <BackButton class="pointer-events-auto" @click.stop="close" />
+            <BackButton class="viewer-close pointer-events-auto" @click.stop="close" />
             <div class="viewer-caption min-w-0 pt-0.5 leading-tight">
-              <div v-if="captureDateText" class="text-sm font-medium truncate">{{ captureDateText }}</div>
-              <div class="text-[11px] text-white/75 flex items-center gap-1 min-w-0">
+              <div class="text-sm font-medium truncate">{{ captureDateText || image?.filename || '照片' }}</div>
+              <div v-if="captureTimeText || captureLocationText" class="flex items-center gap-1 min-w-0">
                 <span v-if="captureTimeText" class="shrink-0">{{ captureTimeText }}</span>
                 <template v-if="captureLocationText">
                   <span v-if="captureTimeText" class="opacity-50 shrink-0">·</span>
@@ -412,7 +419,7 @@
             </div>
           </div>
 
-          <div class="viewer-mobile-tools ts-liquid-glass ts-glass-toolbar flex pointer-events-auto shrink-0">
+          <div class="viewer-mobile-tools viewer-chrome-pill flex pointer-events-auto shrink-0">
             <button class="ts-glass-button" aria-label="照片信息" :aria-expanded="showSidebar" @click.stop="toggleSidebar"><Info class="h-5 w-5" /></button>
           </div>
         </div>
@@ -432,7 +439,7 @@
               type="button"
               :data-photo-index="entry.index"
               class="h-12 w-12 sm:h-14 sm:w-14 shrink-0 overflow-hidden rounded-md border-2 bg-black/30 transition-all focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-              :class="entry.index === resolvedCurrentIndex ? 'border-primary-500 scale-105 shadow-lg shadow-primary-500/30' : 'border-white/30 opacity-70 hover:opacity-100'"
+              :aria-current="entry.index === resolvedCurrentIndex ? 'true' : undefined"
               :aria-label="`查看第 ${entry.index + 1} 张照片`"
               @click.stop="navigateToIndex(entry.index)"
             >
@@ -450,7 +457,7 @@
           class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,var(--ts-safe-area-bottom))] bg-black/85"
           @click.stop
         >
-          <div class="viewer-action-pill ts-liquid-glass ts-glass-toolbar flex items-center">
+          <div class="viewer-action-pill viewer-chrome-pill flex items-center">
             <button v-if="isPanoramaPhoto" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': panoramaActive }" :disabled="panoramaState.busy" :aria-pressed="panoramaActive" :aria-label="panoramaActive ? '切换平面查看' : '切换360°全景查看'" @click.stop="panoramaViewerRef?.toggleMode()"><Globe2 class="h-5 w-5" /></button>
             <button class="ts-glass-button" aria-label="下载" @click.stop="downloadImage"><Download class="h-5 w-5" /></button>
             <button v-if="canShowFaces" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': showFaces }" :aria-pressed="showFaces" :aria-label="showFaces ? '隐藏人物' : '显示人物'" @click.stop="toggleFaces"><ScanFace class="h-5 w-5" /></button>
@@ -872,7 +879,9 @@ const toggleShortcutHelp = () => {
 }
 
 const handleEscKey = () => {
-  if (showDescription.value) {
+  if (showMobileMenu.value) {
+    closeMobileMenu()
+  } else if (showDescription.value) {
     showDescription.value = false
   } else if (shortcutHelpOpened.value) {
     showShortcutHelp.value = false
@@ -2529,27 +2538,54 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 @media (max-width: 767px) { .viewer-people-panel { bottom: calc(10rem + var(--ts-safe-area-bottom)); } }
  .analysis-content { overflow-wrap: anywhere; color: var(--ts-color-text); }
 .analysis-tag { max-width: 100%; padding: 6px 10px; border-radius: 10px; background: var(--ts-color-surface-muted); font-size: 12px; line-height: 1.5; }
-.photo-lightbox-shell { background: var(--ts-color-page); color: var(--ts-color-text); }
+.photo-lightbox-shell {
+  --viewer-chrome-bg: #222a36;
+  --viewer-chrome-hover: #344155;
+  --viewer-chrome-border: rgb(226 232 240 / 22%);
+  --viewer-chrome-text: #f8fafc;
+  --viewer-chrome-quiet: #cbd5e1;
+  --viewer-chrome-accent: var(--ts-journal-on-image);
+  background: radial-gradient(ellipse at 50% 40%, #263246 0%, #121722 72%);
+  color: var(--ts-color-text);
+}
 .photo-lightbox-shell.viewer-immersive { background: #000; }
-[data-testid="photo-lightbox-toolbar"] { background: none; padding: 12px 16px; }
-[data-testid="photo-lightbox-toolbar"] > button { width: 44px; height: 44px; color: var(--ts-color-text); background: var(--ts-glass-bg); border: 1px solid var(--ts-color-border); box-shadow: var(--ts-shadow-glass); }
-.viewer-desktop-actions .ts-glass-button[aria-pressed='true'] { color: var(--accent-color); }
-.viewer-desktop-actions .viewer-delete { color: var(--ts-color-danger); }
+.viewer-framed .viewer-stage { padding-block: 66px 20px; }
+.viewer-framed.viewer-has-strip .viewer-stage { padding-bottom: calc(82px + var(--ts-safe-area-bottom)); }
+[data-testid="photo-lightbox-toolbar"] { gap: 16px; background: linear-gradient(#121722 25%, transparent); padding: 12px 16px; }
+.viewer-ident { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.viewer-ident .viewer-caption { max-width: min(40vw, 420px); }
+.viewer-close, .viewer-chrome-pill, .viewer-stage > button {
+  border: 1px solid var(--viewer-chrome-border);
+  border-radius: 999px;
+  background: var(--viewer-chrome-bg);
+  color: var(--viewer-chrome-text);
+}
+.viewer-close { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; }
+.viewer-close:hover, .viewer-stage > button:hover { background: var(--viewer-chrome-hover); }
+.viewer-chrome-pill { padding: 3px; gap: 0; }
+.viewer-chrome-pill .ts-glass-button { color: var(--viewer-chrome-text); min-width: 38px; }
+.viewer-chrome-pill .ts-glass-button:hover { background: var(--viewer-chrome-hover); }
+.viewer-chrome-pill .ts-glass-button[aria-pressed='true'] { color: var(--viewer-chrome-accent); }
+.viewer-chrome-pill .viewer-delete { color: #ffaaa0; }
+.viewer-chrome-pill .ts-glass-button:focus-visible, .viewer-close:focus-visible, .viewer-stage > button:focus-visible { outline: 2px solid var(--viewer-chrome-accent); outline-offset: 2px; }
 .viewer-desktop-actions .ts-glass-button:disabled { opacity: .45; cursor: not-allowed; }
-.viewer-stage > button { background: var(--ts-glass-bg); color: var(--ts-color-text); border: 1px solid var(--ts-color-border); }
-.viewer-caption { color: var(--ts-color-text); }
-.viewer-caption > div:first-child { font-size: 16px; font-weight: 600; }
-.viewer-caption > div:last-child { color: var(--ts-color-text-secondary); font-size: 12px; margin-top: 4px; }
-.mobile-viewer-toolbar { background: var(--ts-color-surface); padding-inline: 12px; padding-top: calc(12px + var(--ts-safe-area-top)); align-items: center; }
+.viewer-caption { color: var(--viewer-chrome-text); }
+.viewer-caption > div:first-child { font-size: 14px; font-weight: 650; }
+.viewer-caption > div:nth-child(2) { color: var(--viewer-chrome-quiet); font-size: 11px; margin-top: 4px; }
+.mobile-viewer-toolbar { background: linear-gradient(#121722 25%, transparent); padding-inline: 12px; padding-top: calc(9px + var(--ts-safe-area-top)); padding-bottom: 8px; align-items: center; }
+.mobile-viewer-toolbar .viewer-close { display: inline-flex; }
 .mobile-viewer-toolbar > div:first-child { align-items: center; gap: 10px; }
-.viewer-thumbnail-layer { background: none; }
-.viewer-live-badge { top: 96px; }
-.photo-thumbnail-strip button { border-radius: 12px; background: var(--ts-color-surface-muted); }
-.photo-thumbnail-strip button:not(.border-primary-500) { border-color: transparent; }
-.mobile-viewer-dock { background: none; padding-inline: 12px; padding-bottom: calc(12px + var(--ts-safe-area-bottom)); }
-.viewer-action-pill { width: fit-content; max-width: 100%; margin-inline: auto; --glass-tint: var(--ts-glass-panel); }
-.viewer-action-pill button { width: 44px; min-width: 44px; min-height: 44px; flex: 0 0 44px; padding: 0; color: var(--ts-color-text); border-radius: var(--ts-radius-pill); }
-.viewer-action-pill button.viewer-delete { color: var(--ts-color-danger); }
+.viewer-thumbnail-layer { background: linear-gradient(0deg, #121722 12%, transparent); }
+.viewer-live-badge { top: 96px; min-height: 44px; border-radius: 999px; }
+.viewer-framed .viewer-live-badge { top: 5px; }
+.viewer-live-badge:focus-visible { outline: 2px solid var(--viewer-chrome-accent); outline-offset: 2px; }
+.photo-thumbnail-strip button { border-radius: 8px; background: var(--viewer-chrome-bg); border-color: transparent; opacity: .62; }
+.photo-thumbnail-strip button[aria-current='true'] { border-color: var(--viewer-chrome-accent); opacity: 1; }
+.photo-thumbnail-strip button:hover, .photo-thumbnail-strip button:focus-visible { opacity: 1; }
+.photo-thumbnail-strip button:focus-visible { outline: 2px solid var(--viewer-chrome-accent); outline-offset: 2px; }
+.mobile-viewer-dock { background: none; padding-inline: 5px; padding-bottom: calc(9px + var(--ts-safe-area-bottom)); }
+.viewer-action-pill { width: fit-content; max-width: 100%; margin-inline: auto; }
+.viewer-action-pill .ts-glass-button { width: 44px; height: 44px; flex: 0 1 44px; padding: 0; border-radius: 999px; }
 .sheet-panel { background: var(--ts-glass-panel); color: var(--ts-color-text); border-color: var(--ts-color-border); border-radius: var(--ts-radius-dialog) var(--ts-radius-dialog) 0 0; box-shadow: var(--ts-shadow-floating); max-height: calc(100dvh - var(--ts-safe-area-top) - 16px); overflow-y: auto; backdrop-filter: blur(var(--ts-glass-blur-panel)); }
 .sheet-panel button { color: var(--ts-color-text); }
 .sheet-panel button > span:first-child { background: var(--ts-color-surface-muted); }
@@ -2570,8 +2606,13 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
   /* 为底部操作栏让位：胶囊 ~49px + 底部留白 12px ≈ 61px，72px 留出紧凑的呼吸间距。
      注意 tailwind 的 pb-[calc(...)] 内联类无法按断点区分，移动端让位只能写在这里。 */
   .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(72px + var(--ts-safe-area-bottom)); }
-  /* Keep the photo fitted to the full viewport; fixed controls overlay it. */
-  .viewer-stage { padding: 0; }
+  .viewer-framed .viewer-stage { padding-block: var(--viewer-mobile-toolbar-height, 62px) calc(72px + var(--ts-safe-area-bottom)); }
+  .viewer-framed.viewer-has-strip .viewer-stage { padding-bottom: calc(128px + var(--ts-safe-area-bottom)); }
+}
+
+@media (max-width: 767px) and (max-height: 450px) {
+  .viewer-framed.viewer-has-strip .viewer-stage { padding-bottom: calc(82px + var(--ts-safe-area-bottom)); }
+  .viewer-thumbnail-layer { display: none; }
 }
 
 .photo-thumbnail-strip {
@@ -2683,6 +2724,7 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
     .sheet-leave-active,
     .sheet-enter-active .sheet-panel,
     .sheet-leave-active .sheet-panel,
+    .photo-thumbnail-strip button,
     .details-settling .photo-lightbox-media,
     .details-settling .mobile-viewer-toolbar,
     .details-settling .viewer-thumbnail-layer,

@@ -1,7 +1,7 @@
 <template>
   <main
     ref="pageElement"
-    class="relation-page min-h-full bg-gray-50 pb-24 text-gray-900 dark:bg-gray-950 dark:text-gray-100 md:pb-10"
+    class="relation-page journal-neutral-page min-h-full pb-24 md:pb-10"
   >
     <div class="mx-auto max-w-screen-2xl px-[var(--ts-page-gutter)] pt-3 md:pt-7">
       <section
@@ -46,7 +46,7 @@
                   : 'TRAILSNAP · 记忆漫游'
               }}
             </p>
-            <h1 class="cover-title max-w-2xl text-4xl font-semibold leading-tight sm:text-5xl md:text-6xl">
+            <h1 class="cover-title journal-cover-serif max-w-2xl text-4xl font-semibold leading-tight sm:text-5xl md:text-6xl">
               {{ store.page?.center.label || '沿着记忆，遇见更多故事' }}
             </h1>
             <p class="mt-3 max-w-xl text-sm leading-relaxed text-white/80 md:text-base">

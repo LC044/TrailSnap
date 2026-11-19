@@ -19,6 +19,7 @@
         />
         <section
           ref="panelRef"
+          v-glass-refraction="glass && mobileMode !== 'fullscreen'"
           tabindex="-1"
           role="dialog"
           aria-modal="true"
@@ -34,7 +35,7 @@
             <BackButton v-if="mobileBack" class="md:hidden" label="返回" @click="close" />
             <div class="min-w-0 flex-1">
               <h2 :id="titleId" class="truncate text-base font-semibold text-[var(--ts-color-text)]">{{ title }}</h2>
-              <p v-if="description" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ description }}</p>
+              <p v-if="description" class="ts-muted mt-0.5 text-xs">{{ description }}</p>
             </div>
             <IconButton :class="{ 'hidden md:inline-flex': mobileBack }" label="关闭" size="sm" @click="close">
               <X class="h-4 w-4" />

@@ -61,7 +61,6 @@ const routes: RouteRecordRaw[] = [
       { path: '/album/people/:id', name: 'PeopleDetail', component: PeopleDetail, meta: { title: '人物详情', navGroup: 'albums', desktopAICapability: 'face' } },
       { path: '/album/location', name: 'LocationList', component: LocationList, meta: { title: '位置相册', navGroup: 'albums' } },
       { path: '/album/location/:name', name: 'LocationDetail', component: LocationDetail, meta: { title: '位置详情', navGroup: 'albums' } },
-      { path: '/footprints', name: 'FootprintList', component: () => import('@/views/album/location/FootprintListPage.vue'), meta: { title: '足迹', navGroup: 'albums' } },
       { path: '/album/classification', name: 'ClassificationList', component: ClassificationList, meta: { title: '智能分类', navGroup: 'albums', desktopAICapability: 'classification' } },
       // 分组名可能包含 /（如「城市建筑 / 地点」），用自定义正则吞掉斜杠
       { path: '/album/classification/group/:group(.*)', name: 'ClassificationGroup', component: ClassificationGroupDetail, meta: { title: '分类分组', navGroup: 'albums', desktopAICapability: 'classification' } },

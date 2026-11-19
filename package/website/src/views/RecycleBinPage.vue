@@ -5,11 +5,11 @@
         <div class="flex min-w-0 items-center gap-2">
           <BackButton label="返回" @click="goBack" />
           <div class="min-w-0">
-            <h1 class="ts-page-title truncate text-gray-900 dark:text-white">最近删除</h1>
+            <h1 class="journal-page-title truncate">最近删除</h1>
             <p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ recycleSubtitle }}</p>
           </div>
         </div>
-        <div v-if="!isSelectionMode" class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center gap-1 sm:gap-2">
+        <div v-if="!isSelectionMode" v-glass-refraction class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center gap-1 sm:gap-2">
           <button type="button" class="ts-glass-button disabled:opacity-50 disabled:cursor-not-allowed" title="选择照片" aria-label="选择照片" :disabled="totalCount === 0 || isPurging" @click="handleEnterSelectionMode">
             <CheckSquare class="h-5 w-5" />
           </button>
@@ -76,7 +76,8 @@
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
           <Trash2 class="w-12 h-12 opacity-20" />
         </div>
-        <p class="text-lg font-medium">回收站为空</p>
+        <p class="journal-page-title">回收站为空</p>
+        <RouterLink to="/photos" class="ts-button ts-button-secondary mt-4">返回照片</RouterLink>
       </div>
 
       <FlatPhotoGallery

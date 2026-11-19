@@ -16,7 +16,7 @@
         </div>
       </div>
       <div class="min-w-0 flex-1">
-        <h1 class="truncate text-xl font-bold">{{ data?.people.map(p => p.name).join('与') || '人物时光线' }}</h1>
+        <h1 class="journal-page-title truncate">{{ data?.people.map(p => p.name).join('与') || '人物时光线' }}</h1>
         <p v-if="data" class="text-sm text-gray-500 dark:text-gray-400">{{ data.year_count }} 个有照片的年份 · {{ data.photo_count }} 张{{ withId ? '同框' : '' }}照片</p>
         <p v-if="peopleTags" class="text-xs text-primary-600 dark:text-primary-400">{{ peopleTags }}</p>
       </div>

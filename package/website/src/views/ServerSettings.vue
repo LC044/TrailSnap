@@ -1,12 +1,12 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 px-5 py-[max(2rem,var(--ts-content-safe-area-top))] flex items-center justify-center">
-    <section class="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 sm:p-8 shadow-lg">
+  <div class="auth-page">
+    <section class="auth-panel p-5 sm:p-8">
       <div class="flex items-center gap-3 mb-2">
         <div class="w-11 h-11 rounded-xl bg-primary-500 text-white flex items-center justify-center">
           <Server class="w-6 h-6" />
         </div>
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">连接 TrailSnap</h1>
+          <h1 class="journal-page-title">连接 TrailSnap</h1>
           <p class="text-sm text-gray-500 dark:text-gray-400">网页和 App 使用同一个地址</p>
         </div>
       </div>
@@ -50,14 +50,14 @@
           </button>
         </div>
 
-        <div class="rounded-xl border border-primary-500 bg-gray-50 p-4 text-sm leading-6 text-gray-700 dark:bg-gray-900 dark:text-gray-200">
-          <p class="font-semibold text-gray-900 dark:text-white">二维码在哪里？</p>
+        <details class="rounded-xl border border-[var(--auth-border)] p-3 text-sm leading-6 text-gray-700 dark:text-gray-200">
+          <summary class="cursor-pointer font-semibold">二维码在哪里？</summary>
           <p class="mt-1">
             在电脑浏览器中打开 TrailSnap，登录后进入
             <span class="font-medium text-primary-600 dark:text-primary-400">设置 → 连接手机 App</span>，
             页面会显示供本 App 扫描的二维码。
           </p>
-        </div>
+        </details>
 
         <div v-if="discoveredServers.length" class="space-y-2">
           <p class="text-xs font-medium text-gray-600 dark:text-gray-300">发现的 TrailSnap</p>
@@ -108,6 +108,7 @@
 </template>
 
 <script setup lang="ts">
+import './login/auth.css'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'

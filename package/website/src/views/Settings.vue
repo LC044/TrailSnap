@@ -2,20 +2,20 @@
   <div class="settings-shell ts-page-background h-full min-h-0">
     <div class="mx-auto flex h-full min-h-0 w-full max-w-screen-2xl">
       <aside class="ts-settings-nav hidden w-64 lg:w-80 shrink-0 overflow-y-auto border-r px-5 py-6 lg:px-6 md:block">
-        <h1 class="px-2 text-2xl font-bold">设置</h1>
-        <p class="mt-1 px-2 text-sm text-gray-500 dark:text-gray-400">管理账号、图库与系统服务</p>
+        <h1 class="journal-page-title px-2">设置</h1>
         <el-input v-model="search" class="mt-5" placeholder="搜索设置，如原图、扫描" clearable aria-label="搜索设置" />
-        <div class="mt-6 space-y-7">
+        <p v-if="!menuGroups.length" class="settings-search-empty" role="status">没有匹配的设置</p>
+        <div v-else class="mt-6 space-y-5">
           <section v-for="group in menuGroups" :key="group.label">
             <h2 class="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ group.label }}</h2>
-            <div class="ts-surface space-y-1 overflow-hidden p-1">
+            <div class="settings-index-group">
               <button
                 v-for="item in group.items"
                 :key="item.key"
                 :data-tab="item.key"
                 type="button"
-                class="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-gray-700"
-                :class="activeTab === item.key ? 'bg-primary-50 text-primary-600 dark:bg-gray-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-200'"
+                class="settings-index-row"
+                :aria-current="activeTab === item.key ? 'page' : undefined"
                 @click="selectItem(item.key)"
               >
                 <span class="flex h-8 w-8 shrink-0 items-center justify-center">
@@ -29,9 +29,10 @@
       </aside>
 
       <div v-if="!activeTab" class="min-w-0 flex-1 overflow-y-auto px-[var(--ts-page-gutter)] pb-8 md:hidden">
-        <header class="ts-browse-header mb-5 flex items-center"><h1 class="ts-page-title">设置</h1></header>
+        <header class="journal-index-header mb-4"><h1 class="journal-page-title">设置</h1></header>
         <button
           type="button"
+          v-if="!search.trim()"
           data-tab="profile"
           class="mb-6 flex w-full items-center gap-3 ts-surface p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:ring-offset-gray-900"
           @click="selectItem('profile')"
@@ -45,7 +46,9 @@
           <ChevronRight class="h-5 w-5 text-gray-300 dark:text-gray-600" />
         </button>
 
-        <el-input v-model="search" class="mb-4" placeholder="搜索设置" clearable aria-label="搜索设置" /><div class="space-y-6 ts-bottom-safe">
+        <el-input v-model="search" class="mb-4" placeholder="搜索设置" clearable aria-label="搜索设置" />
+        <p v-if="!mobileMenuGroups.length" class="settings-search-empty" role="status">没有匹配的设置</p>
+        <div v-else class="space-y-6 ts-bottom-safe">
           <section v-for="group in mobileMenuGroups" :key="group.label">
             <h2 class="mb-2 px-3 text-[13px] font-medium text-gray-500 dark:text-gray-400">{{ group.label }}</h2>
             <div class="ts-surface overflow-hidden">
@@ -152,7 +155,7 @@ const isAvailable = (item: MenuItem) => (!item.superuserOnly || userStore.userIn
   && (!item.hideInMobileApp || !isMobileApp())
 const search = ref('')
 const menuGroups = computed(() => baseGroups.map(group => ({ ...group, items: group.items.filter(item => isAvailable(item) && `${item.label} ${item.description}`.includes(search.value.trim())) })).filter(group => group.items.length))
-const mobileMenuGroups = computed(() => menuGroups.value.map(group => ({ ...group, items: group.items.filter(item => item.key !== 'profile') })).filter(group => group.items.length))
+const mobileMenuGroups = computed(() => menuGroups.value.map(group => ({ ...group, items: group.items.filter(item => search.value.trim() || item.key !== 'profile') })).filter(group => group.items.length))
 const allItems = computed(() => [...baseGroups.flatMap(group => group.items), { key: 'performance', label: '性能测试', description: '', icon: Activity }].filter(isAvailable))
 const activeItem = computed(() => allItems.value.find(item => item.key === activeTab.value))
 const tabComponents: Record<string, typeof ProfileSettings> = {
@@ -191,6 +194,16 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
 </script>
 
 <style scoped>
+.ts-settings-nav { background: var(--ts-journal-rail); }
+.settings-index-group { display: grid; gap: 2px; }
+.settings-index-row { display: flex; align-items: center; gap: 5px; width: 100%; min-height: 44px; padding: 4px 9px; border-radius: 10px; color: var(--ts-color-text-secondary); text-align: left; }
+.settings-index-row:hover { background: var(--ts-color-surface-muted); }
+.settings-index-row[aria-current="page"] { background: var(--ts-journal-active); color: var(--ts-journal-accent-text); }
+.settings-index-row:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
+.settings-search-empty { padding: 15px 10px; color: var(--ts-color-text-secondary); font-size: 13px; }
+@media (prefers-reduced-motion: reduce) {
+  .settings-forward-enter-active, .settings-back-enter-active { transition: none !important; }
+}
 @media (max-width: 767px) {
   .settings-shell :deep(.ts-surface) { border: 0; border-radius: 16px; box-shadow: none; }
   .settings-shell :deep(.ts-settings-page-header > :first-child) { display: none; }

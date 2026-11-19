@@ -1,5 +1,6 @@
 <template>
   <UnifiedPhotoPage
+    class="album-spread-page"
     :title="album?.title || '相册详情'"
     :subtitle="`${album?.count || 0} 个项目`"
     :loading="photoStore.loading"
@@ -23,6 +24,27 @@
     @set-cover="setCover"
     @refresh-data="refreshAlbumData"
   >
+    <template #intro>
+      <section v-if="album" class="album-spread" aria-label="相册封面">
+        <div class="album-spread-copy">
+          <span class="album-spread-type"><BookOpen />{{ albumKindLabel }}</span>
+          <p class="album-spread-title">{{ album.title }}</p>
+          <p v-if="album.description" class="album-spread-description">{{ album.description }}</p>
+          <span class="album-spread-count">{{ album.count.toLocaleString('zh-CN') }} 个项目</span>
+        </div>
+        <div class="album-spread-visual" aria-hidden="true">
+          <img v-if="album.cover.id && coverSrc !== brokenCover" :src="coverSrc" alt="" fetchpriority="high" @error="brokenCover = coverSrc" />
+          <Images v-else class="album-spread-placeholder" />
+        </div>
+      </section>
+    </template>
+    <template #empty>
+      <div class="album-spread-empty">
+        <Images aria-hidden="true" />
+        <p>这个相册还没有照片</p>
+        <button v-if="isUserAlbum" type="button" class="ts-button ts-button-secondary" @click="showPhotoSelector = true">添加照片</button>
+      </div>
+    </template>
     <template #header-actions>
       <button
         v-if="album?.type === 'custom' || album?.type === 'user'"
@@ -152,11 +174,10 @@ import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { albumService } from '@/api/album'
-import { Folder, Loader2, Check, ImagePlus, MoreVertical, Edit2, Trash2, Wrench, Tag, Image as ImageIcon } from 'lucide-vue-next'
+import { BookOpen, Folder, ImagePlus, Images, MoreVertical, Edit2, Trash2, Wrench, Tag, Image as ImageIcon } from 'lucide-vue-next'
 import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
 import PhotoSelectorDialog from '@/components/PhotoSelectorDialog.vue'
-import { format } from 'date-fns'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const route = useRoute()
@@ -170,6 +191,13 @@ const albumId = route.params.id as string
 
 // State
 const album = computed(() => albumStore.getAlbumDetails(albumId))
+const coverSrc = computed(() => album.value?.cover.preview || album.value?.cover.thumbnail || '')
+const brokenCover = ref('')
+const albumKindLabel = computed(() => {
+  if (album.value?.type === 'smart') return '智能相册'
+  if (album.value?.type === 'conditional') return '条件相册'
+  return '相册'
+})
 const images = computed(() => photoStore.images)
 // 当前后端创建的普通相册类型为 user；兼容已有的 legacy custom 数据。
 const isUserAlbum = computed(() => album.value?.type === 'user' || album.value?.type === 'custom')
@@ -406,3 +434,31 @@ onMounted(() => {
 })
 
 </script>
+
+<style scoped>
+.album-spread {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1fr);
+  min-height: 230px;
+  margin: 12px 0 24px;
+  overflow: hidden;
+  border: 1px solid var(--ts-color-border);
+  border-radius: 22px;
+  background: var(--ts-journal-rail);
+}
+.album-spread-copy { display: flex; flex-direction: column; gap: 11px; justify-content: center; padding: clamp(18px, 3vw, 42px); min-width: 0; }
+.album-spread-type, .album-spread-count { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ts-color-text-secondary); }
+.album-spread-type svg { width: 15px; }
+.album-spread-title { font: 700 clamp(30px, 4.5vw, 60px)/1.13 var(--ts-journal-serif); overflow-wrap: anywhere; letter-spacing: -.045em; }
+.album-spread-description { color: var(--ts-color-text-secondary); line-height: 1.55; font-size: 14px; overflow-wrap: anywhere; }
+.album-spread-visual { position: relative; display: grid; place-items: center; background: #273449; min-height: 100%; }
+.album-spread-visual img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.album-spread-placeholder { width: 48px; height: 48px; color: var(--ts-journal-on-image); stroke-width: 1; }
+.album-spread-empty { display: grid; justify-items: center; gap: 13px; padding: 38px 16px; color: var(--ts-color-text-secondary); border: 1px dashed var(--ts-color-border); border-radius: 16px; }
+@media (max-width: 639px) {
+  .album-spread { margin: 8px 0 16px; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .album-spread-copy { grid-row: 2; padding-block: 15px 18px; gap: 7px; }
+  .album-spread-title { font-size: clamp(27px, 7vw, 39px); }
+  .album-spread-visual { min-height: 0; aspect-ratio: 2.05; }
+}
+</style>

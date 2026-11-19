@@ -26,6 +26,7 @@ import { useUserStore } from '@/stores/user'
 import { registerConnectionDeepLinks } from '@/config/serverConnection'
 import { installNativeNetworkPolicy } from '@/config/nativeNetworkPolicy'
 import { registerButtonMotion } from '@/composables/useButtonMotion'
+import { glassRefraction } from '@/utils/glassRefraction'
 import { useNavigationStore } from '@/stores/navigation'
 import { commonPageLoaders } from '@/router/commonPages'
 import { schedulePagePreloads } from '@/router/preload'
@@ -46,6 +47,7 @@ async function bootstrap() {
   installNativeNetworkPolicy(getServerUrl)
   document.documentElement.classList.toggle('capacitor-native', isNativeApp())
   const app = createApp(App);
+  app.directive('glass-refraction', glassRefraction)
   // 2. 创建 Pinia 实例
   const pinia = createPinia()
   app.use(pinia)

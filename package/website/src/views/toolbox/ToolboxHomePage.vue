@@ -1,7 +1,8 @@
 <template>
   <AppPage size="wide" bottom-safe class="py-5 md:py-8">
-    <header class="mb-7 flex min-w-0 items-start justify-between gap-3">
+    <header class="journal-index-header mb-6 flex min-w-0 items-end justify-between gap-3">
       <h1 class="ts-page-title">工具箱</h1>
+      <button type="button" class="journal-secondary-link" @click="showHistory"><Clock3 class="h-4 w-4" />操作记录</button>
     </header>
     <section v-if="active.length" class="ts-surface mb-7 p-4 md:p-5" aria-label="正在进行">
       <h2 class="ts-section-title mb-3">正在进行</h2>
@@ -11,14 +12,14 @@
         <span class="text-sm text-primary-600 dark:text-primary-400">{{ plan.stop_requested ? '请求停止中' : labels[plan.status] }}<ChevronRight class="ml-1 inline h-4 w-4" /></span>
       </button>
     </section>
-    <section class="grid gap-3 md:grid-cols-2" aria-label="照片工具">
-      <RouterLink v-for="tool in [...otherTools, ...mainTools, { path: '/toolbox/albums', title: '批量创建相册', icon: Images }]" :key="tool.path" :to="tool.path" class="ts-surface flex min-w-0 items-center gap-4 p-4">
-        <component :is="tool.icon" class="h-6 w-6 shrink-0 text-primary-500" />
+    <section class="workbench-grid" aria-label="照片工具">
+      <RouterLink v-for="tool in [...otherTools, ...mainTools, { path: '/toolbox/albums', title: '批量创建相册', icon: Images }]" :key="tool.path" :to="tool.path" class="workbench-tool">
+        <span class="workbench-tool-icon"><component :is="tool.icon" class="h-6 w-6" /></span>
         <h2 class="min-w-0 flex-1 font-semibold">{{ tool.title }}</h2>
         <ChevronRight class="ts-muted h-5 w-5 shrink-0" />
       </RouterLink>
     </section>
-    <details id="history" class="mt-7" :open="historyOpen || !!error" @toggle="historyOpen = ($event.target as HTMLDetailsElement).open">
+    <details id="history" ref="historyPanel" class="mt-7" :open="historyOpen || !!error" @toggle="historyOpen = ($event.target as HTMLDetailsElement).open">
       <summary id="history-heading" class="cursor-pointer py-3 font-semibold">操作记录</summary>
       <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
       <div v-else class="ts-surface overflow-hidden">
@@ -77,6 +78,15 @@ import AppPage from '@/components/ui/AppPage.vue'
 import { workflowApi, type ToolKind, type ToolPlan, type ToolPlanItem } from '@/api/toolboxWorkflows'
 const router = useRouter()
 const route = useRoute()
+const historyPanel = ref<HTMLDetailsElement | null>(null)
+function showHistory() {
+  const panel = historyPanel.value
+  if (!panel) return
+  panel.open = true
+  panel.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
+  panel.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
+}
+onMounted(() => { if (historyPanel.value && router.currentRoute.value.hash === '#history') showHistory() })
 const titles: Record<string, string> = { organize: '整理文件夹', rename: '批量修改文件名', album: '批量创建相册', cleanup: '照片清理', metadata: '拍摄信息修复', undo: '恢复原路径' }
 const paths: Record<ToolKind, string> = { organize: '/toolbox/organize', rename: '/toolbox/rename', album: '/toolbox/albums', cleanup: '/toolbox/duplicate', metadata: '/toolbox/time-from-filename' }
 const labels: Record<string, string> = { queued: '排队中', running: '处理中', completed: '完成', partial: '部分失败', failed: '失败', stopped: '已停止' }
@@ -157,3 +167,20 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => { disposed = true; clearTimeout(timer) })
 </script>
+<style scoped>
+.workbench-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0,1fr)); }
+.workbench-tool { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; gap: 12px; padding: 14px; border: 1px solid var(--ts-color-border); border-radius: 18px; background: var(--ts-journal-rail); transition: border-color 180ms ease, transform 180ms ease; }
+.workbench-tool:hover { border-color: var(--ts-journal-focus); transform: translateY(-2px); }
+.workbench-tool:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: 2px; }
+.workbench-tool-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; color: var(--ts-journal-accent-text); background: var(--ts-journal-active); }
+.workbench-tool > :nth-child(2) { flex: 1 1 calc(100% - 60px); }
+.workbench-tool > svg:last-child { align-self: center; margin-left: auto; }
+#history { scroll-margin-top: 14px; }
+@media (max-width: 860px) {
+  .workbench-grid { grid-template-columns: minmax(0,1fr); }
+  .workbench-tool { padding: 12px; }
+  .workbench-tool-icon { flex-shrink: 0; }
+  .workbench-tool > :nth-child(2) { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) { .workbench-tool { transition: none; } }
+</style>

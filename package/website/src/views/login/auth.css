@@ -179,3 +179,46 @@
     padding: 40px clamp(32px, 4vw, 64px);
   }
 }
+
+.auth-page:not(.auth-page--login) {
+  background: var(--ts-color-page);
+  --auth-border: var(--ts-color-border);
+  --auth-accent: var(--ts-journal-accent-text);
+}
+.auth-page:not(.auth-page--login) .auth-panel {
+  border: 1px solid var(--auth-border);
+  border-radius: 24px;
+  background: var(--ts-color-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.auth-page:not(.auth-page--login) .auth-heading h1 {
+  font: 700 clamp(32px, 4vw, 48px)/1.35 "Songti SC", "Noto Serif CJK SC", SimSun, Georgia, serif;
+}
+.auth-page:not(.auth-page--login) .auth-form .el-input__wrapper.is-focus,
+.auth-page:not(.auth-page--login) .auth-form .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1.5px var(--auth-accent) inset;
+}
+.auth-page:not(.auth-page--login) :is(.auth-link, .auth-helper-link) {
+  color: var(--auth-accent);
+}
+.auth-page:not(.auth-page--login) .auth-submit.el-button {
+  border-color: transparent;
+  border-radius: 999px;
+  background: var(--ts-journal-action);
+  color: white;
+}
+.auth-page:not(.auth-page--login) .auth-submit.el-button:hover {
+  background: var(--ts-journal-action-hover);
+  filter: none;
+}
+.recovery-panel .el-radio-group { display: flex; }
+.recovery-panel .el-radio-button__inner { width: 100%; }
+.auth-page .journal-page-title { font-size: clamp(27px, 3.2vw, 43px); }
+
+@media (max-width: 639px) {
+  .auth-page:not(.auth-page--login) { padding: 14px 14px calc(24px + var(--ts-safe-area-bottom)); }
+  .auth-page:not(.auth-page--login) .auth-panel { border-radius: 18px; }
+  .auth-page:not(.auth-page--login) .auth-content { padding: 20px 18px 25px; }
+  .auth-page:not(.auth-page--login) .auth-heading { margin: 19px 0 20px; }
+}

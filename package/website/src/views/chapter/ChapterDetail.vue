@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-full bg-gray-50 px-4 pb-28 pt-5 dark:bg-gray-900 md:px-8 md:py-7">
+  <div class="journal-neutral-page min-h-full px-4 pb-28 pt-5 md:px-8 md:py-7">
     <div class="mx-auto max-w-6xl">
       <div class="flex items-center justify-between gap-3"><RouterLink to="/chapters" class="text-sm text-primary-600 dark:text-primary-400">← 人生章节</RouterLink><div v-if="chapter" class="flex gap-2"><RouterLink :to="`/chapters/${chapter.id}/edit${chapter.is_hidden ? '?manage=1' : ''}`" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">编辑</RouterLink><button class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" @click="menuVisible = true">更多</button></div></div>
       <div v-if="loading" class="py-24 text-center text-gray-500 dark:text-gray-400">正在打开章节…</div>

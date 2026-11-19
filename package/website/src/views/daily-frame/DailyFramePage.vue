@@ -1,7 +1,7 @@
 <template>
   <div class="df-page space-y-5">
     <header class="flex flex-wrap items-center justify-between gap-3">
-      <div><h1 class="ts-page-title">一日一帧</h1><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">每天留下一个代表瞬间</p></div>
+      <div><h1 class="journal-page-title">一日一帧</h1><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">每天留下一个代表瞬间</p></div>
       <RouterLink :to="filmRoute" class="df-primary"><Film class="h-4 w-4" />制作影片</RouterLink>
     </header>
     <p v-if="error" role="alert" class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{{ error }} <button type="button" class="underline" @click="boot">重试</button></p>

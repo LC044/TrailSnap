@@ -1,6 +1,7 @@
 <template>
   <UnifiedPhotoPage
     ref="unifiedPhotoPageRef"
+    class="journal-library"
     title="照片"
     stable-title
     enable-time-browse
@@ -25,6 +26,15 @@
     @photo-update="handlePhotoUpdate"
     @refresh-data="refreshPhotoData"
   >
+    <template #header-left="{ scrolled }">
+      <div class="journal-library-title" data-testid="photo-page-title" :data-scrolled="scrolled">
+        <h1 class="journal-page-title whitespace-nowrap">照片</h1>
+        <p v-if="photoStore.timelineStats" class="journal-library-count">
+          {{ photoStore.timelineStats.total_photos.toLocaleString('zh-CN') }} 项影像
+        </p>
+      </div>
+    </template>
+
     <!-- Header Controls (Filter Button) -->
     <template #header-controls-start>
       <button 
@@ -80,29 +90,13 @@
         <p>没有符合条件的照片</p>
         <button type="button" class="ts-button ts-button-primary mt-4" @click="clearPhotoFilters">清除筛选</button>
       </div>
-      <div v-else class="flex flex-col items-center justify-center py-20 px-4 text-center max-w-md mx-auto">
-        <div class="w-24 h-24 bg-primary-50 dark:bg-primary-900/20 rounded-full flex items-center justify-center mb-6 shadow-sm border border-primary-100 dark:border-primary-800/50">
-          <FolderPlus class="w-12 h-12 text-primary-500" />
-        </div>
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">欢迎来到 TrailSnap</h2>
-        <p class="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
-          看起来你的图库还是空的。要开始使用，请前往设置页面添加你的外部照片文件夹，我们将自动为你整理和分析照片。
-        </p>
-        <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-          <button
-            @click="router.push('/settings#external')"
-            class="px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium transition-all shadow-lg shadow-primary-500/30 flex items-center justify-center gap-2"
-          >
-            <Settings class="w-5 h-5" />
-            <span>前往设置添加图库</span>
-          </button>
-          <!-- <button
-            @click="triggerUpload"
-            class="px-6 py-3 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-          >
-            <UploadCloud class="w-5 h-5" />
-            <span>直接上传照片</span>
-          </button> -->
+      <div v-else class="journal-library-empty">
+        <FolderPlus aria-hidden="true" />
+        <h2>留下第一张照片</h2>
+        <p>导入照片和视频，或连接已存放照片的文件夹。</p>
+        <div class="flex flex-wrap justify-center gap-2">
+          <button type="button" class="ts-button journal-library-import" @click="triggerUpload">导入照片</button>
+          <RouterLink to="/settings#external" class="ts-button ts-button-secondary">连接图库</RouterLink>
         </div>
       </div>
     </template>
@@ -118,7 +112,7 @@ import { useUserStore } from '@/stores/user'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotosPageStore } from '@/stores/photoStore'
 import { normalizeMediaTypeFilters } from '@/utils/mediaTypeFilters'
-import { Filter, X, Settings, FolderPlus, UploadCloud } from 'lucide-vue-next'
+import { Filter, FolderPlus } from 'lucide-vue-next'
 import { useMediaQuery, onClickOutside } from '@vueuse/core'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
 import { useUploadStore } from '@/stores/uploadCenterStore'
@@ -356,6 +350,58 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.journal-library-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  padding-right: 8px;
+}
+.journal-library-count { color: var(--ts-color-text-secondary); font-size: 12px; white-space: nowrap; }
+@media (max-width: 767px) {
+  .journal-library :deep([data-photo-header]:has([data-scrolled="true"])::before) {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 0 0 -24px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgb(0 0 0 / 42%), rgb(0 0 0 / 28%) calc(100% - 24px), transparent);
+  }
+  .journal-library-title[data-scrolled="true"] :is(h1, .journal-library-count) {
+    color: white;
+    text-shadow: 0 1px 3px rgb(0 0 0 / 75%), 0 0 7px rgb(0 0 0 / 45%);
+  }
+  .journal-library :deep([data-photo-header]:has([data-scrolled="true"]) .ts-glass-toolbar) {
+    --glass-tint: rgb(0 0 0 / 32%);
+    --glass-rim-color: rgb(255 255 255 / 24%);
+    --ts-glass-highlight: rgb(255 255 255 / 22%);
+    --ts-glass-sheen: linear-gradient(155deg, rgb(255 255 255 / 12%), transparent 55%);
+  }
+  .journal-library :deep([data-photo-header]:has([data-scrolled="true"]) .ts-glass-button) { color: white; }
+  .journal-library :deep([data-photo-header]:has([data-scrolled="true"]) .ts-glass-button:is(:hover, [aria-expanded="true"])) {
+    background-color: rgb(255 255 255 / 18%);
+  }
+  .journal-library :deep([data-photo-header]:has([data-scrolled="true"]) .ts-glass-button:focus-visible) {
+    outline-color: white;
+  }
+}
+.journal-library-empty {
+  display: grid;
+  justify-items: center;
+  gap: 15px;
+  margin: clamp(20px, 5vw, 65px) auto;
+  padding: clamp(28px, 6vw, 80px) 14px;
+  border: 1px dashed var(--ts-color-border);
+  border-radius: 22px;
+  background: var(--ts-color-surface);
+  text-align: center;
+}
+.journal-library-empty > svg { box-sizing: content-box; width: 26px; padding: 14px; border-radius: 50%; background: var(--ts-journal-active); }
+.journal-library-empty h2 { font: 700 clamp(26px, 3vw, 38px)/1.15 var(--ts-journal-serif); }
+.journal-library-empty p { color: var(--ts-color-text-secondary); font-size: 14px; }
+.journal-library-import { background: var(--ts-journal-action); color: white; }
+.journal-library-import:hover { background: var(--ts-journal-action-hover); }
+@media (max-width: 639px) { .journal-library-count { display: none; } }
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s ease; }
 .slide-up-enter-from, .slide-up-leave-to { transform: translateY(20px); opacity: 0; }
 /* 浮层阴影用变量直出：Tailwind 的 shadow-[var(...)] 在此配置下不生效 */

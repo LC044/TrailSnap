@@ -1,9 +1,9 @@
 <template>
-  <div class="ts-page-background search-page mx-auto w-full max-w-screen-2xl h-full min-h-0 flex flex-col">
+  <div class="ts-page-background search-page mx-auto w-full max-w-screen-2xl h-full min-h-0 flex flex-col" :class="{ 'journal-search': !embedded }">
     <header class="shrink-0 px-[var(--ts-page-gutter)] pb-2">
       <div v-if="!embedded" class="ts-browse-header flex items-center gap-3">
-        <h1 class="ts-page-title flex-1 text-gray-900 dark:text-white">搜索</h1>
-        <div class="ts-liquid-glass ts-glass-toolbar" aria-label="搜索工具栏">
+        <h1 class="journal-page-title flex-1">搜索</h1>
+        <div v-glass-refraction class="ts-liquid-glass ts-glass-toolbar" aria-label="搜索工具栏">
           <button class="ts-glass-button" aria-label="以图搜图" title="以图搜图" @click="router.push('/search/image')"><Images class="h-5 w-5" /></button>
           <button class="ts-glass-button" aria-label="AI 助手" title="AI 助手" @click="uiStore.openAgent()"><Bot class="h-5 w-5" /></button>
         </div>
@@ -26,26 +26,28 @@
           </span>
           <ChevronRight class="w-5 h-5 shrink-0 text-gray-300 dark:text-gray-400" />
         </button>
-        <div 
+        <button
+          type="button"
           @click="handleSearch"
-          class="px-4 py-4 flex items-center gap-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 active:bg-gray-100 dark:active:bg-gray-800 transition-colors"
+          class="search-result-option"
         >
           <div class="w-10 h-10 rounded-full bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center text-primary-500">
             <Sparkles class="w-5 h-5" />
           </div>
           <div class="flex flex-col flex-1">
-            <span class="text-gray-900 dark:text-white font-medium">画面识别: "{{ searchText }}"</span>
+            <span class="text-gray-900 dark:text-white font-medium break-all">搜索画面「{{ searchText }}」</span>
             <span class="text-xs text-gray-500 dark:text-gray-400">使用AI进行语义搜索</span>
           </div>
           <ChevronRight class="w-5 h-5 text-gray-300 dark:text-gray-400" />
-        </div>
+        </button>
 
         <!-- Other Suggestions -->
-        <div 
+        <button
           v-for="(item, index) in suggestions" 
           :key="index" 
+          type="button"
           @click="selectSuggestion(item)"
-          class="px-4 py-4 flex items-center gap-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 active:bg-gray-100 dark:active:bg-gray-800 transition-colors"
+          class="search-result-option"
         >
           <div class="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400">
             <component :is="getIcon(item.type)" class="w-5 h-5" />
@@ -57,24 +59,19 @@
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ getLabel(item.type) }}</span>
           </div>
           <ChevronRight class="w-5 h-5 text-gray-300 dark:text-gray-400" />
-        </div>
+        </button>
       </div>
 
       <div v-else class="space-y-8">
         <section v-if="showExamples" class="ts-surface rounded-3xl p-4">
           <div class="mb-2 flex items-center justify-between"><h2 class="ts-section-title text-gray-700 dark:text-gray-300">你可以这样搜</h2><IconButton label="隐藏搜索建议" @click="showExamples = false"><X class="h-4 w-4" /></IconButton></div>
-          <button v-for="(example, index) in examples" :key="example" class="flex min-h-16 w-full items-center gap-3 text-left text-gray-900 dark:text-white" @click="runExample(example)">
-            <div class="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
-              <img v-if="exampleCovers[index]?.photo_id" :src="thumbnailUrl(exampleCovers[index]!.photo_id!, 'small')" alt="" class="h-full w-full object-cover" />
-              <Search v-else class="m-3 h-6 w-6 text-gray-400 dark:text-gray-500" />
-            </div>
-            <span class="text-base">{{ example }}</span>
-          </button>
+          <div class="search-examples">
+            <button v-for="example in examples" :key="example" type="button" @click="runExample(example)"><Search aria-hidden="true" />{{ example }}</button>
+          </div>
         </section>
-        <section>
+        <section v-if="searchStore.history.length">
           <div class="mb-3 flex items-center justify-between"><h2 class="ts-section-title text-gray-900 dark:text-white">最近搜索</h2><IconButton v-if="searchStore.history.length" label="清空最近搜索" @click="searchStore.clearHistory()"><Trash2 class="h-5 w-5" /></IconButton></div>
           <div v-if="searchStore.history.length" class="flex flex-wrap gap-2"><button v-for="entry in searchStore.history" :key="entry" class="rounded-full bg-gray-200/70 px-4 py-2 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100" @click="runExample(entry)">{{ entry }}</button></div>
-          <p v-else class="text-sm text-gray-500 dark:text-gray-400">还没有搜索记录</p>
         </section>
         <section v-for="group in browseGroups" :key="group.id">
           <div class="mb-3 flex items-center justify-between"><h2 class="ts-section-title text-gray-900 dark:text-white">{{ group.title }}</h2><button v-if="!embedded" class="flex min-h-11 items-center text-sm text-gray-500 dark:text-gray-400" :aria-label="`查看更多${group.title}`" @click="router.push(group.route)">更多<ChevronRight class="h-4 w-4" /></button></div>
@@ -121,7 +118,6 @@ import { useUiStore } from '@/stores/uiStore'
 import { useSearchStore } from '@/stores/searchStore'
 import { useAlbumStore } from '@/stores/albumStore'
 import type { SmartAlbumOverview, SmartAlbumRepresentative } from '@/api/album'
-import { thumbnailUrl } from '@/utils/mediaUrl'
 import SmartAlbumCover from '@/components/SmartAlbumCover.vue'
 
 const props = defineProps<{ embedded?: boolean }>()
@@ -158,7 +154,6 @@ const browseGroups = computed(() => [
   { id: 'location' as const, title: '地点', icon: MapPin, route: '/album/location', data: albumStore.smartAlbumOverview?.location },
   { id: 'classification' as const, title: '智能分类', icon: Tag, route: '/album/classification', data: albumStore.smartAlbumOverview?.classification },
 ])
-const exampleCovers = computed(() => albumStore.smartAlbumOverview?.location.representatives.slice(0, 3) ?? [])
 const loadOverview = async () => {
   overviewLoading.value = true
   overviewError.value = false
@@ -281,6 +276,19 @@ const getIcon = (type: string) => {
 </script>
 
 <style scoped>
+.journal-search { max-width: 1280px; }
+.journal-search > header { padding-top: 16px; }
+.journal-search .search-input { min-height: 54px; background: var(--ts-color-surface); }
+.journal-search .search-input:focus-visible { outline-color: var(--ts-journal-focus); }
+.search-result-option { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--ts-color-divider); background: var(--ts-color-surface); text-align: left; }
+.search-result-option:hover { background: var(--ts-color-surface-muted); }
+.search-result-option > :first-child, .search-result-option > :last-child { flex-shrink: 0; }
+.search-result-option:focus-visible, .search-examples button:focus-visible { outline: 2px solid var(--ts-journal-focus, var(--theme-primary)); outline-offset: -2px; }
+.search-examples { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-examples button { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding-inline: 13px; border-radius: 999px; background: var(--ts-color-surface-muted); text-align: left; font-size: 13px; font-weight: 600; }
+.search-examples button:hover { background: var(--ts-journal-active, var(--ts-color-divider)); }
+.search-examples svg { width: 14px; height: 14px; color: var(--ts-color-text-secondary); }
+@media (max-width: 767px) { .journal-search > header { padding-top: 8px; } }
 .search-page input { padding-left: 40px; padding-right: 44px; }
 .search-page { width: 100%; max-width: 720px; margin-inline: auto; }
 .search-input { min-height: 52px; border-radius: 999px; }
