@@ -34,11 +34,12 @@ function element(extra = {}) {
     clientHeight: 400,
     querySelector: () => null,
     querySelectorAll: () => [],
+    closest: () => null,
     ...extra,
   }
 }
 
-function harness({ reduced = false, pinned = true, viewports = [] } = {}) {
+function harness({ reduced = false, pinned = true, viewports = [], innerWidth = 1440 } = {}) {
   const start = 1000
   const distance = 1800
   const memoryScene = element({ offsetHeight: 2700 })
@@ -98,7 +99,7 @@ function harness({ reduced = false, pinned = true, viewports = [] } = {}) {
       documentElement: { scrollHeight: 6000 },
     },
     window: {
-      innerWidth: 1440,
+      innerWidth,
       innerHeight: 900,
       scrollY: 0,
       scrollTo(options) { context.lastScrollTo = options },
@@ -207,6 +208,41 @@ test('chooseMemory scrolls the visual into view when the page is not pinned', ()
   page.api.chooseMemory(1)
   assert.deepEqual(page.calls, [1])
   assert.equal(visual.scrolled, true)
+
+  page.api.destroy()
+})
+
+test('mobile inline previews keep the PC 1440 canvas and its proportions', () => {
+  const frame = element({ hidden: false, id: 'live-home' })
+  const viewport = element({
+    clientWidth: 360,
+    clientHeight: 225,
+    querySelectorAll: selector => selector === 'iframe' ? [frame] : [],
+  })
+  const page = harness({ innerWidth: 390, viewports: [viewport] })
+
+  assert.equal(frame.style.width, '1440px')
+  assert.equal(frame.style.height, '900px')
+  assert.equal(frame.style.transform, 'scale(0.25)')
+  assert.equal(frame.style.getPropertyValue('--preview-scale'), '0.25')
+
+  page.api.destroy()
+})
+
+test('expanded mobile preview switches to its native mobile layout for touch', () => {
+  const frame = element({ hidden: false, id: 'live-home' })
+  const viewport = element({
+    clientWidth: 360,
+    clientHeight: 640,
+    closest: selector => selector === '.expanded' ? {} : null,
+    querySelectorAll: selector => selector === 'iframe' ? [frame] : [],
+  })
+  const page = harness({ innerWidth: 390, viewports: [viewport] })
+
+  assert.equal(frame.style.width, '100%')
+  assert.equal(frame.style.height, '100%')
+  assert.equal(frame.style.transform, 'none')
+  assert.equal(frame.style.getPropertyValue('--preview-scale'), '1')
 
   page.api.destroy()
 })

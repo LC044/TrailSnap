@@ -3444,10 +3444,6 @@ html {
     order: 2;
   }
 
-  .trailsnap-home .map-viewport {
-    aspect-ratio: 4 / 5;
-  }
-
   .trailsnap-home .panel-foot {
     padding: 8px 12px;
     font-size: 10px;
@@ -3463,10 +3459,6 @@ html {
 
   .trailsnap-home .diary-quote p {
     font-size: 15px;
-  }
-
-  .trailsnap-home .diary-viewport {
-    aspect-ratio: 4 / 5;
   }
 
   .trailsnap-home .diary-panel .panel-bar {
@@ -3613,10 +3605,6 @@ html {
     margin-right: 6px;
   }
 
-  .trailsnap-home .hero-window .desktop-viewport {
-    aspect-ratio: 4 / 3.4;
-  }
-
   .trailsnap-home .photo-strip {
     display: none;
   }
@@ -3718,10 +3706,6 @@ html {
 
   .trailsnap-home .panel {
     border-radius: 16px;
-  }
-
-  .trailsnap-home .map-viewport {
-    aspect-ratio: 3 / 4;
   }
 
   .trailsnap-home .tool-copy {

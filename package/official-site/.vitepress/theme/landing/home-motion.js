@@ -27,6 +27,7 @@ export function initHome(root, options = {}) {
   function fitDesktopPreviews() {
     qa('.desktop-viewport').forEach((viewport) => {
       const frames = [...viewport.querySelectorAll('iframe')]
+      const expanded = Boolean(viewport.closest('.expanded'))
       const width = viewport.clientWidth
       const height = viewport.clientHeight
       if (!width || !height) return
@@ -39,7 +40,11 @@ export function initHome(root, options = {}) {
           return
         }
         if (frame.hidden) return
-        const native = win.innerWidth < 768
+        // Inline previews keep the desktop 1440px canvas on phones so the
+        // composition and proportion stay identical to the PC experience.
+        // Only the full-screen view falls back to the product's mobile layout,
+        // where touch interaction needs readable native controls.
+        const native = expanded && win.innerWidth < 768
         if (native) {
           frame.style.width = '100%'
           frame.style.height = '100%'
