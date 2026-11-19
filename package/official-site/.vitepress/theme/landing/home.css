@@ -124,6 +124,16 @@
   list-style: none;
 }
 
+/* The custom home page owns its own navigation chrome. VitePress still
+   renders a mobile local-nav bar with a "回到顶部" control, which overlaps
+   the custom header and causes repaint flicker while scrolling. */
+.custom-home-page .VPNav,
+.custom-home-page .VPLocalNav,
+.custom-download-page .VPLocalNav,
+.custom-cli-page .VPLocalNav {
+  display: none !important;
+}
+
 html:has(.trailsnap-home) {
   background: #f3efe4;
 }
@@ -3511,8 +3521,7 @@ html {
   .trailsnap-home .hero-window iframe,
   .trailsnap-home .map-viewport iframe,
   .trailsnap-home .map-viewport .native-map-content,
-  .trailsnap-home .diary-viewport iframe,
-  .trailsnap-home .tool-demo iframe {
+  .trailsnap-home .diary-viewport iframe {
     pointer-events: none;
   }
 
@@ -3733,6 +3742,47 @@ html {
 
   .trailsnap-home .mobile-dock a {
     font-size: 11.5px;
+  }
+}
+
+@media (max-width: 1000px) {
+  /* Avoid stacked fixed-position backdrop filters on mobile Safari: they
+     repaint the scrolling page behind the header and read as flicker. */
+  .trailsnap-home.is-scrolled .site-header {
+    background: var(--bg);
+    border-bottom-color: var(--line);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .trailsnap-home .mobile-dock {
+    background: var(--bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  /* A rotated, scaled iframe is re-rasterized on every scroll frame on
+     some phones. Keep the preview flat on small screens. */
+  .trailsnap-home .hero-window,
+  .trailsnap-home .hero-window:hover {
+    transform: none;
+  }
+
+  .trailsnap-home .hero-stage {
+    will-change: auto;
+  }
+
+  .trailsnap-home .hero-arch,
+  .trailsnap-home .hero-sun {
+    animation: none;
+  }
+
+  .trailsnap-home .desktop-viewport iframe {
+    will-change: transform;
+  }
+
+  .trailsnap-home.reveal-ready [data-reveal] {
+    filter: none;
   }
 }
 
