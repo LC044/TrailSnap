@@ -133,9 +133,6 @@ export const workflowApi = {
   async members(id: string, groupId: number, offset = 0) {
     return (await request.get<PageResult<{ photo_id: string; in_scope: boolean }> & { representative_id: string }>(`${base}/plans/${id}/groups/${groupId}/members`, { params: { offset } })).data
   },
-  async export(id: string) {
-    return (await request.get<Blob>(`${base}/plans/${id}/export`, { responseType: 'blob' })).data
-  },
   async execute(plan: ToolPlan, selectedItems?: number[]) {
     return (await request.post<ToolPlan>(`${base}/plans/${plan.id}/execute`, {
       version: plan.version, confirmed: true, selected_items: selectedItems,

@@ -42,7 +42,7 @@
           @click="retrySync"
           class="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
-          重试同步
+          重试
         </button>
       </div>
 
@@ -55,13 +55,13 @@
             @click="handleBack"
             class="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
-            返回工具箱
+            返回
           </button>
           <button
             @click="resetProgress"
             class="px-6 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-full transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
-            重新开始筛选
+            重来
           </button>
         </div>
       </div>
@@ -328,7 +328,6 @@
             >
               开始使用
             </button>
-            <p class="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">点击空白处或按钮均可关闭，仅显示一次</p>
           </div>
         </div>
       </div>
