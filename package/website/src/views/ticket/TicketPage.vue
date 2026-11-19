@@ -128,7 +128,7 @@
     </div>
     <div class="ticket-view-bar">
       <button type="button" class="journal-secondary-link text-sm" @click="viewMode = viewMode === 'timeline' ? 'grid' : 'timeline'"
-        :aria-label="viewMode === 'timeline' ? '切换卡片视图' : '按月浏览'">
+        :aria-label="viewMode === 'timeline' ? '切换为卡片视图' : '切换为按月浏览'">
         <ListTree v-if="viewMode === 'timeline'" class="h-4 w-4" /><LayoutGrid v-else class="h-4 w-4" />
         {{ viewMode === 'timeline' ? '按月' : '卡片' }}
       </button>

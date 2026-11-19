@@ -32,8 +32,9 @@ test.describe('页面打开冒烟 @smoke', () => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
     await page.goto('/this-route-does-not-exist-12345');
 
-    await expect(page.locator('h1', { hasText: '404' })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('页面未找到')).toBeVisible();
+    // journal 风格 404 页：h1 标题为「页面未找到」，副文案提示链接失效
+    await expect(page.locator('h1', { hasText: '页面未找到' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('链接可能已失效')).toBeVisible();
   });
 
   test('白名单页 /annual-report 无需登录可打开', async ({ page }) => {

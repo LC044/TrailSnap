@@ -3,9 +3,8 @@
     <header class="journal-index-header mb-4 flex min-w-0 items-center justify-between gap-3">
       <div class="flex min-w-0 items-start gap-3">
         <BackButton label="返回工具箱" @click="goBack" />
-        <div class="min-w-0"><h1 class="journal-page-title">{{ kind === 'cleanup' ? ({ duplicate: '重复照片', similar: '相似照片', quality: '低质量照片' })[config.cleanup_mode] : titles[kind] }}</h1></div>
+        <div class="min-w-0"><h1 class="ts-page-title">{{ kind === 'cleanup' ? ({ duplicate: '重复照片', similar: '相似照片', quality: '低质量照片' })[config.cleanup_mode] : titles[kind] }}</h1></div>
       </div>
-      <RouterLink to="/toolbox#history" class="journal-secondary-link shrink-0 text-sm">操作记录</RouterLink>
     </header>
     <ol class="workflow-stages mb-4" aria-label="操作阶段">
       <li :aria-current="step < 3 ? 'step' : undefined">配置范围与规则</li>

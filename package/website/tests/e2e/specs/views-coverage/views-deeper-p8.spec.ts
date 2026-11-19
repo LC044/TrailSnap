@@ -260,13 +260,13 @@ test.describe("Tokens 令牌管理 @views-coverage", () => {
 test.describe("NotFound 404 路由 @views-coverage", () => {
   test("访问未定义路由 -> 渲染 404 页面并提示「页面未找到」", async ({ page }) => {
     await page.goto("/this-route-does-not-exist-xyz")
-    await expect(page.locator("h1", { hasText: "404" })).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText("页面未找到")).toBeVisible()
+    await expect(page.locator("h1", { hasText: "页面未找到" })).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText("链接可能已失效")).toBeVisible()
   })
 
   test("从 404 点击「返回首页」-> 跳到 /", async ({ page }) => {
     await page.goto("/totally-unknown")
-    await expect(page.locator("h1", { hasText: "404" })).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator("h1", { hasText: "页面未找到" })).toBeVisible({ timeout: 10_000 })
     await page.getByRole("link", { name: "返回首页" }).click()
     await expect(page).toHaveURL(/\/$/)
   })

@@ -203,8 +203,8 @@ test.describe("Moments 朋友圈视图 @views-coverage", () => {
     await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
     await page.locator('button[title="视图设置"]').click()
     await page.locator('button:has-text("朋友圈")').first().click()
-    // PhotosPage empty 模板硬编码「欢迎来到 TrailSnap」
-    await expect(page.getByText("欢迎来到 TrailSnap")).toBeVisible({ timeout: 10_000 })
+    // PhotosPage journal 风格空态：h2 标题「留下第一张照片」
+    await expect(page.getByText("留下第一张照片")).toBeVisible({ timeout: 10_000 })
   })
 })
 

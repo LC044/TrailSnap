@@ -177,7 +177,8 @@ test.describe('Nightly view coverage — AgentPhotoSearchResults @views-coverage
 
     await openSearchResults(page)
     await expect(page.getByRole('region', { name: '照片搜索结果' }).getByRole('alert')).toContainText('加载搜索结果失败，请重试')
-    await page.getByRole('button', { name: '重试' }).click()
+    // 首页 journal 改版后页面另有「重试」按钮，必须限定在结果区内
+    await page.getByRole('region', { name: '照片搜索结果' }).getByRole('button', { name: '重试' }).click()
 
     await expect(page.getByText('搜索结果 · 2 张')).toBeVisible()
     await expect(page.getByText('已显示全部搜索结果')).toBeVisible()
