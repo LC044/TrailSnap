@@ -21,7 +21,7 @@
           <div v-if="demoMode" class="auth-notice" role="status" aria-live="polite">{{ loading ? '正在进入演示相册…' : '自动进入暂未成功，请点击「登录」重试。' }}</div>
           <div v-if="!isTauriApp() && authState !== 'ready'" class="auth-notice" role="status" aria-live="polite">
             {{ authState === 'checking' ? '正在连接服务…' : '暂时无法连接服务，首次启动可能需要一些时间。正在自动重试。' }}
-            <el-button v-if="authState === 'unavailable'" link type="primary" @click="retryAuthStatus">立即重试</el-button>
+            <el-button v-if="authState === 'unavailable'" link type="primary" @click="checkAuthStatus">重试当前服务器</el-button>
           </div>
           <el-form-item v-if="showServerAddress" label="TrailSnap 地址" prop="serverUrl">
             <el-autocomplete
@@ -34,7 +34,7 @@
               data-testid="server-address"
               @select="({ value }) => loginForm.serverUrl = value"
             />
-            <router-link to="/server-settings?redirect=/login" class="auth-helper-link">扫码或自动查找 TrailSnap</router-link>
+            <router-link :to="serverSettingsLocation" class="auth-helper-link">切换服务器（手动输入、扫码或自动查找）</router-link>
           </el-form-item>
           <el-form-item label="用户名" prop="username">
             <el-input
@@ -62,7 +62,7 @@
             <el-checkbox v-model="rememberMe">记住用户名</el-checkbox>
             <router-link to="/forgot-password" class="auth-link">忘记密码？</router-link>
           </div>
-          <el-button type="primary" native-type="submit" class="auth-submit" :loading="loading" :disabled="!isTauriApp() && authState !== 'ready'">登录</el-button>
+          <el-button type="primary" native-type="submit" class="auth-submit" :loading="loading" :disabled="!canLogIn">登录</el-button>
           <p v-if="allowRegistration" class="auth-switch">
             还没有账号？<router-link to="/register" class="auth-link">立即注册</router-link>
           </p>
@@ -74,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { computed, ref, reactive, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
@@ -82,7 +82,7 @@ import { User, Lock } from '@element-plus/icons-vue';
 import { useAuthStatus } from '@/composables/useAuthStatus';
 import { createDemoEntry } from '@/composables/demoEntry';
 import { safeAuthRedirect } from '@/router/authRedirect';
-import { getServerHistory, getServerUrl, isMobileApp, isTauriApp, saveServerUrl } from '@/config/server';
+import { getServerHistory, getServerUrl, isMobileApp, isTauriApp } from '@/config/server';
 import LoginCharacters from './components/LoginCharacters.vue';
 import './auth.css';
 
@@ -132,28 +132,24 @@ const { state: authState, check: checkAuthStatus } = useAuthStatus(async (status
   }
 });
 
-const retryAuthStatus = async () => {
-  if (showServerAddress) {
-    try {
-      loginForm.serverUrl = await saveServerUrl(loginForm.serverUrl);
-    } catch (error: any) {
-      ElMessage.error(error.message || '请输入有效的 TrailSnap 地址');
-      return;
-    }
-  }
-  await checkAuthStatus();
-};
-
 const suggestServerAddresses = (
   _query: string,
   callback: (items: Array<{ value: string }>) => void,
 ) => callback(serverHistory.value.map(value => ({ value })));
 
+const currentServerUrl = showServerAddress ? getServerUrl() : '';
 const loginForm = reactive({
-  serverUrl: showServerAddress ? getServerUrl() : '',
+  serverUrl: currentServerUrl,
   username: '',
   password: ''
 });
+const canLogIn = computed(() => isTauriApp() || (
+  authState.value === 'ready' && (!showServerAddress || loginForm.serverUrl.trim() === currentServerUrl)
+));
+const serverSettingsLocation = computed(() => ({
+  name: 'ServerSettings',
+  query: { url: loginForm.serverUrl.trim(), redirect: route.fullPath },
+}));
 
 const rules = reactive<FormRules>({
   serverUrl: showServerAddress
@@ -198,16 +194,12 @@ onMounted(async () => {
 });
 
 const handleLogin = async () => {
-  if (!loginFormRef.value || loading.value || (!isTauriApp() && authState.value !== 'ready')) return;
+  if (!loginFormRef.value || loading.value || !canLogIn.value) return;
   await loginFormRef.value.validate(async (valid) => {
-    if (!valid) return;
+    if (!valid || !canLogIn.value) return;
     loading.value = true;
     isMocking.value = false;
     try {
-      if (showServerAddress) {
-        loginForm.serverUrl = await saveServerUrl(loginForm.serverUrl);
-        serverHistory.value = await getServerHistory();
-      }
       const entered = await userStore.login({
         username: loginForm.username,
         password: loginForm.password,

@@ -51,26 +51,40 @@ test.describe('手机 App 登录服务器选择 @p0', () => {
     await expect(serverSelect).toHaveValue('https://photos.example.com')
   })
 
-  test('登录前保存新地址并加入历史记录', async ({ page }) => {
-    await page.route('**/auth/login', route => route.fulfill({
-      status: 401,
-      contentType: 'application/json',
-      body: JSON.stringify({ detail: '用户名或密码错误' }),
-    }))
-    await page.goto('/login', { waitUntil: 'domcontentloaded' })
+  test('重启后旧服务器不可达时仍可切换，且只保存测试成功的地址', async ({ page }) => {
+    const oldServer = 'http://192.168.1.10:3180'
+    const newServer = 'http://10.0.0.8:3180'
+    const healthUrl = `${newServer}/api/health-check`
+    await page.route(`${oldServer}/api/auth/status`, route => route.abort())
+    await page.route(healthUrl, route => route.abort(), { times: 1 })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
 
     const serverInput = page.getByTestId('server-address')
-    await serverInput.fill('http://10.0.0.8:3180')
-    await page.locator('input[placeholder="请输入用户名"]').fill('test-user')
-    await page.locator('input[placeholder="请输入密码"]').fill('password123')
-    await page.getByRole('button', { name: '登录' }).click()
+    const loginButton = page.getByRole('button', { name: '登录', exact: true })
+    await expect(page.getByText('暂时无法连接服务', { exact: false })).toBeVisible()
+    await expect(loginButton).toBeDisabled()
+    await serverInput.fill(newServer)
+    await page.getByRole('link', { name: /切换服务器/ }).click()
 
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('trailsnap:server-url')))
-      .toBe('http://10.0.0.8:3180')
+    const connectButton = page.getByRole('button', { name: '测试并保存' })
+    await expect(page.getByRole('textbox', { name: '服务器地址' })).toHaveValue(newServer)
+    await connectButton.click()
+    await expect(page.getByRole('alert')).toContainText('无法连接 TrailSnap 服务')
+    expect(await page.evaluate(() => localStorage.getItem('trailsnap:server-url'))).toBe(oldServer)
+
+    await page.route(healthUrl, route => route.fulfill({ json: { code: 0, data: {} } }))
+    const newAuthStatus = page.waitForResponse(`${newServer}/api/auth/status`)
+    await connectButton.click()
+    expect((await newAuthStatus).ok()).toBe(true)
+    await expect(page).toHaveURL(url => url.pathname === '/login' && url.searchParams.get('redirect') === '/')
+    await expect(serverInput).toHaveValue(newServer)
+    await expect(loginButton).toBeEnabled()
+
+    expect(await page.evaluate(() => localStorage.getItem('trailsnap:server-url'))).toBe(newServer)
     const history = await page.evaluate(() => JSON.parse(localStorage.getItem('trailsnap_server_history') || '[]'))
     expect(history).toEqual([
-      'http://10.0.0.8:3180',
-      'http://192.168.1.10:3180',
+      newServer,
+      oldServer,
       'https://photos.example.com',
     ])
   })
