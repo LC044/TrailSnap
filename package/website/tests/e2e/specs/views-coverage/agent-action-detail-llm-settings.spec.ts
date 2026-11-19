@@ -110,7 +110,7 @@ test.describe('P1 - ActionPlanDetail / LLMSettings @views-coverage', () => {
     const picker = page.getByRole('dialog', { name: '分析模型' })
     await expect(picker.getByRole('radio', { name: '内置视觉 Built-in AI' })).toBeChecked()
     await expect(picker.getByRole('radio', { name: '关闭' })).toBeChecked()
-    await page.keyboard.press('Escape')
+    await picker.getByRole('textbox', { name: '搜索模型' }).press('Escape')
     await expect(picker).toBeHidden()
     await expect(page.getByRole('button', { name: '高级提示词设置' })).toBeVisible()
     await expect(page.getByRole('button', { name: '+ 添加连接' })).toBeVisible()
