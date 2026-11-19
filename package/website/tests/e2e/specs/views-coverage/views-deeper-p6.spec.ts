@@ -22,14 +22,14 @@ test.describe('P1 - 视图合同补测 @views-coverage', () => {
     await page.goto('/toolbox');
 
     await expect(page.locator('h1.ts-page-title', { hasText: '工具箱' })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('region', { name: '整理与命名' })).toBeVisible();
-    await expect(page.getByRole('region', { name: '清理与修复' })).toBeVisible();
+    await expect(page.getByRole('region', { name: '照片工具' })).toBeVisible();
+    await expect(page.getByRole('region', { name: '清理与修复' })).toHaveCount(0);
 
     // 重构后首页按用途分组：整理与命名 3 张 + 清理与修复 4 张，共 7 个入口。
     const tools: Array<[string, string]> = [
-      ['影像整理', '/toolbox/organize'],
-      ['批量重命名', '/toolbox/rename'],
-      ['按规则创建相册', '/toolbox/albums'],
+      ['整理文件夹', '/toolbox/organize'],
+      ['批量修改文件名', '/toolbox/rename'],
+      ['批量创建相册', '/toolbox/albums'],
       ['重复照片', '/toolbox/duplicate'],
       ['相似照片', '/toolbox/similar'],
       ['低质量照片', '/toolbox/cleanup'],
@@ -42,11 +42,11 @@ test.describe('P1 - 视图合同补测 @views-coverage', () => {
     // 旧「暂无最近活动」占位改为「操作记录」分区，记录来自持久化预览计划。
     await expect(page.locator('#history > summary')).toHaveText('操作记录');
     await page.locator('#history > summary').click();
-    await expect(page.getByRole('button', { name: '刷新记录' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '刷新记录' })).toHaveCount(0);
 
-    await page.getByRole('link', { name: /批量重命名/ }).first().click();
+    await page.getByRole('link', { name: /批量修改文件名/ }).first().click();
     await expect(page).toHaveURL(/\/toolbox\/rename$/);
-    await expect(page.locator('h1.ts-page-title', { hasText: '批量重命名' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1.ts-page-title', { hasText: '批量修改文件名' })).toBeVisible({ timeout: 10_000 });
   });
 
   test('Toolbox 首页 - 「低质量照片」卡片跳转到清理页', async ({ page }) => {

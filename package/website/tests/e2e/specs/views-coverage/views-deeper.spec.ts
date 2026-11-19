@@ -398,7 +398,7 @@ test.describe('P1 - DuplicatePhotoCleanup 重复照片清理 @views-coverage', (
     await expect(page.locator('h1.ts-page-title', { hasText: '重复照片' })).toBeVisible({ timeout: 10_000 })
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
     await expect(page.getByRole('button', { name: '选择冗余项' })).toHaveCount(0)
   })
 })

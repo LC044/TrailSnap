@@ -11,34 +11,46 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
   // 三个工具页现在共用 ToolWorkflowPage：旧版 `/api/toolbox/<tool>/tasks/latest`
   // 轮询、进度条「3 / 10」和「选择目录」禁用态都已移除，任务进度改由持久化预览计划呈现。
   for (const tool of [
-    { path: 'rename', title: '批量重命名' },
-    { path: 'organize', title: '影像整理' },
+    { path: 'rename', title: '批量修改文件名' },
+    { path: 'organize', title: '整理文件夹' },
     { path: 'time-from-filename', title: '修正拍摄信息' },
   ]) {
     test(`${tool.path} 使用统一预览计划工作流而非旧任务轮询`, async ({ page }) => {
       await page.goto(`/toolbox/${tool.path}`)
       await expect(page.locator('h1.ts-page-title', { hasText: tool.title })).toBeVisible({ timeout: 10_000 })
       await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
-      await expect(page.getByRole('link', { name: '操作记录' })).toHaveAttribute('href', '/toolbox')
-      await expect(page.getByRole('button', { name: /^(查看效果|查找候选照片)$/ })).toBeDisabled()
+      await expect(page.getByRole('link', { name: '操作记录' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '查看', exact: true })).toBeDisabled()
+      await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
     })
   }
+
+  test('相册命名与日期筛选只展示当前简化控件', async ({ page }) => {
+    await page.goto('/toolbox/albums')
+    await expect(page.getByRole('heading', { name: '相册命名', exact: true })).toBeVisible()
+    await expect(page.getByRole('combobox', { name: '搜索相册', exact: true })).toBeVisible()
+    await page.locator('summary').filter({ hasText: /^日期与类型$/ }).click()
+    await expect(page.getByText('拍摄日期', { exact: true })).toHaveCount(1)
+    await expect(page.getByRole('button', { name: /^20\d{2} 年$/ })).toHaveCount(0)
+    await expect(page.getByText('高级设置', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '预览', exact: true })).toBeDisabled()
+  })
 
   test('范围来源切换不会隐式带入目录，文件夹需显式选择', async ({ page }) => {
     await page.goto('/toolbox/rename')
     const sources = page.getByRole('group', { name: '范围来源' })
 
     await sources.getByRole('button', { name: '文件夹' }).click()
-    await expect(page.getByRole('button', { name: '选择文件夹' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '选择', exact: true })).toBeVisible()
     await expect(page.getByText('包含子文件夹', { exact: true })).toBeVisible()
-    await expect(page.getByText('这些是服务器或桌面图库中的实际目录，不是手机本地相册。')).toBeVisible()
+    await expect(page.getByText('这些是服务器或桌面图库中的实际目录，不是手机本地相册。')).toHaveCount(0)
     await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '文件夹', exact: true })).toHaveAttribute('aria-pressed', 'true')
     // 旧版目录树「加载失败/重试/确认/取消」与文件夹输入框随直连表单移除，
     // 目录现在作为范围的一部分显式列出，不再写回输入框。
     await expect(page.getByPlaceholder('请选择要进行重命名操作的文件夹')).toHaveCount(0)
 
     await sources.getByRole('button', { name: '全部' }).click()
-    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toBeVisible()
+    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toHaveCount(0)
     await sources.getByRole('button', { name: '文件夹' }).click()
     await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '文件夹', exact: true })).toHaveAttribute('aria-pressed', 'true')
   })

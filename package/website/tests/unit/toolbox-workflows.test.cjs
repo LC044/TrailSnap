@@ -69,9 +69,12 @@ test('cleanup saves cross-page selection on server and loads references by page'
   await ctx.state.toggle(7, true)
   assert.equal(ctx.state.selectedCount.value, 10002)
   assert.equal(ctx.state.rows.value[0].selected, true)
-  assert.deepEqual(calls[0].slice(2), [[7], true])
+  assert.deepEqual(calls.find(call => call[0] === 'selection').slice(2), [[7], true])
+  assert.equal(ctx.state.photoGroups.value.length, 1)
+  assert.equal(ctx.state.photoGroups.value[0].groupId, 2)
+  assert.ok(calls.some(call => call[0] === 'members' && call[3] === 0))
   await ctx.state.loadReferences(2, 3)
-  assert.deepEqual(calls[1], ['members', 'scan-one', 2, 48])
+  assert.deepEqual(calls.at(-1), ['members', 'scan-one', 2, 48])
   assert.equal(ctx.state.references.value[2].items[0].in_scope, false)
   ctx.unmount()
 })
@@ -132,33 +135,6 @@ test('rename template error names the broken placeholder', () => {
   assert.equal(renameTemplateError('IMG_{date}_{time}'), '')
 })
 
-test('default rename template wins over recent and save-as clears rename mode', async () => {
-  const { defaultConfig } = api()
-  const defaultRule = { ...defaultConfig('rename'), template: 'DEFAULT_{date}' }
-  const recentRule = { ...defaultConfig('rename'), template: 'RECENT_{date}' }
-  const store = {
-    preferences: { presets: [{ id: 'default', name: 'Default', config: defaultRule }],
-      default_rename_id: 'default', recent: [recentRule] },
-    busy: false, load: async () => {},
-  }
-  const applied = []
-  const component = load('views/toolbox/ToolPresetBar.vue', {
-    '@/stores/toolbox': { useToolboxStore: () => store },
-    'element-plus': { ElMessage: {}, ElMessageBox: {} },
-  }).default
-  const ctx = mount(component, { modelValue: defaultConfig('rename') }, {
-    'onApply-default': value => applied.push(value),
-  })
-  await vue.nextTick()
-  assert.equal(applied[0].template, defaultRule.template)
-  ctx.state.renameOnly.value = true
-  ctx.state.makeDefault.value = true
-  ctx.state.openSave()
-  assert.equal(ctx.state.renameOnly.value, false)
-  assert.equal(ctx.state.makeDefault.value, false)
-  ctx.unmount()
-})
-
 test('account changes discard old pending preference responses', async () => {
   const pending = deferred()
   const user = vue.reactive({ userInfo: { id: 'one' } })
@@ -190,7 +166,7 @@ test('selection entry freezes explicit deduplicated IDs and account context', ()
   assert.equal(calls.length, 1)
 })
 
-test('organize quick presets preserve explicit file decisions and expose advanced settings', () => {
+test('organize preserves file decisions and normalizes removed advanced settings', () => {
   const config = vue.reactive(api().defaultConfig('organize'))
   config.target = '/photos'; config.action = 'move'; config.layout = 'preserve'; config.missing = 'upload'
   const component = load('views/toolbox/OrganizeRuleEditor.vue', { '@/api/toolboxWorkflows': api() }).default
@@ -199,51 +175,12 @@ test('organize quick presets preserve explicit file decisions and expose advance
   assert.deepEqual(config.rules.map(r => r.strategy), ['time', 'location'])
   assert.equal(config.target, '/photos')
   assert.equal(config.action, 'move')
-  assert.match(ctx.state.advancedSummary.value, /保留原层级/)
-  assert.match(ctx.state.advancedSummary.value, /上传时间/)
+  assert.equal(config.layout, 'rebuild')
+  assert.equal(config.missing, 'skip')
+  assert.equal(config.multi_group, 'skip')
   assert.equal(ctx.state.currentPreset.value, 'year-city')
   config.rules[1].groups = ['city-id']
   assert.equal(ctx.state.currentPreset.value, undefined)
-  assert.match(ctx.state.ruleSummary.value, /指定分组/)
-  ctx.unmount()
-})
-
-test('failed preset save retains the previous selection instead of exposing an unsaved ID', async () => {
-  const store = { preferences: { presets: [], recent: [], default_rename_id: null }, busy: false,
-    load: async () => {}, save: async () => { throw new Error('conflict') } }
-  const component = load('views/toolbox/ToolPresetBar.vue', {
-    '@/stores/toolbox': { useToolboxStore: () => store },
-    'element-plus': { ElMessage: { success() {}, warning() {} }, ElMessageBox: {} },
-  }).default
-  const ctx = mount(component, { modelValue: api().defaultConfig('organize') })
-  await vue.nextTick()
-  ctx.state.presetName.value = '旅行'
-  await ctx.state.saveNew()
-  assert.equal(ctx.state.chosen.value, '')
-  assert.match(ctx.state.loadError.value, /保存失败/)
-  ctx.unmount()
-})
-
-test('template manager routes each preset to its own tool and persists names', async () => {
-  const preset = { id: 'organize-one', name: '旅行', config: api().defaultConfig('organize') }
-  const calls = []
-  const store = { preferences: { version: 1, presets: [preset], recent: [], default_rename_id: null }, busy: false,
-    load: async () => {}, save: async value => { store.preferences = value } }
-  const component = load('views/toolbox/ToolboxHomePage.vue', {
-    '@/stores/toolbox': { useToolboxStore: () => store },
-    '@/api/toolboxWorkflows': { workflowApi: { history: async () => [] } },
-    'vue-router': { useRouter: () => ({ push: value => calls.push(value) }) },
-    'element-plus': { ElMessageBox: { confirm: async () => {} } },
-  }).default
-  const ctx = mount(component)
-  ctx.state.editRules(preset)
-  assert.equal(calls[0].path, '/toolbox/organize')
-  assert.equal(calls[0].query.preset, preset.id)
-  ctx.state.editingName.value = '新的旅行方案'
-  await ctx.state.renamePreset(preset)
-  assert.equal(store.preferences.presets[0].name, '新的旅行方案')
-  await ctx.state.deletePreset(preset)
-  assert.equal(store.preferences.presets.length, 0)
   ctx.unmount()
 })
 
@@ -263,4 +200,34 @@ test('toolbox restores user identity from a token before loading empty presets',
   assert.deepEqual(calls, ['user', 'preferences'])
   assert.equal(store.loadedOwner.value, 'restored')
   assert.deepEqual(store.preferences.value.presets, [])
+})
+
+test('rename style switches between simple choices and custom rules without accumulating tokens', () => {
+  const config = vue.reactive(api().defaultConfig('rename'))
+  const component = load('views/toolbox/RenameTemplateEditor.vue', { '@/api/toolboxWorkflows': api() }).default
+  const ctx = mount(component, { modelValue: config })
+  ctx.state.chooseStyle('custom')
+  assert.equal(ctx.state.selectedStyle.value, 'custom')
+  config.template = '{date}{city}{sequence3}'
+  ctx.state.chooseStyle('IMG_{date}_{time}')
+  assert.equal(config.template, 'IMG_{date}_{time}')
+  assert.equal(ctx.state.selectedStyle.value, 'IMG_{date}_{time}')
+  ctx.unmount()
+})
+
+test('active tasks open each cleanup mode and undo in the matching tool with its plan', () => {
+  const calls = []
+  const component = load('views/toolbox/ToolboxHomePage.vue', {
+    '@/utils/mediaUrl': { thumbnailUrl: id => id },
+    'vue-router': { useRouter: () => ({ push: value => calls.push(value) }), useRoute: () => ({ query: {} }) },
+    '@/api/toolboxWorkflows': { workflowApi: { history: async () => [] } },
+  }).default
+  const ctx = mount(component)
+  for (const [mode, path] of [['duplicate', '/toolbox/duplicate'], ['similar', '/toolbox/similar'], ['quality', '/toolbox/cleanup']]) {
+    ctx.state.open({ id: mode, kind: 'cleanup', request: { config: { cleanup_mode: mode } } })
+    assert.deepEqual(calls.at(-1), { path, query: { plan: mode } })
+  }
+  ctx.state.open({ id: 'undo', kind: 'undo', request: { config: { kind: 'rename' } } })
+  assert.deepEqual(calls.at(-1), { path: '/toolbox/rename', query: { plan: 'undo' } })
+  ctx.unmount()
 })
