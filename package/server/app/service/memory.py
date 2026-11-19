@@ -597,6 +597,7 @@ async def generate_story(db: Session, memory: Memory, owner_id: UUID, *, tone: s
     from langchain_core.messages import HumanMessage, SystemMessage
     from app.core.config_manager import config_manager
     from app.service.agent.service import FixedChatOpenAI
+    from app.service.llm_usage import LLMUsageCallback
 
     settings = config_manager.get_user_config(owner_id, db).ai
     connection_id = settings.chat_connection_id or settings.analysis_connection_id
@@ -638,6 +639,7 @@ async def generate_story(db: Session, memory: Memory, owner_id: UUID, *, tone: s
         temperature=0.7,
         timeout=60,
         max_completion_tokens=1000,
+        callbacks=[LLMUsageCallback(owner_id, "memory", connection_id, model_name)],
     )
     try:
         response = await llm.ainvoke([

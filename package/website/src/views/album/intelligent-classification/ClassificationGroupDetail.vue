@@ -438,7 +438,8 @@ onMounted(() => {
   .category-tile.is-loading { animation: none; }
 }
 
-/* 移动端：去掉封面，胶囊只显示分类名，单行超出左右滑动，不折叠 */
+/* 移动端：去掉封面，胶囊只显示分类名，单行超出左右滑动，不折叠。
+   未选中胶囊与返回按钮 / 玻璃工具栏同材质：半透明玻璃底 + 细边框 + 背景模糊。 */
 @media (max-width: 767px) {
   .classification-category-grid {
     flex-wrap: nowrap;
@@ -462,8 +463,13 @@ onMounted(() => {
     justify-content: center;
     border-radius: 9999px;
     padding: 6px 14px;
+    border: var(--ts-border-unit, 1px) solid var(--ts-color-border);
+    background: var(--ts-glass-bg);
+    /* 小胶囊贴着页面底色，桌面基础的 tile 投影会晕出一圈灰，移动端清零 */
     box-shadow: none;
-    background: var(--ts-color-surface-muted);
+    -webkit-backdrop-filter: blur(var(--ts-glass-blur)) saturate(var(--ts-glass-saturation));
+    backdrop-filter: blur(var(--ts-glass-blur)) saturate(var(--ts-glass-saturation));
+    transition: background-color var(--ts-motion-fast) ease, border-color var(--ts-motion-fast) ease, box-shadow var(--ts-motion-fast) ease, outline-color var(--ts-motion-fast) ease;
     scroll-snap-align: start;
   }
   .category-tile-name-mobile {
@@ -476,17 +482,24 @@ onMounted(() => {
     text-overflow: ellipsis;
     color: var(--ts-color-text);
   }
-  /* 选中态：主色胶囊 */
+  /* 选中态：玻璃上叠一层柔和主色洗染（同侧栏激活项的浅染色），不再整块主色填充 */
   .category-tile.is-active {
-    outline: none;
-    background: var(--theme-primary);
+    outline: 2px solid transparent;
+    outline-offset: -1px;
+    background: rgba(var(--theme-rgb), .12);
+    border-color: rgba(var(--theme-rgb), .35);
+    box-shadow: 0 2px 10px rgba(var(--theme-rgb), .14);
   }
+  .category-tile.is-active:focus-visible { outline-color: var(--theme-primary); }
   .category-tile.is-active .category-tile-name-mobile {
-    color: #fff;
+    color: var(--theme-primary);
     font-weight: 600;
   }
   .category-tile.is-loading {
     animation: category-tile-pulse 1.2s ease-in-out infinite;
+  }
+  @supports not (backdrop-filter: blur(8px)) {
+    .category-tile { background: var(--ts-color-surface); }
   }
 }
 </style>

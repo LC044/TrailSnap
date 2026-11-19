@@ -5,7 +5,9 @@
       <div class="classification-title-group flex items-center gap-3 w-full md:w-auto">
         <h1 class="ts-page-title text-xl md:text-2xl font-bold text-gray-800 dark:text-white">智能分类</h1>
       </div>
-      <button class="ts-button ts-button-secondary ml-auto shrink-0" @click="manageRules = true"><Settings2 class="h-4 w-4" />分类规则</button>
+      <div class="ts-liquid-glass ts-glass-toolbar ml-auto shrink-0" aria-label="智能分类操作">
+        <button class="ts-glass-button" aria-label="分类规则" title="分类规则" @click="manageRules = true"><Settings2 class="h-5 w-5" /></button>
+      </div>
     </div>
     <p v-if="error" class="mb-4 text-sm text-red-600 dark:text-red-400" role="alert">{{ error }} <button class="underline" @click="fetchTags">重试</button></p>
 
@@ -25,7 +27,7 @@
           <Tag class="w-12 h-12 opacity-20" />
         </div>
         <p class="text-lg font-medium">暂无分类信息</p>
-        <button class="mt-4 ts-button ts-button-secondary" @click="manageRules = true"><Settings2 class="h-4 w-4" />管理分类规则</button>
+        <IconButton class="mt-4" label="管理分类规则" title="管理分类规则" @click="manageRules = true"><Settings2 class="h-5 w-5" /></IconButton>
       </div>
 
       <!-- Group cards：只显示大组，进入分组详情页后再选择具体类别 -->
@@ -77,6 +79,7 @@ import { classificationService, clipClassificationService, type TagStats, type C
 import { mapPhotoToImage } from '@/stores/photoStore'
 import { Tag, Settings2 } from 'lucide-vue-next'
 import ClipCategoryManager from '@/components/ClipCategoryManager.vue'
+import IconButton from '@/components/ui/IconButton.vue'
 
 const YOLO_GROUP = 'YOLO / 自定义分类'
 

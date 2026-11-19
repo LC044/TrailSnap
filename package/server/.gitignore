@@ -250,3 +250,4 @@ cython_debug/
 .trae
 
 data/*
+pytest-of-*/

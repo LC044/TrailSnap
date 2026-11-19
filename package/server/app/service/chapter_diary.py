@@ -62,9 +62,11 @@ def configured_model(db: Session, owner_id: UUID):
     # 延迟导入：agent.service 的导入链（langchain_openai）重达数秒，
     # 仅在真正构建客户端时才加载。
     from app.service.agent.service import FixedChatOpenAI
+    from app.service.llm_usage import LLMUsageCallback
     return FixedChatOpenAI(model=model_name, api_key=connection.api_key,
                           base_url=connection.api_base or None, temperature=0.4,
-                          timeout=90, max_completion_tokens=8192)
+                          timeout=90, max_completion_tokens=8192,
+                          callbacks=[LLMUsageCallback(owner_id, "chapter", connection_id, model_name)])
 
 
 async def generate(db: Session, owner_id: UUID, chapter_id: UUID, request: ChapterDiaryGenerate) -> dict:

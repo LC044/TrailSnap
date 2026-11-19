@@ -155,9 +155,10 @@ test.describe('P1 - 照片流核心功能', () => {
     await expect(videoTypeBtn).toBeVisible({ timeout: 5_000 })
     await videoTypeBtn.click()
 
-    // 确认「视频」筛选已落库到 store（按钮进入选中态 bg-primary-500）。
+    // 确认「视频」筛选已落库到 store（按钮进入选中态）。
     // 并行压测下 timeline 重拉较慢，仅等卡片会出现偶发超时，先确认筛选生效。
-    await expect(videoTypeBtn).toHaveClass(/bg-primary-500/, { timeout: 5_000 })
+    // 选中态断言用 aria-pressed，不耦合具体样式类（filter-choice.is-active）。
+    await expect(videoTypeBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 })
 
     // 视频卡片在筛选后由画廊按可见月份懒加载。并行压测下月份加载可能延迟，
     // 用「边滚边等」兜底：定期滚动触发更多月份加载，最长等 30s。
@@ -324,8 +325,8 @@ test.describe('P1 - 照片流核心功能', () => {
     const liveTypeBtn = page.locator('button', { hasText: '实况图' }).first()
     await expect(liveTypeBtn).toBeVisible({ timeout: 5_000 })
     await liveTypeBtn.click()
-    // 筛选已落库（按钮进入选中态 bg-primary-500）
-    await expect(liveTypeBtn).toHaveClass(/bg-primary-500/, { timeout: 5_000 })
+    // 筛选已落库（按钮进入选中态；aria-pressed 不耦合具体样式类）
+    await expect(liveTypeBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 })
 
     // 2. 等到目标实况图卡片的 <img src> 出现（说明缩略图已加载到 src，photoStore 写入了 thumbnail URL）。
     //    Tailwind 的 icon-[tabler--live-photo] 在 CSS 选择器中需要转义方括号；改用属性包含匹配 [class*="tabler--live-photo"]

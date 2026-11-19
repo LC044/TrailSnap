@@ -45,8 +45,14 @@
       </div>
     </template>
     <template #extra-modals>
-      <ResponsiveDialog v-model="showFilters" title="筛选搜索结果" glass>
-        <FilterPanel :store="store" />
+      <ResponsiveDialog v-model="showFilters" title="筛选搜索结果" :glass="false">
+        <FilterPanel ref="filterPanelRef" :store="store" />
+        <template #footer>
+          <div class="flex gap-3">
+            <button type="button" class="ts-button ts-button-secondary flex-1" @click="filterPanelRef?.clearAll()">重置</button>
+            <button type="button" class="ts-button ts-button-primary flex-[2]" @click="showFilters = false">完成</button>
+          </div>
+        </template>
       </ResponsiveDialog>
     </template>
   </UnifiedPhotoPage>
@@ -75,6 +81,8 @@ const type = computed(() => String(route.query.type || ''))
 const typeLabel = computed(() => conditionSearchLabels[type.value])
 const searchKey = computed(() => JSON.stringify([type.value, query.value]))
 const showFilters = ref(false)
+// 弹窗底部「重置」复用面板内部的清除逻辑。
+const filterPanelRef = ref<{ clearAll: () => void } | null>(null)
 const dateError = ref('')
 const extraFilters = computed(() => Object.entries(store.selectedFilters).flatMap(([key, values]) =>
   (Array.isArray(values) ? values : []).map((value: string | number) => ({ key: key as keyof FilterState, value, label: formatConditionFilter(key,

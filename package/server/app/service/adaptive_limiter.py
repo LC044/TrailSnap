@@ -39,12 +39,15 @@ class AdaptiveResourceLimiter:
     def in_use(self) -> int:
         return self._in_use
 
-    async def acquire(self) -> None:
+    async def acquire(self, ceiling: Optional[int] = None) -> None:
         async with self._condition:
             await self._condition.wait_for(
-                lambda: self._in_use < self.current_limit
+                lambda: self.has_capacity(ceiling)
             )
             self._in_use += 1
+
+    def has_capacity(self, ceiling: Optional[int] = None) -> bool:
+        return self._in_use < min(self.current_limit, ceiling if ceiling is not None else self.max_limit)
 
     async def release(self) -> None:
         async with self._condition:

@@ -1,4 +1,4 @@
-use crate::llama_runtime;
+use crate::{llama_runtime, ai_runtime};
 use axum::{
     body::{to_bytes, Body},
     extract::State,
@@ -29,6 +29,11 @@ impl Drop for RequestGuard {
     }
 }
 
+struct SwitchGuard(Arc<AtomicBool>);
+impl Drop for SwitchGuard {
+    fn drop(&mut self) { self.0.store(false, Ordering::SeqCst); }
+}
+
 struct SidecarProcess {
     child: Child,
     port: u16,
@@ -45,9 +50,47 @@ pub struct AIGateway {
     last_request_at: Arc<Mutex<Option<u64>>>,
     migrating: Arc<AtomicBool>,
     admission: Arc<Mutex<(bool, usize)>>,
+    switching: Arc<AtomicBool>,
 }
 
 impl AIGateway {
+    pub fn runtime_root(&self) -> PathBuf { self.app_root.clone() }
+
+    pub async fn device_status(&self) -> Result<Value, String> {
+        let Some(port) = self.running_port() else {
+            return Ok(json!({"backend": null, "deviceName": "尚未加载", "models": {}}));
+        };
+        let response: Value = reqwest::Client::builder().no_proxy().build().map_err(|e| e.to_string())?
+            .get(format!("http://127.0.0.1:{port}/runtime-device"))
+            .timeout(Duration::from_secs(5)).send().await.map_err(|e| e.to_string())?
+            .error_for_status().map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
+        if response["code"] != 0 || !response["data"].is_object() { return Err("无法读取推理设备状态".into()); }
+        Ok(response["data"].clone())
+    }
+
+    pub async fn switch_runtime(&self, selection: ai_runtime::Selection) -> Result<(), String> {
+        if self.switching.swap(true, Ordering::SeqCst) { return Err("正在切换 AI 设备".into()); }
+        let _switch = SwitchGuard(self.switching.clone());
+        {
+            let mut admission = self.admission.lock().expect("AI admission poisoned");
+            if admission.0 || self.migrating.load(Ordering::SeqCst) { return Err("正在准备更新或迁移，请稍后重试".into()); }
+            admission.0 = true;
+        }
+        if let Err(error) = self.drain_for_update().await {
+            self.finish_maintenance(false);
+            return Err(error);
+        }
+        let saved = ai_runtime::save(&self.app_root, &selection);
+        self.finish_maintenance(false);
+        saved?;
+        self.ensure_sidecar().await?;
+        let actual = self.device_status().await?;
+        if actual["backend"] != selection.backend {
+            return Err(ai_runtime::load(&self.app_root)?.error.unwrap_or_else(|| "设备不可用，已恢复 CPU".into()));
+        }
+        Ok(())
+    }
+
     pub fn new(resource_dir: PathBuf, app_root: PathBuf, parent_pid: u32) -> Self {
         Self {
             resource_dir,
@@ -59,6 +102,7 @@ impl AIGateway {
             last_request_at: Arc::new(Mutex::new(None)),
             migrating: Arc::new(AtomicBool::new(false)),
             admission: Arc::new(Mutex::new((false, 0))),
+            switching: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -85,6 +129,7 @@ impl AIGateway {
             loop {
                 timer.tick().await;
                 if !idle_gateway.migrating.load(Ordering::SeqCst)
+                    && !idle_gateway.switching.load(Ordering::SeqCst)
                     && *idle_gateway
                         .admission
                         .lock()
@@ -139,6 +184,7 @@ impl AIGateway {
     }
 
     fn begin_request(&self) -> Result<RequestGuard, String> {
+        if self.switching.load(Ordering::SeqCst) { return Err("正在切换 AI 设备，请稍后重试".into()); }
         let mut admission = self.admission.lock().expect("AI admission poisoned");
         if admission.0 {
             return Err("正在准备更新或退出，请稍后重试".into());
@@ -250,9 +296,21 @@ impl AIGateway {
         if self.admission.lock().expect("AI admission poisoned").0 {
             return Err("正在准备更新或退出，请稍后重试".into());
         }
-        let executable = self.resource_dir.join("ai").join(if cfg!(windows) { "trailsnap-ai.exe" } else { "trailsnap-ai" });
-        if !executable.is_file() {
+        let cpu_executable = self.resource_dir.join("ai").join(if cfg!(windows) { "trailsnap-ai.exe" } else { "trailsnap-ai" });
+        if !cpu_executable.is_file() {
             return Err("行影集程序文件不完整，请重新安装当前版本".into());
+        }
+        let mut selection = ai_runtime::load(&self.app_root)?;
+        let mut backend = selection.backend.clone();
+        let mut executable = cpu_executable.clone();
+        if backend != "cpu" {
+            let path = ai_runtime::installed_path(&self.app_root, &backend);
+            if let Err(error) = ai_runtime::validate_runtime(&path, &backend) {
+                selection.error = Some(error);
+                ai_runtime::save(&self.app_root, &selection)?;
+            }
+            if selection.error.is_none() { executable = path.join("trailsnap-ai.exe"); }
+            else { backend = "cpu".into(); }
         }
         let log_dir = self.app_root.join("logs");
         let model_dir = self.app_root.join("models");
@@ -263,7 +321,7 @@ impl AIGateway {
             .build()
             .map_err(|error| error.to_string())?;
         let mut last_exit = None;
-        for attempt in 1..=2 {
+        for attempt in 1..=3 {
             let port = reserve_port()?;
             let stdout = open_log(log_dir.join("ai.log"))?;
             let stderr = open_log(log_dir.join("ai.err.log"))?;
@@ -279,6 +337,8 @@ impl AIGateway {
                 .env("MODEL_PATH", &model_dir)
                 .env("AI_CONFIG_PATH", self.app_root.join("ai-config.json"))
                 .env("TS_AI_LOG_DIR", &log_dir)
+                .env("TS_AI_BACKEND", &backend)
+                .env("OPENVINO_DEVICE", &selection.device)
                 .stdin(Stdio::null())
                 .stdout(Stdio::from(stdout))
                 .stderr(Stdio::from(stderr));
@@ -290,9 +350,16 @@ impl AIGateway {
             }
             #[cfg(windows)]
             command.creation_flags(0x08000000);
-            let mut child = command
-                .spawn()
-                .map_err(|error| format!("启动 AI Sidecar 失败：{error}"))?;
+            let mut child = match command.spawn() {
+                Ok(child) => child,
+                Err(error) if backend != "cpu" => {
+                    selection.error = Some(format!("启动加速运行时失败，已恢复 CPU：{error}"));
+                    ai_runtime::save(&self.app_root, &selection)?;
+                    backend = "cpu".into(); executable = cpu_executable.clone();
+                    continue;
+                },
+                Err(error) => return Err(format!("启动 AI Sidecar 失败：{error}")),
+            };
             let health_url = format!("http://127.0.0.1:{port}/health-check");
             let started = std::time::Instant::now();
             loop {
@@ -302,6 +369,7 @@ impl AIGateway {
                 }
                 if started.elapsed() > Duration::from_secs(90) {
                     terminate_process_tree(&mut child);
+                    if backend != "cpu" { break; }
                     return Err("等待 AI Sidecar 启动超时，请检查 ai.err.log".into());
                 }
                 if let Ok(response) = client
@@ -311,6 +379,20 @@ impl AIGateway {
                     .await
                 {
                     if response.status().is_success() {
+                        if backend != "cpu" {
+                            let probe = client.get(format!("http://127.0.0.1:{port}/runtime-device"))
+                                .timeout(Duration::from_secs(5)).send().await;
+                            let envelope = match probe {
+                                Ok(response) => response.json::<Value>().await.unwrap_or(Value::Null),
+                                Err(_) => Value::Null,
+                            };
+                            let actual = &envelope["data"];
+                            if actual["backend"] != backend {
+                                selection.error = Some(format!("加速设备验证失败，已恢复 CPU：{}", actual["error"].as_str().unwrap_or("无法读取设备状态")));
+                                terminate_process_tree(&mut child);
+                                break;
+                            }
+                        }
                         *self.sidecar.lock().expect("AI sidecar poisoned") = Some(SidecarProcess {
                             child,
                             port,
@@ -324,7 +406,12 @@ impl AIGateway {
                 }
                 tokio::time::sleep(Duration::from_millis(400)).await;
             }
-            if attempt < 2 {
+            if backend != "cpu" {
+                selection.error.get_or_insert_with(|| "加速运行时启动失败，已恢复 CPU，请检查 ai.err.log".into());
+                ai_runtime::save(&self.app_root, &selection)?;
+                backend = "cpu".into(); executable = cpu_executable.clone();
+            }
+            if attempt < 3 {
                 tokio::time::sleep(Duration::from_millis(250)).await;
             }
         }
@@ -550,6 +637,26 @@ mod tests {
     use super::*;
     use axum::routing::get;
     use futures_util::StreamExt;
+
+    #[test]
+    fn switching_blocks_requests_until_new_device_is_validated() {
+        let gateway = AIGateway::new(PathBuf::new(), PathBuf::new(), std::process::id());
+        assert!(gateway.begin_request().is_ok());
+        gateway.switching.store(true, Ordering::SeqCst);
+        let switch = SwitchGuard(gateway.switching.clone());
+        assert!(gateway.begin_request().unwrap_err().contains("切换 AI 设备"));
+        drop(switch);
+        assert!(gateway.begin_request().is_ok());
+    }
+
+    #[tokio::test]
+    async fn rejected_switch_during_maintenance_keeps_admission_closed() {
+        let gateway = AIGateway::new(PathBuf::new(), PathBuf::new(), std::process::id());
+        gateway.finish_maintenance(true);
+        assert!(gateway.switch_runtime(ai_runtime::Selection::default()).await.is_err());
+        assert!(!gateway.switching.load(Ordering::SeqCst));
+        assert!(gateway.begin_request().is_err());
+    }
 
     #[tokio::test]
     async fn forwards_sse_before_upstream_finishes_without_hop_headers() {

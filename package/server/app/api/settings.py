@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
+from pydantic import BaseModel, ValidationError
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, or_
@@ -17,10 +17,11 @@ from uuid import UUID
 from app.dependencies import get_db, BaseResponse
 from app.api.deps import get_current_user
 from app.db.models.user import User
-from app.core.config_manager import config_manager
+from app.core.config_manager import AnalysisRequestSettings, config_manager
 from app.core import security
 from app.db.models.photo import Photo
 from app.db.models.task import Task, TaskType, TaskStatus, DEFAULT_PRIORITIES
+from app.schemas.llm_usage import LLMUsageReport
 from app.service.storage import delete_thumbnails, update_storage_root_cache, _get_storage_root
 from app.service.indexer import rebuild_index as service_rebuild_index, status as index_status
 from app.db.models.index_log import IndexLog
@@ -683,12 +684,27 @@ def get_settings(
     settings["runtime"] = {"managedAI": os.getenv("TS_DESKTOP_BUNDLED_AI") == "1"}
     return settings
 
+@router.get('/llm-usage', response_model=BaseResponse[LLMUsageReport])
+def get_llm_usage(
+    days: int = Query(default=30, ge=1, le=90),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.service.llm_usage import get_usage_report
+
+    return BaseResponse[LLMUsageReport].success(get_usage_report(db, current_user.id, days))
+
+
 @router.put('/')
 def update_settings(
     payload: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    try:
+        AnalysisRequestSettings.model_validate(payload.get("ai", {}))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="智能分析并发度须为 2、4、8 或 16，每次请求图片数须为 1、2、4 或 8") from exc
     if os.getenv("TS_DESKTOP_BUNDLED_AI") == "1" and isinstance(payload.get("ai"), dict):
         payload["ai"].pop("ai_api_url", None)
     for connection in payload.get("ai", {}).get("connections", []):

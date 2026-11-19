@@ -50,6 +50,7 @@ def _llm_greeting(db, user_id: UUID, years: int, narratives: list[str]) -> str |
 
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import HumanMessage
+        from app.service.llm_usage import LLMUsageCallback
 
         llm = ChatOpenAI(
             model=m_name,
@@ -57,6 +58,7 @@ def _llm_greeting(db, user_id: UUID, years: int, narratives: list[str]) -> str |
             base_url=connection.api_base if connection.api_base else None,
             temperature=0.8,
             timeout=30,
+            callbacks=[LLMUsageCallback(user_id, "memory", c_id, m_name)],
         )
         hint = "；".join(n for n in narratives if n)[:200]
         prompt = (

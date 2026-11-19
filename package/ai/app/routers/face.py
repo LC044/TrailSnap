@@ -41,6 +41,8 @@ def _select_max_workers() -> int:
     - GPU 部署时显存是瓶颈，限制并发避免 OOM。
     """
     cpu_count = os.cpu_count() or 4
+    if os.getenv("TS_AI_BACKEND") == "cuda":
+        return min(4, cpu_count)
     try:
         import torch
         if torch.cuda.is_available():

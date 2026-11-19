@@ -1,5 +1,6 @@
 mod legacy_ai;
 mod ai_gateway;
+mod ai_runtime;
 mod data_directory;
 mod library_link;
 mod import_flow;
@@ -694,8 +695,12 @@ pub fn run() {
         .manage(DesktopState::default())
         .manage(update_manager::UpdateState::default())
         .manage(installed_updates::InstalledUpdateState::default())
+        .manage(ai_runtime::RuntimeState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
+            ai_runtime::desktop_ai_runtime_status,
+            ai_runtime::desktop_ai_runtime_download,
+            ai_runtime::desktop_ai_runtime_select,
             data_directory::desktop_port_config,
             data_directory::desktop_set_port,
             desktop_restart_for_port,
