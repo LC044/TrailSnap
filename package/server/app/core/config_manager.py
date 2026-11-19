@@ -3,7 +3,7 @@ import os
 import time
 from collections import OrderedDict
 from uuid import UUID
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from contextvars import ContextVar
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
@@ -173,7 +173,19 @@ class LLMConnection(BaseModel):
     models: List[LLMModelConfig] = Field(default_factory=list, description="Model capabilities and display metadata")
     enable: bool = Field(default=True, description="Whether this connection is enabled")
 
-class AISettings(BaseModel):
+class AnalysisRequestSettings(BaseModel):
+    analysis_concurrency: Literal[2, 4, 8, 16] = 2
+    analysis_images_per_request: Literal[1, 2, 4, 8] = 1
+
+    @field_validator("analysis_concurrency", "analysis_images_per_request", mode="before")
+    @classmethod
+    def validate_integer_option(cls, value):
+        if type(value) is not int:
+            raise ValueError("Analysis request settings must be integer options")
+        return value
+
+
+class AISettings(AnalysisRequestSettings):
     connections: List[LLMConnection] = Field(default_factory=list, description="LLM Connections")
     analysis_connection_id: str = Field(default="builtin", description="Default connection ID for analysis")
     analysis_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for analysis")

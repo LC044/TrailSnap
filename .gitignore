@@ -26,6 +26,7 @@ package/desktop/ai-dist/
 package/server/build/
 package/server/dist/
 package/ai/build/
+package/ai/.venv-desktop-*/
 package/ai/dist_retry/
 package/ai/extension-dist/
 package/ai/extension-models/

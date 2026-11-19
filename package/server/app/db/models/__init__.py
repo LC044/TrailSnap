@@ -16,6 +16,7 @@ from .scene import Scene
 from .cluster import ImageCluster, PhotoCluster
 from .agent import AgentSession, AgentMessage
 from .agent_token import AgentToken
+from .llm_usage import LLMUsageDaily
 from .photo_color import PhotoColor
 from .photo_declutter_record import PhotoDeclutterRecord
 from .notification import Notification, NotificationType, NotificationLevel
