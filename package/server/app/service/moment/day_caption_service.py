@@ -415,9 +415,10 @@ def _resolve_connection_and_model(
     return connection, m_name, ai_settings.moment_day_caption_prompt
 
 
-def _build_llm(connection, model_name: str, streaming: bool):
+def _build_llm(connection, model_name: str, streaming: bool, user_id: UUID | None = None):
     # 延迟导入：仅在真正构建客户端时才加载 langchain_openai / agent.service。
     from app.service.agent.service import FixedChatOpenAI
+    from app.service.llm_usage import LLMUsageCallback
     # 与 app.service.agent.service.get_agent_executor 对齐：使用 FixedChatOpenAI
     # 把 OpenRouter 兼容格式下 delta.reasoning 从 content 里剥离到 additional_kwargs；
     # 不再往请求体里注入任何 "关闭思考" 兼容字段（严格网关会 400 Unknown parameter）。
@@ -428,8 +429,10 @@ def _build_llm(connection, model_name: str, streaming: bool):
         timeout=60,
         temperature=0.7,
         streaming=streaming,
+        stream_usage=streaming,
         max_completion_tokens=8192,
         reasoning_effort='none',
+        callbacks=[LLMUsageCallback(user_id, "caption", connection.id, model_name)] if user_id else None,
     )
 
 
@@ -502,7 +505,7 @@ async def generate_caption_sync(
         if cached is not None:
             return {"caption": cached, "cached": True, "source": "existing"}
 
-        llm = _build_llm(materials["_connection"], materials["_model_name"], streaming=False)
+        llm = _build_llm(materials["_connection"], materials["_model_name"], streaming=False, user_id=user_id)
         from langchain_core.messages import HumanMessage, SystemMessage
 
         messages = [
@@ -568,7 +571,7 @@ async def generate_caption_stream(
             yield "data: [DONE]\n\n"
             return
 
-        llm = _build_llm(materials["_connection"], materials["_model_name"], streaming=True)
+        llm = _build_llm(materials["_connection"], materials["_model_name"], streaming=True, user_id=user_id)
         from langchain_core.messages import HumanMessage, SystemMessage
 
         messages = [

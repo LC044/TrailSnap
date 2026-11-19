@@ -1,5 +1,19 @@
 import request from '@/utils/request';
 
+export type LLMUsageCounts = {
+  requests: number
+  reported_requests: number
+  cache_reported_requests: number
+  input_tokens: number
+  output_tokens: number
+  cached_input_tokens: number
+}
+
+export type LLMUsageReport = {
+  totals: LLMUsageCounts
+  models: (LLMUsageCounts & { source: string; connection_id: string; model: string })[]
+}
+
 export const settingsApi = {
   async getStorageRoot() {
     const { data } = await request.get('/api/settings/storage-root')
@@ -56,6 +70,12 @@ export const settingsApi = {
   },
   async getSettings() {
     const { data } = await request.get('/api/settings/')
+    return data
+  },
+  async getLLMUsage(days: number, signal?: AbortSignal): Promise<LLMUsageReport> {
+    const { data } = await request.get<{ data: LLMUsageReport }>('/api/settings/llm-usage', {
+      params: { days }, signal, silentError: true,
+    })
     return data
   },
   async getMapRuntime() {

@@ -239,6 +239,7 @@ def _get_extraction_llm(db: Session, user_id: str):
     """复用用户已配置的分析模型做记忆抽取，返回 (llm, ok)。"""
     from app.core.config_manager import config_manager
     from langchain_openai import ChatOpenAI
+    from app.service.llm_usage import LLMUsageCallback
 
     user_config = config_manager.get_user_config(user_id, db)
     ai_settings = user_config.ai
@@ -255,6 +256,7 @@ def _get_extraction_llm(db: Session, user_id: str):
         base_url=connection.api_base if connection.api_base else None,
         temperature=0.2,  # 抽取需稳定，用低温度
         timeout=30,
+        callbacks=[LLMUsageCallback(user_id, "memory", c_id, m_name)],
     )
     return llm, True
 

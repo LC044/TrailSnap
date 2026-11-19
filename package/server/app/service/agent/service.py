@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, trim_messages
+from openai import BadRequestError, UnprocessableEntityError
 from sqlalchemy.orm import Session
 
 from app.core.config_manager import config_manager
@@ -16,6 +17,7 @@ from app.crud.agent import get_messages_by_session, create_message
 from app.crud import agent as agent_crud
 from app.schemas.agent import AgentMessageCreate
 from app.service.agent.errors import AgentConfigurationError, format_agent_error
+from app.service.llm_usage import LLMUsageCallback
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +157,7 @@ def _get_summary_llm(user_id: str, db: Session):
             base_url=connection.api_base if connection.api_base else None,
             temperature=0.2,  # 摘要需稳定
             timeout=30,
+            callbacks=[LLMUsageCallback(user_id, "chat", c_id, m_name)],
         )
     except Exception as e:
         logger.warning(f"初始化摘要模型失败：{e}")
@@ -226,6 +229,34 @@ def compress_history_if_needed(
         return trim_history_messages(messages, context_window)
 
 class FixedChatOpenAI(ChatOpenAI):
+    @staticmethod
+    def _stream_usage_rejected(error: Exception) -> bool:
+        message = str(error).lower()
+        return "include_usage" in message or "stream_options" in message
+
+    def _stream(self, *args, **kwargs):
+        emitted = False
+        try:
+            for chunk in super()._stream(*args, **kwargs):
+                emitted = True
+                yield chunk
+        except (BadRequestError, UnprocessableEntityError) as exc:
+            if emitted or not self._should_stream_usage(**kwargs) or not self._stream_usage_rejected(exc):
+                raise
+            yield from super()._stream(*args, **{**kwargs, "stream_usage": False})
+
+    async def _astream(self, *args, **kwargs):
+        emitted = False
+        try:
+            async for chunk in super()._astream(*args, **kwargs):
+                emitted = True
+                yield chunk
+        except (BadRequestError, UnprocessableEntityError) as exc:
+            if emitted or not self._should_stream_usage(**kwargs) or not self._stream_usage_rejected(exc):
+                raise
+            async for chunk in super()._astream(*args, **{**kwargs, "stream_usage": False}):
+                yield chunk
+
     def _convert_chunk_to_generation_chunk(self, chunk: dict,
         default_chunk_class: type,
         base_generation_info: dict | None,):
@@ -338,7 +369,9 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
         timeout=60,
         temperature=0.7,
         streaming=True,
+        stream_usage=True,
         max_completion_tokens=8192,
+        callbacks=[LLMUsageCallback(user_id, "chat", c_id, m_name)],
     )
     if effort != "none":
         llm_options["reasoning_effort"] = effort
@@ -507,7 +540,8 @@ def generate_session_title_task(user_id: str, session_id: str, user_input: str):
                 api_key=connection.api_key,
                 base_url=connection.api_base if connection.api_base else None,
                 temperature=0.7,
-                reasoning_effort='none'
+                reasoning_effort='none',
+                callbacks=[LLMUsageCallback(user_id, "chat", c_id, m_name)],
             )
 
             prompt = f"请根据用户的第一个问题，生成一个非常简短的会话标题（不超过10个字）。只返回标题文本，不要包含任何标点符号或其他多余解释。\n用户问题：{user_input}"

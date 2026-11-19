@@ -5,18 +5,21 @@ from app.db.models.task import TaskType, DEFAULT_PRIORITIES
 import logging
 import json
 import base64
+from contextlib import asynccontextmanager
+import httpx
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 # langchain_openai 的导入链重达数秒，仅在 create_client 真正构建客户端时才加载。
 
 from app.db.models import PhotoMetadata
 from app.db.models.task import Task, TaskType
-from app.db.models.photo import Photo, FileType, ImageType
+from app.db.models.photo import Photo, ImageType
 from app.db.models.image_description import ImageDescription
 from app.core.config_manager import config_manager
 from app.service import storage
 from app.utils.path import get_user_roots, compute_browse_path
 from app.service.tasks.ci_limit import ci_task_limit_reached, ci_remaining_budget, CI_TASK_PHOTO_LIMIT
+from app.service.tasks.ai_runtime import AIBatchSession
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,28 @@ VISUAL_OUTPUT_CONSTRAINT = f"""
 VISUAL_JSON_REPAIR_ATTEMPTS = 2
 VISUAL_REQUEST_TIMEOUT_SECONDS = 300
 VISUAL_TASK_TIMEOUT_SECONDS = 360
+VISUAL_SINGLE_REQUEST_KEY = "visual_single_request"
+
+
+def _batch_prompt(prompt: str, numbers) -> str:
+    numbers = list(numbers)
+    criteria, marker, example = prompt.rpartition("请严格只输出 JSON，格式如下：")
+    if marker:
+        try:
+            # Preserve customized instructions if the final section contains more than an example.
+            if isinstance(json.loads(example), dict):
+                prompt = criteria.rstrip()
+        except ValueError:
+            pass
+    sample = json.dumps(dict.fromkeys(numbers, json.loads(VISUAL_RESULT_SCHEMA)), ensure_ascii=False)
+    return (
+        "请按给定编号逐张独立分析。以下文字用于确定分析标准，输出格式统一按最后的多图结构。\n"
+        f"{prompt}\n"
+        "分数范围 0~100。禁止 Markdown、注释和额外文本。\n"
+        f"本次共有 {len(numbers)} 张照片。"
+        f"只输出一个 JSON 对象。顶层必须包含这些照片编号：{', '.join(numbers)}。"
+        f"每个键只对应同编号照片。输出结构示例：\n{sample}"
+    )
 
 
 class VisualDescriptionFormatError(ValueError):
@@ -245,7 +270,6 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
         # 共享连接会在不同线程的 loop 间复用，触发
         # "Event loop is closed" / "bound to a different event loop"，表现为约 50%
         # 间歇性 APIConnectionError（Issue #451）。每实例独享连接池即可隔离。
-        import httpx
         from langchain_openai import ChatOpenAI
         client = ChatOpenAI(
             api_key=connection.api_key,
@@ -263,6 +287,122 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             reasoning_effort=getattr(settings, "analysis_reasoning_effort", "none"),
         )
         return client
+
+    @asynccontextmanager
+    async def _client(self, settings, owner_id):
+        from app.service.llm_usage import LLMUsageCallback
+
+        client = self.create_client(settings)
+        client.callbacks = [LLMUsageCallback(
+            owner_id, "visual_analysis", settings.analysis_connection_id, settings.analysis_model_name
+        )]
+        try:
+            yield client
+        finally:
+            if isinstance(getattr(client, 'http_async_client', None), httpx.AsyncClient):
+                await client.http_async_client.aclose()
+
+    def _task_photo(self, task, db):
+        filters = [Photo.id == task.payload['photo_id']]
+        if task.owner_id is not None:
+            filters.append(Photo.owner_id == task.owner_id)
+        photo = db.query(Photo).filter(*filters).first()
+        if not photo:
+            return None, {'status': 'skipped', 'reason': 'photo not found'}
+
+        # Album-doctor tasks heal stale processed markers.
+        if task.payload.get('only_if_missing'):
+            existing_description = db.query(ImageDescription.id).filter(
+                ImageDescription.photo_id == photo.id,
+                ImageDescription.description.isnot(None),
+                ImageDescription.description != '',
+            ).first()
+            if existing_description:
+                return None, {'status': 'skipped', 'reason': 'already processed'}
+        elif not task.payload.get('force') and (photo.processed_tasks or {}).get('visual_description'):
+            return None, {'status': 'skipped', 'reason': 'already processed'}
+        return photo, None
+
+    async def process_batch(self, worker, tasks: List[Task], db: Session) -> List[Dict]:
+        if len(tasks) < 2 or not all(
+            task.owner_id == tasks[0].owner_id and (task.payload or {}).get('photo_id')
+            for task in tasks
+        ):
+            return await super().process_batch(worker, tasks, db)
+
+        owner_id = tasks[0].owner_id
+        settings = config_manager.get_user_config(owner_id, db).ai
+        if settings.analysis_connection_id in ('', 'builtin'):
+            return await super().process_batch(worker, tasks, db)
+
+        results = {}
+        pending = {}
+        content = []
+
+        def record(task_id, result, *, retry_as_single=False):
+            results[task_id] = {
+                'task_id': task_id, 'task_type': TaskType.VISUAL_DESCRIPTION,
+                'status': 'failed' if result['status'] == 'failed' else 'completed',
+                'result': result, 'error': result.get('error'),
+                'retry_as_single': retry_as_single,
+            }
+
+        task_ids = [task.id for task in tasks]
+        for task in tasks:
+            try:
+                photo, skipped = self._task_photo(task, db)
+                if skipped:
+                    record(task.id, skipped)
+                    continue
+                if photo.image_type == ImageType.SCREENSHOT:
+                    record(task.id, {'status': 'skipped', 'reason': 'screenshot not supported'})
+                    continue
+                parts = self._image_content(photo, db, batch=True)
+                if parts is None:
+                    record(task.id, {'status': 'failed', 'error': 'file not found'})
+                    continue
+                number = str(len(pending) + 1)
+                parts[0]["text"] = f"照片编号：{number}\n" + parts[0]["text"]
+                content.extend(parts)
+                pending[number] = (task.id, photo.id, task.payload)
+            except Exception as exc:
+                record(task.id, {'status': 'failed', 'error': str(exc)})
+                db.rollback()
+
+        if pending:
+            # Release the read transaction while waiting on the provider.
+            db.rollback()
+            try:
+                async with self._client(settings, owner_id) as client:
+                    response = await client.ainvoke([
+                        {"role": "system", "content": _batch_prompt(settings.visual_evaluation_prompt, pending)},
+                        {"role": "user", "content": content},
+                    ], max_completion_tokens=max(4096, 1024 * len(pending)))
+                raw = _response_content_to_text(response.content)
+                start = raw.find("{")
+                if start < 0:
+                    raise VisualDescriptionFormatError("模型未返回批量 JSON 结果")
+                decoded, _ = json.JSONDecoder().raw_decode(raw[start:])
+                if not isinstance(decoded, dict):
+                    raise VisualDescriptionFormatError("批量结果必须是 JSON 对象")
+            except Exception as exc:
+                for task_id, _, _ in pending.values():
+                    record(task_id, {'status': 'failed', 'error': str(exc)},
+                           retry_as_single=isinstance(exc, (json.JSONDecodeError, VisualDescriptionFormatError)))
+            else:
+                for number, (task_id, photo_id, payload) in pending.items():
+                    try:
+                        if number not in decoded:
+                            raise VisualDescriptionFormatError(f"模型未返回照片 {number} 的结果")
+                        result = _validate_visual_result(decoded[number])
+                        record(task_id, self._save_result(db, photo_id, result, payload))
+                    except VisualDescriptionFormatError as exc:
+                        record(task_id, {'status': 'failed', 'error': str(exc)}, retry_as_single=True)
+                    except Exception as exc:
+                        db.rollback()
+                        record(task_id, {'status': 'failed', 'error': str(exc)})
+
+        return [results[task_id] for task_id in task_ids]
 
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         """
@@ -289,35 +429,19 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 logger.error("Visual Model connection has no api_key: %s", settings.analysis_connection_id)
                 raise ValueError(f"Visual Model connection has no api_key: {settings.analysis_connection_id}")
 
-            force = task.payload.get('force', False)
-
             # 1. Single Photo Mode
             if task.payload and 'photo_id' in task.payload:
-                photo_id = task.payload['photo_id']
-                photo = db.query(Photo).filter(Photo.id == photo_id).first()
-                if not photo:
-                    return {'status': 'skipped', 'reason': 'photo not found'}
-                
-                # Album-doctor repairs must heal stale processed markers while
-                # still avoiding an overwrite if another task won the race.
-                if task.payload.get('only_if_missing'):
-                    existing_description = db.query(ImageDescription.id).filter(
-                        ImageDescription.photo_id == photo.id,
-                        ImageDescription.description.isnot(None),
-                        ImageDescription.description != '',
-                    ).first()
-                    if existing_description:
-                        return {'status': 'skipped', 'reason': 'already processed'}
-                elif not force:
-                    tasks_status = photo.processed_tasks or {}
-                    if tasks_status.get('visual_description'):
-                        return {'status': 'skipped', 'reason': 'already processed'}
+                photo, skipped = self._task_photo(task, db)
+                if skipped:
+                    return skipped
 
                 # CI 限速：最多处理 5 张照片，已达上限直接跳过
                 if ci_task_limit_reached(db, ImageDescription):
                     return {'status': 'skipped', 'reason': f'CI visual_description limit reached ({CI_TASK_PHOTO_LIMIT} photos)'}
 
-                return await self.process_single_photo(worker, photo, db, settings)
+                if task.owner_id is None:
+                    settings = config_manager.get_user_config(photo.owner_id, db).ai
+                return await self.process_single_photo(worker, photo, db, settings, task.payload)
 
             remaining = ci_remaining_budget(db, ImageDescription)
             generated_count = generate_photo_tasks(
@@ -336,85 +460,100 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             logger.error(f"Visual Description task failed: {e}")
             raise e
 
-    async def process_single_photo(self, worker, photo: Photo, db: Session, settings) -> Dict[str, Any]:
+    def _image_content(self, photo: Photo, db: Session, *, batch=False):
+        target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+        if not target_path:
+            return None
+
+        base64_image = encode_image(target_path)
+        image_info = f"照片时间：{photo.photo_time}\n"
+        metadata = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo.id).first()
+        if metadata:
+            image_info += f"照片位置：{metadata.address}\n"
         try:
-            if photo.image_type == ImageType.SCREENSHOT:
-                return {'status': 'skipped', 'reason': 'screenshot not supported'}
-            user_config = config_manager.get_user_config(photo.owner_id, db)
-            settings = user_config.ai
-            client =self.create_client(settings)
- 
-            target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
-            if not target_path:
-                return {'status': 'failed', 'error': 'file not found'}
+            roots = get_user_roots(photo.owner_id, db)
+            folder, fname = compute_browse_path(photo.file_path, roots)
+            if fname:
+                image_info += f"文件名：{fname}\n"
+            if folder:
+                image_info += f"所在文件夹：{folder}\n"
+        except Exception as exc:
+            logger.warning("compute relative path failed for photo %s: %s", photo.id, exc)
 
-            eval_prompt = user_config.ai.visual_evaluation_prompt
-            base64_image = encode_image(target_path)
-            image_info = f"照片时间：{photo.photo_time}\n"
-            metadata = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo.id).first()
-            if metadata:
-                image_info += f"照片位置：{metadata.address}\n"
-            # 注入文件名与所在文件夹相对路径，帮助模型推断事件/场景（Issue #78）
-            try:
-                roots = get_user_roots(photo.owner_id, db)
-                folder, fname = compute_browse_path(photo.file_path, roots)
-                if fname:
-                    image_info += f"文件名：{fname}\n"
-                if folder:
-                    image_info += f"所在文件夹：{folder}\n"
-            except Exception as e:
-                logger.warning(f"compute relative path failed for photo {photo.id}: {e}")
-            # print(target_path, base64_image)
-            # Step A: Evaluation
-            eval_response = await client.ainvoke([
-                    {"role": "system", "content": eval_prompt + VISUAL_OUTPUT_CONSTRAINT},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "下面是照片的内容，请结合图像本身完成上述任务。\n**不要输出任何多余文字，不要加注释，禁止思考。** /no_think\n照片信息：\n" + image_info},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                },
-                            },
-                        ],
-                    }
-                ]
-            )
-            result_json = await parse_visual_result_with_repair(
-                client, eval_response.content, photo.id
-            )
+        if not batch:
+            image_info = "请结合图像本身分析照片。只输出 JSON。/no_think\n照片信息：\n" + image_info
+        return [
+            {"type": "text", "text": image_info},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}},
+        ]
 
-            # 3. Save to DB
-            # Remove existing if any
-            existing = db.query(ImageDescription).filter(ImageDescription.photo_id == photo.id).first()
-            if existing:
-                db.delete(existing)
-                db.flush()
+    def _save_result(self, db, photo_id, result, payload=None, photo=None):
+        if isinstance(db, AIBatchSession):
+            db.begin_write()
+            photo = db.query(Photo).filter(Photo.id == photo_id).populate_existing().with_for_update().first()
+        elif photo is None:
+            photo = db.query(Photo).filter(Photo.id == photo_id).first()
 
-            desc = ImageDescription(
-                photo_id=photo.id,
-                description=result_json.get("description"),
-                memory_score=result_json.get("memory_score"),
-                # Map beauty_score from prompt to quality_score in DB
-                quality_score=result_json.get("beauty_score") if "beauty_score" in result_json else result_json.get("quality_score"),
-                tags=result_json.get("tags", []),
-                reason=result_json.get("reason"),
-                narrative=result_json.get('narrative', "").strip()
-            )
-            db.add(desc)
-            # Update photo processed status
-            tasks_status = dict(photo.processed_tasks or {})
-            tasks_status['visual_description'] = True
-            photo.processed_tasks = tasks_status
-            db.commit()
-            return {
-                'status': 'completed',
-                'description': desc.description,
-                'quality': desc.quality_score,
-                'narrative': desc.narrative
-            }
-        except Exception as e:
-            logger.error(f"Error processing visual description for photo {photo.id}: {e}")
-            raise e
+        if photo is None:
+            db.rollback()
+            return {'status': 'skipped', 'reason': 'photo not found'}
+
+        existing = db.query(ImageDescription).filter(ImageDescription.photo_id == photo.id).first()
+        if payload is not None:
+            if payload.get('only_if_missing'):
+                already_processed = existing is not None and bool(existing.description)
+            else:
+                already_processed = not payload.get('force') and (photo.processed_tasks or {}).get('visual_description')
+            if already_processed:
+                db.rollback()
+                return {'status': 'skipped', 'reason': 'already processed'}
+
+        if existing:
+            db.delete(existing)
+            db.flush()
+
+        desc = ImageDescription(
+            photo_id=photo.id,
+            description=result["description"],
+            memory_score=result["memory_score"],
+            quality_score=result["beauty_score"],
+            tags=result["tags"],
+            reason=result["reason"],
+            narrative=result["narrative"].strip(),
+        )
+        db.add(desc)
+        tasks_status = dict(photo.processed_tasks or {})
+        tasks_status['visual_description'] = True
+        photo.processed_tasks = tasks_status
+        db.commit()
+        return {
+            'status': 'completed',
+            'description': desc.description,
+            'quality': desc.quality_score,
+            'narrative': desc.narrative,
+        }
+
+    async def process_single_photo(self, worker, photo: Photo, db: Session, settings, payload=None) -> Dict[str, Any]:
+        if photo.image_type == ImageType.SCREENSHOT:
+            return {'status': 'skipped', 'reason': 'screenshot not supported'}
+
+        photo_id = photo.id
+        owner_id = photo.owner_id
+        content = self._image_content(photo, db)
+        if content is None:
+            return {'status': 'failed', 'error': 'file not found'}
+        if isinstance(db, AIBatchSession):
+            db.rollback()
+
+        try:
+            async with self._client(settings, owner_id) as client:
+                response = await client.ainvoke([
+                    {"role": "system", "content": settings.visual_evaluation_prompt + VISUAL_OUTPUT_CONSTRAINT},
+                    {"role": "user", "content": content},
+                ])
+                result = await parse_visual_result_with_repair(client, response.content, photo_id)
+            return self._save_result(db, photo_id, result, payload, photo)
+        except Exception:
+            db.rollback()
+            logger.exception("Error processing visual description for photo %s", photo_id)
+            raise

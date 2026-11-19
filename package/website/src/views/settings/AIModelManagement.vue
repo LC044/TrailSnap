@@ -16,6 +16,7 @@
 
     <section v-if="group === 'llm'" class="space-y-4" aria-label="大模型连接与文案生成">
       <LLMSettings />
+      <LLMUsagePanel />
       <BasicSettings v-if="userStore.userInfo?.is_superuser" category="captions" embedded />
     </section>
 
@@ -151,6 +152,7 @@ import BasicSettings from './BasicSettings.vue'
 import { useUserStore } from '@/stores/user'
 import LLMSettings from './LLMSettings.vue'
 import DesktopAIRuntime from './DesktopAIRuntime.vue'
+import LLMUsagePanel from './LLMUsagePanel.vue'
 
 type TaskSelection = { name: string; selected: string; pending?: string; recommended: string; available: string[] }
 

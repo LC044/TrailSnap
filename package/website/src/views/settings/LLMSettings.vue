@@ -28,24 +28,41 @@
         <h4 class="font-medium text-gray-800 dark:text-gray-100">大模型智能分析配置</h4>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">请使用支持视觉理解的模型。</p>
         <div class="mt-4 space-y-3">
-          <el-select v-model="analysisValue" class="w-full" placeholder="选择分析模型" filterable @change="onAnalysisModelChange">
-            <el-option v-for="model in selectableModels" :key="model.value" :label="model.label" :value="model.value" />
-          </el-select>
-          <el-select v-model="aiForm.analysis_reasoning_effort" class="w-full" placeholder="选择思考等级">
-            <el-option v-for="level in selectedReasoningLevels(analysisValue)" :key="level" :label="reasoningLabel(level)" :value="level" />
-          </el-select>
+          <ModelReasoningPicker
+            v-model="analysisValue"
+            v-model:reasoning="aiForm.analysis_reasoning_effort"
+            :models="selectableModels"
+            :reasoning-label="reasoningLabel"
+            :loading="loading"
+            label="分析模型"
+          />
+          <el-form v-if="analysisValue && aiForm.analysis_connection_id !== 'builtin'" label-position="top">
+            <el-form-item label="请求并发度" class="w-full">
+              <el-select v-model="aiForm.analysis_concurrency" class="w-full">
+                <el-option v-for="count in [2, 4, 8, 16]" :key="count" :label="String(count)" :value="count" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="每次请求图片数" class="w-full">
+              <el-select v-model="aiForm.analysis_images_per_request" class="w-full">
+                <el-option v-for="count in [1, 2, 4, 8]" :key="count" :label="String(count)" :value="count" />
+              </el-select>
+            </el-form-item>
+            <p class="text-xs text-gray-500 dark:text-gray-400">选择 2 张及以上时，模型须支持在一次请求中接收多张图片。</p>
+          </el-form>
         </div>
       </div>
       <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-600">
         <h4 class="font-medium text-gray-800 dark:text-gray-100">AI 对话默认配置</h4>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">对话框内仍可临时切换模型和思考等级。</p>
-        <div class="mt-4 space-y-3">
-          <el-select v-model="chatValue" class="w-full" placeholder="选择对话模型" filterable @change="onChatModelChange">
-            <el-option v-for="model in selectableModels" :key="model.value" :label="model.label" :value="model.value" />
-          </el-select>
-          <el-select v-model="aiForm.chat_reasoning_effort" class="w-full" placeholder="选择思考等级">
-            <el-option v-for="level in selectedReasoningLevels(chatValue)" :key="level" :label="reasoningLabel(level)" :value="level" />
-          </el-select>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">对话框内仍可临时切换模型和思考强度。</p>
+        <div class="mt-4">
+          <ModelReasoningPicker
+            v-model="chatValue"
+            v-model:reasoning="aiForm.chat_reasoning_effort"
+            :models="selectableModels"
+            :reasoning-label="reasoningLabel"
+            :loading="loading"
+            label="对话模型"
+          />
         </div>
       </div>
     </div>
@@ -133,6 +150,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '@/api/settings'
+import ModelReasoningPicker from './ModelReasoningPicker.vue'
 
 type ModelConfig = { model_name: string; display_name: string; context_window: number; reasoning_levels: string[] }
 type Connection = { id: string; provider: string; api_base: string; api_key: string; model_names: string[]; models: ModelConfig[]; enable: boolean }
@@ -141,6 +159,8 @@ type AIForm = Record<string, any> & {
   analysis_connection_id: string
   analysis_model_name: string
   analysis_reasoning_effort: string
+  analysis_concurrency: number
+  analysis_images_per_request: number
   chat_connection_id: string
   chat_model_name: string
   chat_reasoning_effort: string
@@ -149,7 +169,8 @@ type AIForm = Record<string, any> & {
 const reasoningOptions = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 const reasoningLabel = (level: string) => ({ none: '关闭', minimal: '最低', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最大' }[level] || level)
 const modelTemplate = (name = ''): ModelConfig => ({ model_name: name, display_name: name, context_window: 128000, reasoning_levels: ['none', 'low', 'medium', 'high'] })
-const aiForm = ref<AIForm>({ connections: [], analysis_connection_id: '', analysis_model_name: '', analysis_reasoning_effort: 'none', chat_connection_id: '', chat_model_name: '', chat_reasoning_effort: 'none' })
+const analysisRequestDefaults = { analysis_concurrency: 2, analysis_images_per_request: 1 }
+const aiForm = ref<AIForm>({ ...analysisRequestDefaults, connections: [], analysis_connection_id: '', analysis_model_name: '', analysis_reasoning_effort: 'none', chat_connection_id: '', chat_model_name: '', chat_reasoning_effort: 'none' })
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
@@ -161,15 +182,23 @@ const fetchingCandidates = ref(false)
 
 const selectableModels = computed(() => aiForm.value.connections.filter(conn => conn.enable).flatMap(conn => conn.models.map(model => ({
   value: `${conn.id}|${model.model_name}`,
-  label: `${model.display_name || model.model_name} · ${conn.provider}`,
+  name: model.display_name || model.model_name,
+  provider: conn.provider,
+  reasoningLevels: model.reasoning_levels?.length ? model.reasoning_levels : ['none'],
 }))))
 const analysisValue = computed({
   get: () => aiForm.value.analysis_connection_id && aiForm.value.analysis_model_name ? `${aiForm.value.analysis_connection_id}|${aiForm.value.analysis_model_name}` : '',
-  set: value => { [aiForm.value.analysis_connection_id, aiForm.value.analysis_model_name] = value ? value.split('|', 2) : ['', ''] },
+  set: value => {
+    [aiForm.value.analysis_connection_id, aiForm.value.analysis_model_name] = value ? value.split('|', 2) : ['', '']
+    aiForm.value.analysis_reasoning_effort = ensureReasoning(value, aiForm.value.analysis_reasoning_effort)
+  },
 })
 const chatValue = computed({
   get: () => aiForm.value.chat_connection_id && aiForm.value.chat_model_name ? `${aiForm.value.chat_connection_id}|${aiForm.value.chat_model_name}` : '',
-  set: value => { [aiForm.value.chat_connection_id, aiForm.value.chat_model_name] = value ? value.split('|', 2) : ['', ''] },
+  set: value => {
+    [aiForm.value.chat_connection_id, aiForm.value.chat_model_name] = value ? value.split('|', 2) : ['', '']
+    aiForm.value.chat_reasoning_effort = ensureReasoning(value, aiForm.value.chat_reasoning_effort)
+  },
 })
 const availableCandidates = computed(() => {
   const existing = new Set(draft.value?.models.map(model => model.model_name) || [])
@@ -189,26 +218,16 @@ const cloneConnection = (connection: Connection): Connection => ({
     reasoning_levels: [...model.reasoning_levels],
   })),
 })
-const selectedModel = (value: string) => {
-  const [connectionId, modelName] = value.split('|', 2)
-  return aiForm.value.connections.find(conn => conn.id === connectionId)?.models.find(model => model.model_name === modelName)
-}
-const selectedReasoningLevels = (value: string) => {
-  const levels = selectedModel(value)?.reasoning_levels
-  return levels?.length ? levels : ['none']
-}
 const ensureReasoning = (value: string, current: string) => {
-  const levels = selectedReasoningLevels(value)
+  const levels = selectableModels.value.find(model => model.value === value)?.reasoningLevels ?? ['none']
   return levels.includes(current) ? current : levels[0]
 }
-const onAnalysisModelChange = () => { aiForm.value.analysis_reasoning_effort = ensureReasoning(analysisValue.value, aiForm.value.analysis_reasoning_effort) }
-const onChatModelChange = () => { aiForm.value.chat_reasoning_effort = ensureReasoning(chatValue.value, aiForm.value.chat_reasoning_effort) }
 
 async function loadSettings() {
   loading.value = true
   try {
     const settings = await settingsApi.getSettings()
-    aiForm.value = { ...settings.ai, connections: (settings.ai?.connections || []).map(normalizeConnection) }
+    aiForm.value = { ...analysisRequestDefaults, ...settings.ai, connections: (settings.ai?.connections || []).map(normalizeConnection) }
   } catch (error: any) {
     ElMessage.error(error.message || '加载大模型配置失败')
   } finally {
@@ -281,8 +300,8 @@ function ensureSelections() {
   const fallback = selectableModels.value[0]?.value || ''
   if (!values.has(analysisValue.value)) analysisValue.value = fallback
   if (!values.has(chatValue.value)) chatValue.value = fallback
-  onAnalysisModelChange()
-  onChatModelChange()
+  aiForm.value.analysis_reasoning_effort = ensureReasoning(analysisValue.value, aiForm.value.analysis_reasoning_effort)
+  aiForm.value.chat_reasoning_effort = ensureReasoning(chatValue.value, aiForm.value.chat_reasoning_effort)
 }
 async function saveAll() {
   saving.value = true
@@ -291,6 +310,7 @@ async function saveAll() {
     aiForm.value.connections.forEach(conn => { conn.model_names = conn.models.map(model => model.model_name) })
     const keys = [
       'connections', 'analysis_connection_id', 'analysis_model_name', 'analysis_reasoning_effort',
+      'analysis_concurrency', 'analysis_images_per_request',
       'chat_connection_id', 'chat_model_name', 'chat_reasoning_effort',
       'visual_evaluation_prompt', 'visual_narrative_prompt', 'moment_day_caption_prompt',
     ]
