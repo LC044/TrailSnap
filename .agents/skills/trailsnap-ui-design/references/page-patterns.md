@@ -10,7 +10,7 @@
 - html/body/#app 禁止页面级滚动，主滚动区是 `.ts-main-scroll`。粘性标题、弹层和虚拟画廊先确认实际滚动祖先；flex 滚动区域保留 min-h-0，长文本容器保留 min-w-0。
 - MainLayout 默认为移动底栏预留 `--ts-tabbar-h + --ts-safe-area-bottom`。需要页内拥有底部留白时用 `AppPage bottom-safe` / `.ts-bottom-safe`；ui.css 的 `:has(.ts-bottom-safe)` 会取消外层留白，不再补第二份 tabbar padding。
 - 顶部安全区一律由布局层（`.ts-main-content` / `.ts-blank-layout`）避让，body 不留白、`#app` 用 `100dvh`；否则 body 的 padding 会把 `#app` 顶出视口，底部内容被裁掉且无法滚动。左右安全区仍留在 body（横屏刘海靠边，不挤高内容）。
-- 只有 iOS 浏览器避让顶部安全区（`ios-browser` class）。安卓浏览器的状态栏是浮在网页之上的系统层，部分浏览器（vivo 自带浏览器、部分 OEM WebView）的 `env(safe-area-inset-top)` 返回非 0，据此避让会在状态栏下方多出一条空白带；非 iOS 浏览器一律把顶部安全区按 0 处理。不要用 `env()` 的数值判断平台。
+- 顶部安全区沿用 `style.css` 的平台分支：iOS 浏览器使用安全区，`capacitor-native` 原生 App 保留系统注入的 inset，其余浏览器当前按 0 处理。页面不自行判断平台或覆盖该规则；调整兼容性时结合目标设备验证，不把浏览器行为推断应用到原生 App。
 - 相册 hero 可延伸至状态栏后，其工具栏自行避让一次：布局层遇到 `.unified-photo-page` 时不再重复留白。遵循 `--ts-safe-area-*` 与 `--ts-content-safe-area-top`，不复制未经验证的平台常数。
 - 日记本模式已有专用 flex 布局与滚动覆盖，不随意加 h-screen 或嵌套全高滚动容器。
 
@@ -39,15 +39,14 @@
 
 参考 `src/views/settings/BasicSettings.vue`、`src/views/settings/sections/AppearanceSettingsSection.vue`、`src/views/toolbox/ToolboxPage.vue`。
 
-- 设置按业务拆分 SettingsSection；保持标题、说明、字段、操作的稳定顺序。普通表单采用 form/content 宽度，工具集合可用 wide。
-- 标签对应输入元素，说明放在字段附近；错误与提交状态明确。操作组用 `.ts-form-actions` 或共享按钮，窄屏可换行。
+- 设置按业务拆分 SettingsSection；标题、必要说明、字段与操作保持稳定顺序，不为每组强加说明。普通表单采用 form/content 宽度，工具集合可用 wide。
+- 标签通过 for/id 或组件接口关联输入元素。操作组用 `.ts-form-actions` 或共享按钮，窄屏可换行。
 - 工具页可沿用桌面卡片、移动紧凑列表的适配方式，主题色图标与实体表面保持一致。
-- Element Plus 控件沿用全局 token，不通过实例 :deep() 覆盖内部底色或建立另一套暗色 palette。
-- 主题选择直接使用主题 API，不添加另一份 localStorage 状态。
 
 ## 菜单、筛选与弹层
 
-- 简短动作用 AdaptiveMenu，复杂筛选用 FilterSheet，编辑/创建用 ResponsiveDialog。简单菜单默认移动 sheet；当前首页/相册工具栏的 popover 可作为相关场景参考。
+- 简短动作用 `AdaptiveMenu`，复杂筛选用 `FilterSheet`，编辑/创建用 `ResponsiveDialog`。动作行使用 `.ts-action-row`，危险项加 `.danger`，沿用 `style.css` 的紧凑尺寸，不在页面重复定义宽度、字号或内边距；长文本允许换行，保留共享触控命中区域。
+- `AdaptiveMenu` 默认移动 sheet；工具栏旁需要锚定触发按钮的短菜单使用 `mobile-presentation="popover"`，空间不足时采用 sheet。不要让普通表单承担动作菜单的尺寸限制。
 - AdaptiveMenu 紧邻触发按钮，保留 aria-expanded/aria-haspopup；沿用定位与路由关闭机制，不写死坐标。
 - ResponsiveDialog 已统一 Teleport、动态层级、焦点陷阱和恢复、ESC/返回关闭、滚动锁、手势、visualViewport；通过 props/slots 接入，不平行实现遮罩系统。
 - sheet 用于短操作；长编辑场景可用 mobile-mode="fullscreen" 和 mobile-back。有 footer 时内容独立滚动，主要操作留在 footer，保留安全区和软键盘处理。
@@ -69,10 +68,4 @@
 | 媒体 | 明亮/暗色照片上的文字、裁切、懒加载、布局稳定 |
 | 动效 | reduced-motion 下功能可用，不支持玻璃滤镜时实体背景仍可读 |
 
-浏览器检查记录实际视口与结果；仅源码审查时说明未截图验收。构建按 `package/website/README.md`，测试按 `tests/README.md` 使用根目录统一入口，例如前端单元：
-
-```powershell
-pwsh .\tests\scripts\run-tests.ps1 -Layer unit -Component website -Level smoke
-```
-
-E2E 先确认套件标签与相关 spec，再通过统一脚本选择范围；环境变量来自 `tests/.env.test`。截图不能替代行为测试，纯 Skill 文档无需运行应用测试。
+浏览器检查记录实际视口与结果；构建、测试入口及交付要求统一见主技能的“实施与验收”。

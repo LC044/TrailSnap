@@ -3,8 +3,8 @@
     <p v-if="error" class="mb-4 text-sm text-red-600 dark:text-red-400" role="alert">{{ error }} <button class="underline" @click="load">重试</button></p>
     <div class="mb-5 flex flex-wrap items-center gap-3">
       <el-input v-model="search" placeholder="搜索分类" aria-label="搜索分类" class="!w-48" clearable />
-      <button class="ts-button ts-button-primary" @click="edit()"><Plus class="h-4 w-4" />新建分类</button>
-      <button class="ts-button ts-button-secondary" :disabled="busy || !categories.some(c => c.enabled)" @click="rebuild()">更新历史照片</button>
+      <IconButton label="新建分类" title="新建分类" variant="primary" @click="edit()"><Plus class="h-4 w-4" /></IconButton>
+      <IconButton label="更新历史照片" title="更新历史照片" :disabled="busy || !categories.some(c => c.enabled)" @click="rebuild()"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': busy }" /></IconButton>
       <span class="text-xs text-gray-500 dark:text-gray-400">已启用 {{ categories.filter(c => c.enabled).length }} 个</span>
     </div>
     <p v-if="loading" class="text-sm text-gray-500 dark:text-gray-400">正在加载分类…</p>
@@ -29,11 +29,9 @@
       <div>
         <label class="mb-2 block text-sm text-[var(--ts-color-text)]" for="clip-group">展示分组</label>
         <el-select id="clip-group" v-model="draft.groups" multiple filterable allow-create default-first-option :multiple-limit="3" class="!w-full" aria-label="展示分组" placeholder="选择分组，或输入新名称后回车"><el-option v-for="group in groups" :key="group" :label="group" :value="group" /></el-select>
-        <p class="ts-muted mt-1 text-xs">最多选择或创建 3 个分组，新分组随分类保存。</p>
       </div>
       <div>
         <p class="text-sm text-[var(--ts-color-text)]">文字描述（最多 5 条）</p>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">文字和参考图片至少填写一种。每条文字、每张图片等权合并，形成同一个分类特征。</p>
         <div v-for="(_, index) in draft.descriptions" :key="index" class="mt-2 flex items-start gap-2">
           <el-input v-model="draft.descriptions[index]" type="textarea" :rows="2" :maxlength="100" show-word-limit :aria-label="`分类描述 ${index + 1}`" />
           <button class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400" :aria-label="`移除描述 ${index + 1}`" @click="changeDescriptions(index)"><Trash2 class="h-4 w-4" /></button>
@@ -42,7 +40,7 @@
       </div>
       <div>
         <p class="text-sm text-[var(--ts-color-text)]">参考图片（{{ draft.reference_images.length }}/5）</p>
-        <p class="ts-muted mt-1 text-xs">上传或从图库选择，可逐张截取目标区域。支持 20 MB 以内的图片，裁剪仅用于分类，不修改原图。</p>
+        <p class="ts-muted mt-1 text-xs">支持 20 MB 以内的图片</p>
         <div class="mt-3 flex flex-wrap gap-2">
           <button class="ts-button ts-button-secondary" :disabled="busy || imageLoading || draft.reference_images.length >= 5" @click="fileInput?.click()"><Upload class="h-4 w-4" />上传图片</button>
           <button class="ts-button ts-button-secondary" :disabled="busy || imageLoading || draft.reference_images.length >= 5" @click="showPicker = true"><Images class="h-4 w-4" />从图库选择</button>
@@ -107,8 +105,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Images, Plus, Settings2, Trash2, Upload } from 'lucide-vue-next'
+import { Images, Plus, RefreshCw, Settings2, Trash2, Upload } from 'lucide-vue-next'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
+import IconButton from '@/components/ui/IconButton.vue'
 import PhotoSelector from '@/components/PhotoSelector.vue'
 import ClipReferenceCropper from '@/components/ClipReferenceCropper.vue'
 import { clipClassificationService, type ClipCategory, type ClipRuleDraft, type ClipPreview } from '@/api/classification'

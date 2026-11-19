@@ -23,11 +23,21 @@ def load_insightface_model():
         # 推理后端按 CUDA -> OpenVINO -> CPU 自动选择，与安装的 extra (gpu/openvino/cpu) 对齐。
         providers, provider_options = get_onnx_providers()
         model_path = str(Path(settings.MODEL_PATH).expanduser().resolve().parent)
-        app = FaceAnalysis(
-            name=model_name, root=model_path,
-            providers=providers,
-            provider_options=provider_options,
-        )
+        desktop = "TS_AI_BACKEND" in os.environ
+        try:
+            app = FaceAnalysis(name=model_name, root=model_path, providers=providers,
+                               provider_options=provider_options)
+        except Exception:
+            if not desktop or providers == ["CPUExecutionProvider"]:
+                raise
+            logging.exception("Face accelerator initialization failed; using CPU")
+            app = FaceAnalysis(name=model_name, root=model_path, providers=["CPUExecutionProvider"])
+        if desktop:
+            from app.services.onnx_providers import create_inference_session
+            # InsightFace builds its own ORT sessions. Replace them with the
+            # desktop factory for consistent fallback and per-model diagnostics.
+            for model in app.models.values():
+                model.session = create_inference_session(model.model_file)
         app.prepare(ctx_id=0, det_size=(640, 640))
         logging.info("InsightFace model initialized successfully.")
         return app

@@ -32,6 +32,9 @@ from app.service.disk_budget import disk_budget
 from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery, journey
 from app.service.tasks import clip_classification
 from app.service.tasks import daily_frame, panorama
+from app.service.tasks.ci_limit import is_ci
+
+MAX_EXTERNAL_VISUAL_REQUESTS = 16
 
 class CompletionContext:
     """Stage callback counters until the completion transaction commits."""
@@ -351,8 +354,13 @@ class TaskWorker:
     def _resource_limiter(self, resource_key: str) -> AdaptiveResourceLimiter:
         limiter = self.resource_limiters.get(resource_key)
         if limiter is None:
-            ceiling = self._get_resource_limits().get(resource_key, 1)
-            limiter = self._make_resource_limiter(resource_key, ceiling, None)
+            if resource_key.startswith('external_visual:'):
+                limiter = AdaptiveResourceLimiter(
+                    resource_key, MAX_EXTERNAL_VISUAL_REQUESTS, MAX_EXTERNAL_VISUAL_REQUESTS
+                )
+            else:
+                ceiling = self._get_resource_limits().get(resource_key, 1)
+                limiter = self._make_resource_limiter(resource_key, ceiling, None)
             self.resource_limiters[resource_key] = limiter
         return limiter
 
@@ -437,6 +445,9 @@ class TaskWorker:
             logging.warning("System pressure monitor stopped: %s", exc)
 
     def _prefetch_limit(self, category: str, task_type=None) -> int:
+        if task_type == TaskType.VISUAL_DESCRIPTION:
+            # Fill one wave at 16 external requests with eight images each.
+            return 128
         settings = self._get_concurrency_settings()
         concurrency = settings[f"{category.lower()}_consumer"]
         if task_type is not None:
@@ -483,7 +494,7 @@ class TaskWorker:
         self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=settings['process_pool'])
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings['thread_pool']) # More threads for IO
         self.batch_pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=sum(settings[f'{cat}_consumer'] for cat in ('cpu', 'io', 'ai')),
+            max_workers=settings['cpu_consumer'] + settings['io_consumer'] + MAX_EXTERNAL_VISUAL_REQUESTS,
             thread_name_prefix='task-batch',
         )
 
@@ -772,14 +783,36 @@ class TaskWorker:
 
                 # 按 (任务类型, 实际目标 category) 分组，保留 AI->IO 的重定向语义
                 tasks_by_cat: Dict[str, List[Dict]] = {}
+                external_groups = {}
+                visual_settings = {}
+                ci_mode = is_ci()
                 for task in tasks:
                     actual_cat = cat
                     strategy = TaskStrategyFactory.get_strategy(task.type)
                     resource_key = strategy.resource_key
                     if task.type == TaskType.VISUAL_DESCRIPTION and task.owner_id:
-                        user_config = config_manager.get_user_config(task.owner_id, db)
-                        if user_config.ai.analysis_connection_id == 'builtin':
+                        if task.owner_id not in visual_settings:
+                            visual_settings[task.owner_id] = config_manager.get_user_config(task.owner_id, db).ai
+                        ai = visual_settings[task.owner_id]
+                        if ai.analysis_connection_id == 'builtin':
                             resource_key = 'local_llm'
+                        elif ai.analysis_connection_id:
+                            payload = task.payload or {}
+                            can_batch = payload.get('photo_id') and not payload.get(visual_description.VISUAL_SINGLE_REQUEST_KEY)
+                            batch_size = ai.analysis_images_per_request if can_batch else 1
+                            if ci_mode:
+                                batch_size = 1
+                            info = {
+                                'id': task.id,
+                                'type': task.type,
+                                'priority': task.priority,
+                                'resource_key': f'external_visual:{task.owner_id}',
+                                'request_concurrency': 1 if ci_mode else ai.analysis_concurrency,
+                                'request_images': 1 if ci_mode else ai.analysis_images_per_request,
+                            }
+                            group = external_groups.setdefault((task.owner_id, task.priority, batch_size), [])
+                            group.append(info)
+                            continue
                     tasks_by_cat.setdefault(actual_cat, []).append(
                         {
                             'id': task.id,
@@ -788,6 +821,10 @@ class TaskWorker:
                             'resource_key': resource_key,
                         }
                     )
+
+                for (_, _, batch_size), group in external_groups.items():
+                    for i in range(0, len(group), batch_size):
+                        chunked_batches.append((cat, group[i:i + batch_size]))
 
                 # 拆分成更小的批次放入对应 category 的队列
                 for actual_cat, task_list in tasks_by_cat.items():
@@ -830,7 +867,7 @@ class TaskWorker:
         elif category == 'IO':
             max_concurrency = settings['io_consumer']
         elif category == 'AI':
-            max_concurrency = settings['ai_consumer']
+            max_concurrency = MAX_EXTERNAL_VISUAL_REQUESTS
 
         semaphore = asyncio.Semaphore(max_concurrency)
 
@@ -849,7 +886,7 @@ class TaskWorker:
                             if self.ai_phase_yield_requested:
                                 return False
                             limiter = self._resource_limiter(batch[0].get('resource_key', 'ai'))
-                            return limiter.in_use < limiter.current_limit
+                            return limiter.has_capacity(batch[0].get('request_concurrency'))
                         batch = await asyncio.wait_for(self.queue_manager.get_available_ai_batch(available), timeout=1.0)
                     else:
                         batch = await asyncio.wait_for(self.queue_manager.get_batch(category), timeout=1.0)
@@ -896,12 +933,16 @@ class TaskWorker:
         task_type = task_infos[0]['type']
         task_ids = [t['id'] for t in task_infos]
         limiter = self._resource_limiter(task_infos[0].get('resource_key', category.lower()))
+        request_concurrency = task_infos[0].get('request_concurrency')
         outcome = None
         acquired = False
         try:
             if task_type == TaskType.PROCESS_BASIC:
                 await limiter.ensure_capacity(self._import_cpu_floor())
-            await limiter.acquire()
+            if request_concurrency is None:
+                await limiter.acquire()
+            else:
+                await limiter.acquire(request_concurrency)
             acquired = True
             self.last_active_time[task_type] = datetime.now()
             # The thread creates, uses and closes every ORM session. Shielding
@@ -920,7 +961,7 @@ class TaskWorker:
         finally:
             if acquired:
                 await limiter.release()
-            if system_config.config.task.adaptive_concurrency:
+            if request_concurrency is None and system_config.config.task.adaptive_concurrency:
                 if outcome == 'overload':
                     await limiter.record_overload('transient_failure')
                 elif outcome == 'success' and self._is_system_overloaded():
@@ -965,6 +1006,17 @@ class TaskWorker:
                         config = config_manager.get_user_config(task.owner_id, db)
                         local_model = (task_type != TaskType.VISUAL_DESCRIPTION
                                        or config.ai.analysis_connection_id == 'builtin')
+                        dispatch = task_infos[0]
+                        if task_type == TaskType.VISUAL_DESCRIPTION and 'request_concurrency' in dispatch:
+                            ai = config.ai
+                            ci_mode = is_ci()
+                            if (
+                                not ai.analysis_connection_id or local_model
+                                or dispatch['request_concurrency'] != (1 if ci_mode else ai.analysis_concurrency)
+                                or dispatch['request_images'] != (1 if ci_mode else ai.analysis_images_per_request)
+                            ):
+                                # Leave rows pending so the producer can regroup with the new settings.
+                                return [], None
                         owner_reasons[task.owner_id] = (
                             get_model_wait_reason((task.payload or {}).get('ai_api_url') or config.ai.ai_api_url,
                                                   task.type) if local_model else None
@@ -1015,7 +1067,7 @@ class TaskWorker:
                 self._publish_task_row(task)
             outcome = 'success'
             try:
-                if strategy.resource_key in {'classification', 'ocr', 'face', 'embedding', 'clip_classification'} and isinstance(db, Session):
+                if strategy.resource_key in {'classification', 'ocr', 'face', 'embedding', 'clip_classification', 'visual_llm'} and isinstance(db, Session):
                     from app.service.tasks.ai_runtime import run_ai_batch
                     results = run_ai_batch(db.get_bind(), strategy, self, [t.id for t in tasks])
                 else:
@@ -1036,6 +1088,13 @@ class TaskWorker:
                 task = task_map.get(result.get('task_id'))
                 if result.get('status') == TaskStatus.FAILED:
                     error = result.get('error')
+                    if task is not None and task_type == TaskType.VISUAL_DESCRIPTION and result.get('retry_as_single'):
+                        task.payload = {**(task.payload or {}), visual_description.VISUAL_SINGLE_REQUEST_KEY: True}
+                        task.status = TaskStatus.PENDING
+                        task.error = "批量回复缺失或格式有误，等待单张分析"
+                        db.commit()
+                        self._publish_task_row(task)
+                        continue
                     retryable = self._is_retryable_error(error)
                     if retryable:
                         outcome = 'waiting_for_model' if self._is_model_preparing_error(error) else 'overload'

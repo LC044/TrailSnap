@@ -1,8 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import os
 import sys
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata, collect_all
 
 root = Path(SPECPATH)
 hiddenimports = (
@@ -34,6 +35,7 @@ datas = [
 ]
 for package in (
     "fastapi", "pydantic", "rapidocr", "onnxruntime", "insightface",
+    "onnxruntime-gpu", "onnxruntime-openvino", "openvino",
     "modelscope", "transformers", "tokenizers", "huggingface-hub",
 ):
     try:
@@ -46,10 +48,18 @@ datas += collect_data_files("rapidocr", excludes=["models/*.pth", "models/**/*.p
 for package in ("insightface", "transformers"):
     datas += collect_data_files(package)
 
+binaries = []
+backend = os.environ.get("TS_AI_BUILD_BACKEND", "cpu")
+for package in (["openvino"] if backend == "openvino" else ["nvidia.cuda_runtime", "nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_nvrtc", "nvidia.cufft", "nvidia.curand", "nvidia.nvjitlink"] if backend == "cuda" else []):
+    extra_datas, extra_binaries, extra_imports = collect_all(package)
+    datas += extra_datas
+    binaries += extra_binaries
+    hiddenimports += extra_imports
+
 a = Analysis(
     [str(root / "desktop_entry.py")],
     pathex=[str(root)],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     excludes=[

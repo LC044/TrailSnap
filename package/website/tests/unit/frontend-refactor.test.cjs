@@ -220,6 +220,7 @@ test('saving face/service settings excludes stale LLM connections and defaults',
 test('saving LLM settings excludes stale face and AI service configuration', async () => {
   const payloads = []
   const { default: component } = loadSource('views/settings/LLMSettings.vue', {
+    './ModelReasoningPicker.vue': {},
     'element-plus': { ElMessage: { error() {}, success() {} }, ElMessageBox: {} },
     '@/api/settings': { settingsApi: {
       getSettings: async () => ({ ai: {

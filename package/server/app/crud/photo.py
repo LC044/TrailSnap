@@ -27,6 +27,7 @@ from app.crud.cluster import remove_photo_from_clusters, remove_photos_from_clus
 from app.crud.search_vector import get_search_vectors
 from app.crud.photo_paths import escape_like, normalized_file_path
 from app.db.models import Photo, PhotoMetadata, ImageVector, Album, Face, PhotoTag, ImageDescription, Scene, PhotoDeclutterRecord
+from app.db.models.tag import PhotoTagRelation
 from app.db.models.album import AlbumPhoto
 from app.db.models.photo import FileType, ImageType
 from app.schemas import photo as photo_schemas
@@ -360,6 +361,11 @@ def get_photos_by_time(db: Session, owner_id: UUID, skip: int = 0, limit: int = 
     return query.offset(skip).limit(limit).all()
 
 
+def _sorted_by_usage(rows) -> list:
+    """选项面板只平铺前若干项，顺序必须对用户有信息量：高频在前，同频按名称稳定排序。"""
+    return [name for name, _count in sorted(rows, key=lambda row: (-row[1], row[0]))]
+
+
 def get_filter_options(db: Session, user_id: UUID):
     # Optimize: Fetch all distinct combinations in a single query
     results = db.query(
@@ -374,19 +380,29 @@ def get_filter_options(db: Session, user_id: UUID):
     ).distinct().all()
 
     years_set = set()
-    cities_set = set()
     makes_set = set()
     models_set = set()
 
     for r in results:
         if r.year is not None:
             years_set.add(int(r.year))
-        if r.city:
-            cities_set.add(r.city)
         if r.make:
             makes_set.add(r.make)
         if r.model:
             models_set.add(r.model)
+
+    # 城市按照片数降序（同名同数再按名称），避免按 Unicode 码位排出的"乱序"。
+    city_rows = db.query(
+        PhotoMetadata.city, func.count(Photo.id).label('photo_count')
+    ).select_from(PhotoMetadata).join(
+        Photo, Photo.id == PhotoMetadata.photo_id
+    ).filter(
+        Photo.owner_id == user_id,
+        Photo.is_deleted.is_(False),
+        PhotoMetadata.city.isnot(None),
+        PhotoMetadata.city != '',
+    ).group_by(PhotoMetadata.city).all()
+    cities = _sorted_by_usage(city_rows)
 
     # Image Types
     image_types = [t.value for t in ImageType]
@@ -396,10 +412,22 @@ def get_filter_options(db: Session, user_id: UUID):
     file_types = [t.value for t in FileType] + ['panorama']
 
     from app.db.models.face import FaceIdentity
-    categories = db.query(PhotoTag.tag_name).filter(
+    # 类别同样按使用频率排序（前端只平铺前面若干项）。
+    # 显式走 PhotoTagRelation 连接：PhotoTag.photos 是 Photo.tags 的 backref，
+    # 依赖 mapper 配置时机，导入早期访问会 AttributeError。
+    category_rows = db.query(
+        PhotoTag.tag_name, func.count(Photo.id).label('photo_count')
+    ).select_from(PhotoTag).join(
+        PhotoTagRelation, PhotoTagRelation.tag_id == PhotoTag.id
+    ).join(
+        Photo, Photo.id == PhotoTagRelation.photo_id
+    ).filter(
         PhotoTag.is_deleted.is_(False),
-        PhotoTag.photos.any((Photo.owner_id == user_id) & Photo.is_deleted.is_(False)),
-    ).distinct().order_by(PhotoTag.tag_name).all()
+        PhotoTagRelation.is_deleted.is_(False),
+        Photo.owner_id == user_id,
+        Photo.is_deleted.is_(False),
+    ).group_by(PhotoTag.tag_name).all()
+    categories = _sorted_by_usage(category_rows)
 
     from app.crud.face import _identity_photo_counts
     counts = _identity_photo_counts(db, owner_id=user_id, active_only=True)
@@ -420,7 +448,7 @@ def get_filter_options(db: Session, user_id: UUID):
         counts, counts.c.face_identity_id == FaceIdentity.id
     ).outerjoin(avatars, (avatars.c.face_identity_id == FaceIdentity.id) & (avatars.c.rank == 1)).filter(
         FaceIdentity.owner_id == user_id, FaceIdentity.is_deleted.is_(False),
-    ).order_by(photo_count.desc(), FaceIdentity.id).all()
+    ).order_by(photo_count.desc(), FaceIdentity.identity_name, FaceIdentity.id).all()
     person_options = [dict(id=str(row.id), name=(row.identity_name or '').strip() or '未命名',
                            photo_count=row.photo_count,
                            photo_id=str(row.photo_id) if row.photo_id else None,
@@ -428,14 +456,14 @@ def get_filter_options(db: Session, user_id: UUID):
 
     return {
         "years": sorted(list(years_set), reverse=True),
-        "cities": sorted(list(cities_set)),
+        "cities": cities,
         "makes": sorted(list(makes_set)),
         "models": sorted(list(models_set)),
         "image_types": image_types,
         "file_types": file_types,
         "people": [person['id'] for person in person_options],
         "person_options": person_options,
-        "categories": [row[0] for row in categories],
+        "categories": categories,
     }
 
 

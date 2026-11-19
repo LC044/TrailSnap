@@ -110,6 +110,11 @@ test('all four type buttons use the same selection state and reload behavior', (
   assert.equal(state.personAvatar('person-a').cover_photo.photo_id, 'photo-a')
   state.raiseOptions(true)
   assert.equal(state.popperStyle.zIndex, 3000)
+  // 分组检索区可展开/收起，setSearch 只负责过滤，不再驱动单一焦点组。
+  state.toggleExpand('cities')
+  assert.equal(state.expanded.cities, true)
+  state.toggleExpand('cities')
+  assert.equal(state.expanded.cities, false)
   for (const [key, query, options, expected] of [
     ['cities', ' 三门 ', ['西安市', '三门峡市'], ['三门峡市']],
     ['people', '小', ['小王', '老李'], ['小王']],
@@ -117,7 +122,6 @@ test('all four type buttons use the same selection state and reload behavior', (
     ['years', '2025', [2024, 2025, 2026], [2025]],
   ]) {
     state.setSearch(key, query)
-    assert.equal(state.activeGroup, key)
     assert.deepEqual(Array.from(state.filteredOptions(key, options)), expected)
   }
 })

@@ -2,16 +2,16 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
-    "python_full_version >= '3.13' and platform_machine != 's390x' and sys_platform == 'darwin'",
-    "python_full_version < '3.13' and platform_machine != 's390x' and sys_platform == 'darwin'",
-    "python_full_version >= '3.13' and platform_machine == 's390x' and sys_platform == 'darwin'",
-    "python_full_version < '3.13' and platform_machine == 's390x' and sys_platform == 'darwin'",
+    "python_full_version >= '3.13' and sys_platform == 'darwin'",
+    "python_full_version < '3.13' and sys_platform == 'darwin'",
     "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version >= '3.13' and platform_machine != 'aarch64' and platform_machine != 's390x' and sys_platform == 'linux') or (python_full_version >= '3.13' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'linux')",
-    "(python_full_version < '3.13' and platform_machine != 'aarch64' and platform_machine != 's390x' and sys_platform == 'linux') or (python_full_version < '3.13' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'linux')",
-    "python_full_version >= '3.13' and platform_machine == 's390x' and sys_platform != 'darwin'",
-    "python_full_version < '3.13' and platform_machine == 's390x' and sys_platform != 'darwin'",
+    "(python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "(python_full_version < '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.13' and platform_machine != 'AMD64' and sys_platform == 'win32') or (python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
+    "python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'",
+]
+required-markers = [
+    "python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'",
 ]
 conflicts = [[
     { package = "project", extra = "cpu" },
@@ -271,7 +271,7 @@ name = "coloredlogs"
 version = "15.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "humanfriendly" },
+    { name = "humanfriendly", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cc/c7/eed8f27100517e8c0e6b923d5f0845d0cb99763da6fdee00478f91db7325/coloredlogs-15.0.1.tar.gz", hash = "sha256:7c991aa71a4577af2f82600d8f8f3a89f936baeaf9b50a9c197da014e5bf16b0", size = 278520, upload-time = "2021-06-11T10:22:45.202Z" }
 wheels = [
@@ -705,7 +705,7 @@ name = "humanfriendly"
 version = "10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyreadline3", marker = "sys_platform == 'win32'" },
+    { name = "pyreadline3", marker = "sys_platform == 'win32' or (extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cc/3f/2c29224acb2e2df4d2046e4c73ee2662023c58ff5b113c4c1adac0886c43/humanfriendly-10.0.tar.gz", hash = "sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc", size = 360702, upload-time = "2021-09-17T21:40:43.31Z" }
 wheels = [
@@ -1096,6 +1096,105 @@ wheels = [
 ]
 
 [[package]]
+name = "nvidia-cublas-cu12"
+version = "12.9.2.10"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'",
+]
+dependencies = [
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32') or (python_full_version >= '3.13' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (python_full_version >= '3.13' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (python_full_version >= '3.13' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (platform_machine != 'AMD64' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (platform_machine != 'AMD64' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (platform_machine != 'AMD64' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform != 'win32' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform != 'win32' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform != 'win32' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f7/a2/c96163a0fff1839c0c9548bbdeae7b853b867009e33b9b9264adc238b1cf/nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:5572131a59c3eebeeb1c4c8144f772d49372c20124916e072a0e3fc30df421d5", size = 575012079, upload-time = "2026-04-08T18:51:47.303Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/c0/0a517bfe63ccd3b92eb254d264e28fca3c7cab75d07daea315250fb1bf73/nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:e4f53a8ca8c5d6e8c492d0d0a3d565ecb59a751b19cfdaa4f6da0ab2104c1702", size = 581240110, upload-time = "2026-04-08T18:52:31.532Z" },
+    { url = "https://files.pythonhosted.org/packages/20/e2/fc9a0e985249d873150276d5afb02e39a66817fedbf1a385724393e505ed/nvidia_cublas_cu12-12.9.2.10-py3-none-win_amd64.whl", hash = "sha256:623f43027d40d44ceadf0043f002bd25cf353e8f13ce90b9a87057019f560661", size = 553162896, upload-time = "2026-04-08T18:53:10.035Z" },
+]
+
+[[package]]
+name = "nvidia-cublas-cu12"
+version = "12.9.3.13"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "(python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "(python_full_version < '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.13' and platform_machine != 'AMD64' and sys_platform == 'win32') or (python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
+]
+dependencies = [
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(python_full_version >= '3.13' and sys_platform == 'win32') or (python_full_version < '3.13' and sys_platform == 'win32' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (python_full_version < '3.13' and sys_platform == 'win32' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (python_full_version < '3.13' and sys_platform == 'win32' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_machine != 'AMD64' and sys_platform == 'win32') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/19/1683e1b11352d03a8b1ab8a57fccec7064bfaaf862e7206331538e7fd6a1/nvidia_cublas_cu12-12.9.3.13-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:918a8781956115d34b1db49e0e7b7befba8d101661c4b560ed4d42e0e17bebc3", size = 574997333, upload-time = "2026-10-30T21:28:11.255Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/ea/9b6c36aef90766eebb4763aded157039e797ae9789c9c216e960d1d3cd47/nvidia_cublas_cu12-12.9.3.13-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:d7d51055f161b317c7105ddaae90e71eda059026074ffef93cf7cde2886bfe72", size = 581217458, upload-time = "2026-10-30T21:29:02.439Z" },
+]
+
+[[package]]
+name = "nvidia-cuda-nvrtc-cu12"
+version = "12.9.86"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b8/85/e4af82cc9202023862090bfca4ea827d533329e925c758f0cde964cb54b7/nvidia_cuda_nvrtc_cu12-12.9.86-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:210cf05005a447e29214e9ce50851e83fc5f4358df8b453155d5e1918094dcb4", size = 89568129, upload-time = "2025-06-05T20:02:41.973Z" },
+    { url = "https://files.pythonhosted.org/packages/64/eb/c2295044b8f3b3b08860e2f6a912b702fc92568a167259df5dddb78f325e/nvidia_cuda_nvrtc_cu12-12.9.86-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:096d4de6bda726415dfaf3198d4f5c522b8e70139c97feef5cd2ca6d4cd9cead", size = 44528905, upload-time = "2025-06-05T20:02:29.754Z" },
+    { url = "https://files.pythonhosted.org/packages/52/de/823919be3b9d0ccbf1f784035423c5f18f4267fb0123558d58b813c6ec86/nvidia_cuda_nvrtc_cu12-12.9.86-py3-none-win_amd64.whl", hash = "sha256:72972ebdcf504d69462d3bcd67e7b81edd25d0fb85a2c46d3ea3517666636349", size = 76408187, upload-time = "2025-06-05T20:12:27.819Z" },
+]
+
+[[package]]
+name = "nvidia-cuda-runtime-cu12"
+version = "12.9.79"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bc/e0/0279bd94539fda525e0c8538db29b72a5a8495b0c12173113471d28bce78/nvidia_cuda_runtime_cu12-12.9.79-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:83469a846206f2a733db0c42e223589ab62fd2fabac4432d2f8802de4bded0a4", size = 3515012, upload-time = "2025-06-05T20:00:35.519Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/46/a92db19b8309581092a3add7e6fceb4c301a3fd233969856a8cbf042cd3c/nvidia_cuda_runtime_cu12-12.9.79-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:25bba2dfb01d48a9b59ca474a1ac43c6ebf7011f1b0b8cc44f54eb6ac48a96c3", size = 3493179, upload-time = "2025-06-05T20:00:53.735Z" },
+    { url = "https://files.pythonhosted.org/packages/59/df/e7c3a360be4f7b93cee39271b792669baeb3846c58a4df6dfcf187a7ffab/nvidia_cuda_runtime_cu12-12.9.79-py3-none-win_amd64.whl", hash = "sha256:8e018af8fa02363876860388bd10ccb89eb9ab8fb0aa749aaf58430a9f7c4891", size = 3591604, upload-time = "2025-06-05T20:11:17.036Z" },
+]
+
+[[package]]
+name = "nvidia-cudnn-cu12"
+version = "9.10.2.21"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nvidia-cublas-cu12", version = "12.9.2.10", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32') or (python_full_version >= '3.13' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (python_full_version >= '3.13' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (python_full_version >= '3.13' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (platform_machine != 'AMD64' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (platform_machine != 'AMD64' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (platform_machine != 'AMD64' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform != 'win32' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform != 'win32' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform != 'win32' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+    { name = "nvidia-cublas-cu12", version = "12.9.3.13", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.13' and sys_platform == 'win32') or (python_full_version < '3.13' and sys_platform == 'win32' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (python_full_version < '3.13' and sys_platform == 'win32' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (python_full_version < '3.13' and sys_platform == 'win32' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_machine != 'AMD64' and sys_platform == 'win32') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/41/e79269ce215c857c935fd86bcfe91a451a584dfc27f1e068f568b9ad1ab7/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8", size = 705026878, upload-time = "2025-06-06T21:52:51.348Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/51/e123d997aa098c61d029f76663dedbfb9bc8dcf8c60cbd6adbe42f76d049/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:949452be657fa16687d0930933f032835951ef0892b37d2d53824d1a84dc97a8", size = 706758467, upload-time = "2025-06-06T21:54:08.597Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/90/0bd6e586701b3a890fd38aa71c387dab4883d619d6e5ad912ccbd05bfd67/nvidia_cudnn_cu12-9.10.2.21-py3-none-win_amd64.whl", hash = "sha256:c6288de7d63e6cf62988f0923f96dc339cea362decb1bf5b3141883392a7d65e", size = 692992268, upload-time = "2025-06-06T21:55:18.114Z" },
+]
+
+[[package]]
+name = "nvidia-cufft-cu12"
+version = "11.4.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/2b/76445b0af890da61b501fde30650a1a4bd910607261b209cccb5235d3daa/nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:1a28c9b12260a1aa7a8fd12f5ebd82d027963d635ba82ff39a1acfa7c4c0fbcf", size = 200822453, upload-time = "2025-06-05T20:05:27.889Z" },
+    { url = "https://files.pythonhosted.org/packages/95/f4/61e6996dd20481ee834f57a8e9dca28b1869366a135e0d42e2aa8493bdd4/nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:c67884f2a7d276b4b80eb56a79322a95df592ae5e765cf1243693365ccab4e28", size = 200877592, upload-time = "2025-06-05T20:05:45.862Z" },
+    { url = "https://files.pythonhosted.org/packages/20/ee/29955203338515b940bd4f60ffdbc073428f25ef9bfbce44c9a066aedc5c/nvidia_cufft_cu12-11.4.1.4-py3-none-win_amd64.whl", hash = "sha256:8e5bfaac795e93f80611f807d42844e8e27e340e0cde270dcb6c65386d795b80", size = 200067309, upload-time = "2025-06-05T20:13:59.762Z" },
+]
+
+[[package]]
+name = "nvidia-curand-cu12"
+version = "10.3.10.19"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/1c/2a45afc614d99558d4a773fa740d8bb5471c8398eeed925fc0fcba020173/nvidia_curand_cu12-10.3.10.19-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:de663377feb1697e1d30ed587b07d5721fdd6d2015c738d7528a6002a6134d37", size = 68292066, upload-time = "2025-05-01T19:39:13.595Z" },
+    { url = "https://files.pythonhosted.org/packages/31/44/193a0e171750ca9f8320626e8a1f2381e4077a65e69e2fb9708bd479e34a/nvidia_curand_cu12-10.3.10.19-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:49b274db4780d421bd2ccd362e1415c13887c53c214f0d4b761752b8f9f6aa1e", size = 68295626, upload-time = "2025-05-01T19:39:38.885Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/98/1bd66fd09cbe1a5920cb36ba87029d511db7cca93979e635fd431ad3b6c0/nvidia_curand_cu12-10.3.10.19-py3-none-win_amd64.whl", hash = "sha256:e8129e6ac40dc123bd948e33d3e11b4aa617d87a583fa2f21b3210e90c743cde", size = 68774847, upload-time = "2025-05-01T19:48:52.93Z" },
+]
+
+[[package]]
+name = "nvidia-nvjitlink-cu12"
+version = "12.9.86"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/46/0c/c75bbfb967457a0b7670b8ad267bfc4fffdf341c074e0a80db06c24ccfd4/nvidia_nvjitlink_cu12-12.9.86-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:e3f1171dbdc83c5932a45f0f4c99180a70de9bd2718c1ab77d14104f6d7147f9", size = 39748338, upload-time = "2025-06-05T20:10:25.613Z" },
+    { url = "https://files.pythonhosted.org/packages/97/bc/2dcba8e70cf3115b400fef54f213bcd6715a3195eba000f8330f11e40c45/nvidia_nvjitlink_cu12-12.9.86-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:994a05ef08ef4b0b299829cde613a424382aff7efb08a7172c1fa616cc3af2ca", size = 39514880, upload-time = "2025-06-05T20:10:04.89Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/7e/2eecb277d8a98184d881fb98a738363fd4f14577a4d2d7f8264266e82623/nvidia_nvjitlink_cu12-12.9.86-py3-none-win_amd64.whl", hash = "sha256:cc6fcec260ca843c10e34c936921a1c426b351753587fdd638e8cff7b16bb9db", size = 35584936, upload-time = "2025-06-05T20:16:08.525Z" },
+]
+
+[[package]]
 name = "omegaconf"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1166,12 +1265,12 @@ name = "onnxruntime-gpu"
 version = "1.23.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "coloredlogs" },
-    { name = "flatbuffers" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "protobuf" },
-    { name = "sympy" },
+    { name = "coloredlogs", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino')" },
+    { name = "flatbuffers", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino')" },
+    { name = "numpy", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino')" },
+    { name = "packaging", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino')" },
+    { name = "protobuf", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino')" },
+    { name = "sympy", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6c/d9/b7140a4f1615195938c7e358c0804bb84271f0d6886b5cbf105c6cb58aae/onnxruntime_gpu-1.23.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4f2d1f720685d729b5258ec1b36dee1de381b8898189908c98cbeecdb2f2b5c2", size = 300509596, upload-time = "2025-10-22T16:56:31.728Z" },
@@ -1179,6 +1278,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/03/05/40d561636e4114b54aa06d2371bfbca2d03e12cfdf5d4b85814802f18a75/onnxruntime_gpu-1.23.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1e8f75af5da07329d0c3a5006087f4051d8abd133b4be7c9bae8cdab7bea4c26", size = 300515567, upload-time = "2025-10-22T16:56:43.794Z" },
     { url = "https://files.pythonhosted.org/packages/b6/3b/418300438063d403384c79eaef1cb13c97627042f2247b35a887276a355a/onnxruntime_gpu-1.23.2-cp313-cp313-win_amd64.whl", hash = "sha256:7f1b3f49e5e126b99e23ec86b4203db41c2a911f6165f7624f2bc8267aaca767", size = 244507535, upload-time = "2025-10-22T16:55:28.532Z" },
     { url = "https://files.pythonhosted.org/packages/b8/dc/80b145e3134d7eba31309b3299a2836e37c76e4c419a261ad9796f8f8d65/onnxruntime_gpu-1.23.2-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:20959cd4ae358aab6579ab9123284a7b1498f7d51ec291d429a5edc26511306f", size = 300525759, upload-time = "2025-10-22T16:56:56.925Z" },
+]
+
+[package.optional-dependencies]
+cuda = [
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+    { name = "nvidia-cufft-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+    { name = "nvidia-curand-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+]
+cudnn = [
+    { name = "nvidia-cudnn-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
 ]
 
 [[package]]
@@ -1397,6 +1507,7 @@ dependencies = [
     { name = "insightface" },
     { name = "modelscope" },
     { name = "numpy" },
+    { name = "onnx" },
     { name = "opencv-python-headless" },
     { name = "pillow" },
     { name = "pydantic" },
@@ -1424,6 +1535,10 @@ desktop = [
     { name = "psutil" },
     { name = "pyinstaller" },
 ]
+desktop-cuda = [
+    { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32' or (extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+    { name = "onnxruntime-gpu", extra = ["cuda", "cudnn"], marker = "sys_platform == 'win32' or (extra == 'extra-7-project-cpu' and extra == 'extra-7-project-gpu') or (extra == 'extra-7-project-cpu' and extra == 'extra-7-project-openvino') or (extra == 'extra-7-project-gpu' and extra == 'extra-7-project-openvino')" },
+]
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1437,6 +1552,7 @@ requires-dist = [
     { name = "insightface", specifier = ">=0.7.3" },
     { name = "modelscope", specifier = ">=1.40.1" },
     { name = "numpy", specifier = ">=1.26.0" },
+    { name = "onnx", specifier = ">=1.17.0" },
     { name = "onnxruntime", marker = "extra == 'cpu'", specifier = ">=1.23.2" },
     { name = "onnxruntime-gpu", marker = "extra == 'gpu'", specifier = ">=1.23.2" },
     { name = "onnxruntime-openvino", marker = "extra == 'openvino'", specifier = ">=1.24.1" },
@@ -1456,6 +1572,10 @@ provides-extras = ["cpu", "openvino", "gpu"]
 desktop = [
     { name = "psutil", specifier = ">=7.2.1" },
     { name = "pyinstaller", specifier = ">=6.17.0" },
+]
+desktop-cuda = [
+    { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'", specifier = "==9.10.2.21" },
+    { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "sys_platform == 'win32'", specifier = ">=1.23.2" },
 ]
 dev = [
     { name = "pytest", specifier = ">=8.0" },
@@ -2368,7 +2488,7 @@ name = "sympy"
 version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mpmath" },
+    { name = "mpmath", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-7-project-cpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-gpu') or (sys_platform == 'darwin' and extra == 'extra-7-project-openvino') or (sys_platform == 'linux' and extra == 'extra-7-project-cpu') or (sys_platform == 'linux' and extra == 'extra-7-project-gpu') or (sys_platform == 'linux' and extra == 'extra-7-project-openvino')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [

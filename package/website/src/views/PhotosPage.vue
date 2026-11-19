@@ -52,7 +52,8 @@
       >
           <div v-if="showFilterPanel && !mobileMenu" class="absolute left-0 right-0 top-full mt-2 pointer-events-none px-[var(--ts-page-gutter)]">
             <div class="max-w-screen-2xl mx-auto flex justify-end">
-              <div ref="filterPanelRef" class="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden w-full max-w-md pointer-events-auto">
+              <!-- 实心表面 + 浮层阴影：玻璃过透会让照片透上来，条件文字读不清 -->
+              <div ref="filterPanelRef" class="filter-popover pointer-events-auto w-full max-w-[26rem] overflow-y-auto overscroll-contain rounded-2xl border border-[var(--ts-color-border)] bg-[var(--ts-color-surface)] p-4 max-h-[calc(100dvh-var(--ts-header-height)-24px)]">
                  <FilterPanel :store="photoStore" />
               </div>
             </div>
@@ -62,7 +63,15 @@
 
     <!-- Upload Modal -->
     <template #extra-modals>
-        <ResponsiveDialog v-if="mobileMenu" v-model="showFilterPanel" title="筛选照片" glass><FilterPanel :store="photoStore" /></ResponsiveDialog>
+        <ResponsiveDialog v-if="mobileMenu" v-model="showFilterPanel" title="筛选照片" :glass="false">
+          <FilterPanel ref="mobileFilterRef" :store="photoStore" />
+          <template #footer>
+            <div class="flex gap-3">
+              <button type="button" class="ts-button ts-button-secondary flex-1" @click="mobileFilterRef?.clearAll()">重置</button>
+              <button type="button" class="ts-button ts-button-primary flex-[2]" @click="showFilterPanel = false">完成</button>
+            </div>
+          </template>
+        </ResponsiveDialog>
 
     </template>
 
@@ -180,6 +189,8 @@ const mobileMenu = useMediaQuery('(max-width: 639px)')
 const showFilterPanel = ref(false)
 const filterButtonRef = ref<HTMLElement | null>(null)
 const filterPanelRef = ref<HTMLElement | null>(null)
+// 移动端弹窗的底部「重置」需要调用面板内部的清除逻辑。
+const mobileFilterRef = ref<{ clearAll: () => void } | null>(null)
 
 onClickOutside(filterPanelRef, () => {
   if (!mobileMenu.value) showFilterPanel.value = false
@@ -347,4 +358,6 @@ onUnmounted(() => {
 <style scoped>
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s ease; }
 .slide-up-enter-from, .slide-up-leave-to { transform: translateY(20px); opacity: 0; }
+/* 浮层阴影用变量直出：Tailwind 的 shadow-[var(...)] 在此配置下不生效 */
+.filter-popover { box-shadow: var(--ts-shadow-floating); }
 </style>

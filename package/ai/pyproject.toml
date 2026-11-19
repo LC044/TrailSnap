@@ -3,6 +3,7 @@ name = "project"
 version = "0.21.0"
 requires-python = ">=3.12"
 dependencies = [
+  "onnx>=1.17.0",
   "fastapi>=0.110.0",
   "insightface>=0.7.3",
   "modelscope>=1.40.1",
@@ -42,8 +43,14 @@ desktop = [
   "pyinstaller>=6.17.0",
   "psutil>=7.2.1",
 ]
+desktop-cuda = [
+  "onnxruntime-gpu[cuda,cudnn]>=1.23.2; sys_platform == 'win32'",
+  # ORT 1.23 uses cuDNN 9's frontend API; keep the desktop runtime reproducible.
+  "nvidia-cudnn-cu12==9.10.2.21; sys_platform == 'win32'",
+]
 
 [tool.uv]
+required-environments = ["sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.12'"]
 conflicts = [
   [
     { extra = "cpu" },
@@ -58,6 +65,7 @@ python_files = ["test_*.py"]
 addopts = "-q"
 # 与 server 共用同一套 marker 语义，由 tests/scripts/run-tests.ps1 统一选择
 markers = [
+    "module_desktop: desktop runtime and packaging",
     "smoke: P0 关键路径，秒级",
     "regression: 常规回归用例（默认跑）",
     "slow: 耗时用例（>2s），默认跳过",
