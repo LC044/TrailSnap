@@ -1,0 +1,1337 @@
+/* =========================================================================
+   TrailSnap subpages — download & CLI
+   Shares the landing page's warm-paper / deep-forest design tokens.
+   ========================================================================= */
+
+.trailsnap-subpage {
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+.trailsnap-subpage .subpage-main {
+  position: relative;
+  padding-top: 118px;
+}
+
+.trailsnap-subpage .sub-wrap {
+  position: relative;
+  width: min(1080px, calc(100% - clamp(40px, 8vw, 150px)));
+  margin-inline: auto;
+}
+
+.trailsnap-subpage .site-header .wrap {
+  width: min(1080px, calc(100% - clamp(40px, 8vw, 150px)));
+}
+
+@media (min-width: 1000px) {
+  .trailsnap-subpage .contact-footer {
+    padding-left: max(24px, calc((100% - 1080px) / 2));
+    padding-right: max(24px, calc((100% - 1080px) / 2));
+  }
+}
+
+/* Header variants --------------------------------------------------- */
+
+.trailsnap-subpage .site-header.is-scrolled {
+  background: var(--glass);
+  border-bottom-color: var(--line);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
+.trailsnap-subpage .subpage-nav a.is-active {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.09);
+}
+
+.trailsnap-subpage .subpage-nav a > span {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: inherit;
+  opacity: 0.55;
+}
+
+/* Shared hero ------------------------------------------------------- */
+
+.trailsnap-subpage .subpage-hero {
+  position: relative;
+  padding: clamp(18px, 3vw, 36px) 0 clamp(40px, 5.4vw, 66px);
+  overflow: clip;
+}
+
+.trailsnap-subpage .subpage-hero::before {
+  content: "";
+  position: absolute;
+  top: -30%;
+  right: -6%;
+  width: min(74vw, 900px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.24), transparent 64%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+.trailsnap-subpage .subpage-hero .kicker {
+  position: relative;
+}
+
+.trailsnap-subpage .subpage-title {
+  position: relative;
+  margin: 20px 0 22px;
+  font-family: var(--serif);
+  font-size: clamp(38px, 4.4vw, 66px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.005em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.trailsnap-subpage.is-en .subpage-title {
+  font-size: clamp(34px, 4vw, 60px);
+  line-height: 1.18;
+  letter-spacing: -0.005em;
+}
+
+.trailsnap-subpage .subpage-lead {
+  position: relative;
+  max-width: 35em;
+  font-size: 15px;
+  line-height: 1.95;
+  color: var(--muted);
+}
+
+/* Quiet entrance for the page hero. */
+.trailsnap-subpage .subpage-hero .kicker {
+  animation: sub-rise 0.9s 0.05s var(--ease-out) both;
+}
+
+.trailsnap-subpage .subpage-title {
+  animation: sub-rise 1s 0.12s var(--ease-out) both;
+}
+
+.trailsnap-subpage .subpage-lead {
+  animation: sub-rise 1s 0.24s var(--ease-out) both;
+}
+
+.trailsnap-subpage .release-card,
+.trailsnap-subpage .install-tabs {
+  animation: sub-rise 1s 0.32s var(--ease-out) both;
+}
+
+.trailsnap-subpage .cli-install-card {
+  animation: sub-rise 1s 0.3s var(--ease-out) both;
+}
+
+@keyframes sub-rise {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* Download hero ----------------------------------------------------- */
+
+.trailsnap-subpage .download-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  align-items: end;
+  gap: 40px;
+}
+
+.trailsnap-subpage .release-card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 66%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-soft);
+}
+
+.trailsnap-subpage .release-card span {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .release-card strong {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.trailsnap-subpage .release-card small {
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+/* Tabs -------------------------------------------------------------- */
+
+.trailsnap-subpage .install-tabs {
+  display: inline-flex;
+  gap: 4px;
+  max-width: 100%;
+  margin-top: 30px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.trailsnap-subpage .install-tabs button {
+  min-height: 40px;
+  padding: 6px 24px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  transition: background-color 0.35s var(--ease), color 0.35s var(--ease);
+}
+
+.trailsnap-subpage .install-tabs button[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.trailsnap-subpage .install-tabs button:hover:not([aria-selected="true"]) {
+  color: var(--ink);
+}
+
+/* Download content -------------------------------------------------- */
+
+.trailsnap-subpage .download-content {
+  padding-bottom: clamp(60px, 8vw, 100px);
+}
+
+.trailsnap-subpage .download-card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.trailsnap-subpage .featured-card,
+.trailsnap-subpage .nas-card {
+  padding: clamp(24px, 3.4vw, 38px);
+}
+
+.trailsnap-subpage .featured-card {
+  overflow: hidden;
+}
+
+.trailsnap-subpage .featured-card::before {
+  content: "";
+  position: absolute;
+  top: -45%;
+  right: -18%;
+  width: 420px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.22), transparent 64%);
+  pointer-events: none;
+}
+
+.trailsnap-subpage .fnos-card {
+  margin-bottom: 18px;
+}
+
+.trailsnap-subpage .device-badge {
+  position: relative;
+  display: block;
+  width: fit-content;
+  margin: 0 0 16px auto;
+  padding: 4px 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+
+.trailsnap-subpage .featured-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: clamp(28px, 4vw, 52px);
+  align-items: start;
+}
+
+.trailsnap-subpage .platform-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.trailsnap-subpage .platform-heading > div {
+  min-width: 0;
+}
+
+.trailsnap-subpage .platform-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  flex-shrink: 0;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+}
+
+.trailsnap-subpage .platform-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.trailsnap-subpage .platform-icon.small {
+  width: 46px;
+  height: 46px;
+  padding: 11px;
+  border-radius: 13px;
+  color: var(--ink-soft);
+  background: var(--surface-2);
+}
+
+.trailsnap-subpage .platform-heading h2 {
+  font-family: var(--serif);
+  font-size: clamp(23px, 2.5vw, 31px);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.trailsnap-subpage .platform-heading p {
+  margin-top: 7px;
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .format-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 18px 0 0 80px;
+}
+
+.trailsnap-subpage .format-tags span {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .featured-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding-left: clamp(20px, 3vw, 34px);
+  border-left: 1px solid var(--line);
+}
+
+.trailsnap-subpage .primary-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 54px;
+  padding: 13px 20px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+  transition: background-color 0.35s var(--ease), color 0.35s var(--ease),
+    transform 0.45s var(--ease-out), box-shadow 0.45s var(--ease);
+}
+
+.trailsnap-subpage .primary-action:hover {
+  background: var(--accent);
+  color: #17130d;
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px -20px rgba(var(--accent-rgb), 0.55);
+}
+
+.trailsnap-subpage .primary-action svg {
+  flex-shrink: 0;
+}
+
+.trailsnap-subpage .accel-options,
+.trailsnap-subpage .mirror-download {
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--muted);
+  text-align: center;
+}
+
+.trailsnap-subpage .accel-options a,
+.trailsnap-subpage .mirror-download a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.trailsnap-subpage .accel-options a + a::before {
+  content: "·";
+  margin: 0 6px;
+  color: var(--line-strong);
+}
+
+.trailsnap-subpage .portable-download {
+  margin-top: 2px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.trailsnap-subpage .portable-download a {
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line-strong);
+  padding-bottom: 1px;
+}
+
+.trailsnap-subpage .portable-download a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.trailsnap-subpage .portable-download a + a::before {
+  content: "·";
+  margin: 0 8px;
+  color: var(--line-strong);
+}
+
+.trailsnap-subpage .portable-download p {
+  margin-top: 5px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .release-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .release-row a,
+.trailsnap-subpage .all-assets a,
+.trailsnap-subpage .preflight-link a,
+.trailsnap-subpage .text-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+}
+
+.trailsnap-subpage .other-platforms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.trailsnap-subpage .secondary-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 22px;
+  transition: border-color 0.4s var(--ease), transform 0.5s var(--ease-out);
+}
+
+.trailsnap-subpage .secondary-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-3px);
+}
+
+.trailsnap-subpage .secondary-card h3 {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.trailsnap-subpage .secondary-card p {
+  margin: 5px 0 10px;
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .text-action {
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.trailsnap-subpage .all-assets {
+  margin: 20px 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.trailsnap-subpage .api-warning {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 12px;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.trailsnap-subpage .download-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 18px 22px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 16px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .download-help a {
+  color: var(--accent);
+}
+
+/* NAS tab ----------------------------------------------------------- */
+
+.trailsnap-subpage #nas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.trailsnap-subpage #nas .fnos-card {
+  margin-bottom: 0;
+}
+
+.trailsnap-subpage #nas .nas-prompt,
+.trailsnap-subpage #nas .api-warning {
+  grid-column: 1 / -1;
+}
+
+.trailsnap-subpage .deployment-steps {
+  display: grid;
+  gap: 18px;
+  margin: 24px 0 26px;
+  padding: 0;
+  list-style: none;
+}
+
+.trailsnap-subpage .deployment-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.trailsnap-subpage .deployment-steps .step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.trailsnap-subpage .deployment-steps h3 {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.trailsnap-subpage .deployment-steps p {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .preflight-link {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Install prompt ---------------------------------------------------- */
+
+.trailsnap-home.trailsnap-subpage .install-prompt {
+  --vp-c-brand-soft: rgba(var(--accent-rgb), 0.08);
+  --vp-c-brand-1: var(--accent);
+  --vp-c-brand-2: var(--accent);
+  --vp-c-brand-3: var(--ink);
+  --vp-c-text-1: var(--ink);
+  --vp-c-text-2: var(--muted);
+  --vp-c-divider: var(--line);
+  --vp-c-bg: var(--bg);
+  --vp-c-danger-1: #b4453b;
+  min-width: 0;
+  margin-top: 20px;
+  padding: 22px 24px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.trailsnap-subpage .install-prompt .prompt-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.trailsnap-subpage .install-prompt .sparkle-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.trailsnap-subpage .install-prompt .prompt-description {
+  flex: 1;
+  min-width: 0;
+}
+
+.trailsnap-subpage .install-prompt h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.trailsnap-subpage .install-prompt p {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .install-prompt .copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.trailsnap-subpage .install-prompt .copy-button:hover {
+  background: var(--accent);
+  color: #17130d;
+}
+
+.trailsnap-subpage .install-prompt summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: fit-content;
+  margin: 10px auto 0;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.trailsnap-subpage .install-prompt summary::-webkit-details-marker {
+  display: none;
+}
+
+.trailsnap-subpage .install-prompt details[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.trailsnap-subpage .install-prompt pre {
+  margin: 14px 0 4px;
+  max-height: 340px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--bg);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.9;
+}
+
+.trailsnap-subpage .install-prompt code {
+  font-family: var(--mono);
+}
+
+.trailsnap-subpage .install-prompt .copy-error {
+  color: #b4453b;
+}
+
+/* ================================================================== */
+/* CLI page                                                            */
+/* ================================================================== */
+
+.trailsnap-subpage .cli-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
+  align-items: center;
+  gap: clamp(36px, 6vw, 78px);
+  padding: clamp(20px, 4vw, 54px) 0 clamp(52px, 7vw, 88px);
+}
+
+.trailsnap-subpage .cli-package {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 26px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.trailsnap-subpage .cli-package strong {
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.trailsnap-subpage .cli-package code {
+  color: var(--accent);
+  font-family: var(--mono);
+}
+
+.trailsnap-subpage .cli-package i {
+  width: 1px;
+  height: 10px;
+  background: var(--line-strong);
+}
+
+.trailsnap-subpage .cli-install-card {
+  position: relative;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-deep);
+  overflow: hidden;
+}
+
+.trailsnap-subpage .cli-install-card::before {
+  content: "";
+  position: absolute;
+  top: -40%;
+  right: -20%;
+  width: 300px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.22), transparent 65%);
+  pointer-events: none;
+}
+
+.trailsnap-subpage .cli-install-tabs {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.trailsnap-subpage .cli-install-tabs button {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.trailsnap-subpage .cli-install-tabs button[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.trailsnap-subpage .cli-command {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 18px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.trailsnap-subpage .cli-command .dollar {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.trailsnap-subpage .cli-command code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+}
+
+.trailsnap-subpage .copy-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  transition: color 0.3s, border-color 0.3s, background-color 0.3s;
+}
+
+.trailsnap-subpage .copy-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.trailsnap-subpage .cli-power {
+  padding-bottom: clamp(60px, 8vw, 100px);
+}
+
+.trailsnap-subpage .cli-power .section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 40px;
+  margin-bottom: clamp(30px, 4vw, 46px);
+}
+
+.trailsnap-subpage .cli-power h2 {
+  margin-top: 16px;
+  font-family: var(--serif);
+  font-size: clamp(28px, 3.2vw, 46px);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.trailsnap-subpage .cli-power .section-note {
+  max-width: 280px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--muted);
+  text-align: right;
+}
+
+.trailsnap-subpage .cli-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.trailsnap-subpage .cli-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 24px 24px 20px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  transition: border-color 0.4s var(--ease), transform 0.5s var(--ease-out);
+}
+
+.trailsnap-subpage .cli-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-3px);
+}
+
+.trailsnap-subpage .cli-index {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+
+.trailsnap-subpage .cli-card h3 {
+  margin: 12px 0 8px;
+  font-family: var(--serif);
+  font-size: 23px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.trailsnap-subpage .cli-card > p {
+  min-height: 3.8em;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .terminal {
+  margin-top: 18px;
+  border: 1px solid #2a3a30;
+  border-radius: 12px;
+  background: #0b110d;
+  overflow: hidden;
+}
+
+.trailsnap-subpage .terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #233229;
+  background: #101811;
+}
+
+.trailsnap-subpage .terminal-bar i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #3c5242;
+}
+
+.trailsnap-subpage .terminal-bar span {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 7.5px;
+  letter-spacing: 0.1em;
+  color: #6f8173;
+}
+
+.trailsnap-subpage .terminal-body {
+  padding: 15px 16px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.95;
+  white-space: pre;
+  color: #bcc9bc;
+}
+
+/* The command sample HTML carries Tailwind utility colours; remap them
+   to the archive palette so terminals feel native to the site. */
+.trailsnap-subpage .terminal-body .text-blue-500,
+.trailsnap-subpage .terminal-body .dark\:text-blue-400 {
+  color: #e6b07a !important;
+}
+
+.trailsnap-subpage .terminal-body .text-gray-600,
+.trailsnap-subpage .terminal-body .dark\:text-gray-300 {
+  color: #b9c6b9 !important;
+}
+
+.trailsnap-subpage .terminal-body .text-gray-500,
+.trailsnap-subpage .terminal-body .dark\:text-gray-400 {
+  color: #7e8f81 !important;
+}
+
+.trailsnap-subpage .terminal-body .text-gray-400,
+.trailsnap-subpage .terminal-body .dark\:text-gray-500 {
+  color: #617365 !important;
+}
+
+.trailsnap-subpage .terminal-body .text-green-600,
+.trailsnap-subpage .terminal-body .dark\:text-green-400 {
+  color: #9bd4b2 !important;
+}
+
+.trailsnap-subpage .terminal-body .text-yellow-600,
+.trailsnap-subpage .terminal-body .dark\:text-yellow-400 {
+  color: #e8c98f !important;
+}
+
+/* Agent band -------------------------------------------------------- */
+
+.trailsnap-subpage .cli-agent {
+  position: relative;
+  padding: clamp(72px, 9vw, 120px) 0;
+  border-block: 1px solid var(--line);
+  background: var(--bg-soft);
+  overflow: hidden;
+  text-align: center;
+}
+
+.trailsnap-subpage .cli-agent::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(760px, 90vw);
+  aspect-ratio: 1.6;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(var(--accent-rgb), 0.16), transparent 66%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+.trailsnap-subpage .agent-inner {
+  position: relative;
+  max-width: 720px;
+}
+
+.trailsnap-subpage .agent-inner .kicker {
+  justify-content: center;
+}
+
+.trailsnap-subpage .agent-inner h2 {
+  margin: 22px 0 18px;
+  font-family: var(--serif);
+  font-size: clamp(32px, 4.2vw, 54px);
+  font-weight: 500;
+  line-height: 1.28;
+}
+
+.trailsnap-subpage .agent-inner p {
+  max-width: 40em;
+  margin-inline: auto;
+  font-size: 13.5px;
+  line-height: 1.95;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .agent-inner .btn {
+  margin-top: 28px;
+}
+
+/* CLI footer CTA ---------------------------------------------------- */
+
+.trailsnap-subpage .cli-cta {
+  padding: clamp(64px, 8vw, 100px) 0;
+}
+
+.trailsnap-subpage .cli-cta-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.trailsnap-subpage .cli-cta-mark {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.trailsnap-subpage .cli-cta h2 {
+  font-family: var(--serif);
+  font-size: clamp(30px, 3.8vw, 48px);
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.trailsnap-subpage .cli-cta p {
+  max-width: 34em;
+  margin-top: 14px;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--muted);
+}
+
+.trailsnap-subpage .cli-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.trailsnap-subpage .inline-command {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.trailsnap-subpage .inline-command .dollar {
+  color: var(--accent);
+}
+
+/* Responsive -------------------------------------------------------- */
+
+@media (max-width: 1000px) {
+  .trailsnap-subpage .subpage-main {
+    padding-top: 108px;
+  }
+
+  .trailsnap-subpage .download-hero-grid,
+  .trailsnap-subpage .cli-hero {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .trailsnap-subpage .release-card {
+    max-width: 360px;
+  }
+
+  .trailsnap-subpage .featured-grid {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .trailsnap-subpage .featured-side {
+    padding-left: 0;
+    padding-top: 24px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .trailsnap-subpage .other-platforms {
+    gap: 14px;
+  }
+
+  .trailsnap-subpage .cli-install-card {
+    max-width: 520px;
+  }
+
+  .trailsnap-subpage .cli-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trailsnap-subpage .cli-power .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .trailsnap-subpage .cli-power .section-note {
+    max-width: 34em;
+    text-align: left;
+  }
+}
+
+@media (max-width: 760px) {
+  .trailsnap-subpage .sub-wrap {
+    width: calc(100% - 40px);
+  }
+
+  .trailsnap-subpage .site-header .wrap {
+    width: calc(100% - 40px);
+  }
+
+  .trailsnap-subpage .contact-footer {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .trailsnap-subpage .subpage-main {
+    padding-top: 96px;
+  }
+
+  .trailsnap-subpage .subpage-title {
+    font-size: clamp(34px, 8.2vw, 46px);
+    line-height: 1.24;
+  }
+
+  .trailsnap-subpage .subpage-lead {
+    font-size: 13.5px;
+  }
+
+  .trailsnap-subpage .install-tabs {
+    display: flex;
+    width: 100%;
+  }
+
+  .trailsnap-subpage .install-tabs button {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 11.5px;
+  }
+
+  .trailsnap-subpage .format-tags {
+    margin-left: 0;
+  }
+
+  .trailsnap-subpage .other-platforms,
+  .trailsnap-subpage #nas {
+    grid-template-columns: 1fr;
+  }
+
+  .trailsnap-subpage .secondary-card {
+    padding: 18px;
+  }
+
+  .trailsnap-subpage .platform-icon {
+    width: 52px;
+    height: 52px;
+    padding: 12px;
+    border-radius: 15px;
+  }
+
+  .trailsnap-subpage .platform-heading h2 {
+    font-size: 22px;
+  }
+
+  .trailsnap-subpage .featured-card,
+  .trailsnap-subpage .nas-card {
+    padding: 20px;
+  }
+
+  .trailsnap-subpage .cli-card {
+    padding: 20px 18px 16px;
+  }
+
+  .trailsnap-subpage .terminal-body {
+    font-size: 10px;
+    padding: 13px 12px;
+  }
+
+  .trailsnap-subpage .cli-cta-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .trailsnap-subpage .cli-cta-actions .inline-command,
+  .trailsnap-subpage .cli-cta-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .trailsnap-subpage .install-prompt .prompt-heading {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .trailsnap-subpage .install-prompt .copy-button {
+    margin-left: 40px;
+  }
+
+  .trailsnap-subpage .download-help {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .trailsnap-subpage .sub-wrap {
+    width: calc(100% - 32px);
+  }
+
+  .trailsnap-subpage .site-header .wrap {
+    width: calc(100% - 32px);
+  }
+
+  .trailsnap-subpage .contact-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .trailsnap-subpage .platform-heading {
+    gap: 13px;
+  }
+
+  .trailsnap-subpage .platform-heading h2 {
+    font-size: 20px;
+  }
+
+  .trailsnap-subpage .release-card strong {
+    font-size: 21px;
+  }
+
+  .trailsnap-subpage .install-prompt {
+    padding: 18px;
+  }
+
+  .trailsnap-subpage .install-prompt .copy-button {
+    margin-left: 36px;
+    max-width: calc(100% - 36px);
+  }
+
+  .trailsnap-subpage .cli-package {
+    border-radius: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trailsnap-subpage .secondary-card:hover,
+  .trailsnap-subpage .cli-card:hover,
+  .trailsnap-subpage .primary-action:hover {
+    transform: none;
+  }
+
+  .trailsnap-subpage .subpage-hero .kicker,
+  .trailsnap-subpage .subpage-title,
+  .trailsnap-subpage .subpage-lead,
+  .trailsnap-subpage .release-card,
+  .trailsnap-subpage .install-tabs,
+  .trailsnap-subpage .cli-install-card {
+    animation: none !important;
+    opacity: 1;
+    translate: 0 0;
+  }
+}

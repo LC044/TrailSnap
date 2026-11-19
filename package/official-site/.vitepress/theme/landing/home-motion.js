@@ -1,190 +1,351 @@
-// Scroll-linked scenes are mounted only in the browser and cleaned up on navigation.
+// Motion and interaction layer for the TrailSnap landing page.
+// All listeners are scoped to the component root and torn down on navigation.
 export function initHome(root, options = {}) {
-  let disposed = false;
-  const controller = new AbortController();
-  const originalOverflow = window.document.body.style.overflow;
-  const document = {
-    querySelector: root.querySelector.bind(root), querySelectorAll: root.querySelectorAll.bind(root),
-    getElementById: id => root.querySelector('#' + id), body: window.document.body,
-    documentElement: root, fonts: window.document.fonts,
-  };
-  const listen = (target, name, handler, options = {}) => target.addEventListener(name, handler, {...options, signal: controller.signal});
+  const win = window
+  const doc = document
+  const body = doc.body
+  const controller = new AbortController()
+  const listen = (target, name, handler, opts = {}) =>
+    target.addEventListener(name, handler, { ...opts, signal: controller.signal })
+  const q = (selector) => root.querySelector(selector)
+  const qa = (selector) => [...root.querySelectorAll(selector)]
+  const reduced = win.matchMedia('(prefers-reduced-motion: reduce)')
+  const pinned = win.matchMedia('(min-width: 1001px) and (prefers-reduced-motion: no-preference)')
+  const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value))
+  const ease = (value) => value * value * (3 - 2 * value)
+  const originalOverflow = body.style.overflow
+  let frame = 0
+  let disposed = false
+  let memoryPage = 0
+  const observerList = []
 
-
-const fitDesktopPreviews=()=>{
-  document.querySelectorAll('.desktop-viewport').forEach(viewport=>{
-    const frame=viewport.querySelector('iframe');
-    const expanded=Boolean(viewport.closest('.expanded'));
-    const width=viewport.clientWidth;
-    if(!width || !frame)return;
-    // Expanded phone windows use the product's native mobile layout for readable interaction.
-    const nativeMobile=(expanded || Boolean(viewport.closest('.memory-panel'))) && window.innerWidth<768;
-    const logicalWidth=nativeMobile?width:Math.max(1440,expanded?width:0);
-    const scale=width/logicalWidth;
-    const fillWindow=expanded || Boolean(viewport.closest('.hero-window,.memory-panel'));
-    const logicalHeight=fillWindow?Math.round(viewport.clientHeight/scale):900;
-    frame.style.width=logicalWidth+'px';frame.style.height=logicalHeight+'px';
-    frame.style.setProperty('--preview-scale',String(scale));
-    viewport.querySelectorAll('iframe').forEach(other=>{
-      if(other.id==='city-showcase-frame'){
-        other.style.width=width+'px';other.style.height=viewport.clientHeight+'px';other.style.setProperty('--preview-scale','1');
-      }else if(other!==frame)other.style.cssText=frame.style.cssText;
-    });
-  });
-};
-const previewObserver=new ResizeObserver(fitDesktopPreviews);
-document.querySelectorAll('.desktop-viewport').forEach(viewport=>previewObserver.observe(viewport));
-listen(window,'resize',fitDesktopPreviews);
-fitDesktopPreviews();
-
-const demoOrigin='https://demo.trailsnap.cn';
-const homeFrame=document.getElementById('live-home');
-
-document.querySelectorAll('[data-reload]').forEach(button=>button.addEventListener('click',()=>{
-  const frame=document.getElementById(button.dataset.reload);frame.src=frame.getAttribute('src');
-}));
-document.querySelectorAll('[data-expand]').forEach(button=>button.addEventListener('click',()=>{
-  const shell=document.getElementById(button.dataset.expand);
-  const expanded=shell.classList.toggle('expanded');button.textContent=expanded?'退出全屏 ×':'全屏查看';button.setAttribute('aria-expanded',String(expanded));
-  if(shell.id==='live-map-shell'){shell.style.width='';shell.style.right='';shell.style.top='';shell.style.transform='';measureScene();}
-  document.body.style.overflow=document.querySelector('.live-shell.expanded')?'hidden':'';
-}));
-listen(window,'keydown',event=>{if(event.key==='Escape'){document.querySelectorAll('.live-shell.expanded').forEach(shell=>{shell.classList.remove('expanded');const button=shell.querySelector('[data-expand]');button.textContent='全屏查看';button.setAttribute('aria-expanded','false');});document.body.style.overflow='';measureScene();}});
-
-// Scroll distance drives progress directly; scrolling back reverses the same sequence.
-const motionPreference=window.matchMedia('(min-width:1001px) and (prefers-reduced-motion:no-preference)');
-const scene=document.querySelector('.scroll-scene');
-const stage=document.querySelector('.hero');
-const heroCopy=document.querySelector('.hero-copy');
-const heroLive=document.querySelector('.hero-live');
-const sceneCaption=document.querySelector('.scene-caption');
-const sceneProgress=document.querySelector('.scene-progress span');
-
-const revealElements=[...document.querySelectorAll('.cap-heading,.cap-grid article,.start-grid article,.tools-heading,.tool-showcase,.trust-heading,.trust-grid article,.end')];
-revealElements.forEach(el=>el.setAttribute('data-reveal',''));
-const featureElements=[...document.querySelectorAll('.motion-feature')];
-const clamp01=value=>Math.max(0,Math.min(1,value));
-const ease=value=>value*value*(3-2*value);
-let sceneGeometry=null,scrollFrame=0;
-function measureScene(){
-  heroLive.style.transform='';
-  const stageRect=stage.getBoundingClientRect(),liveRect=heroLive.getBoundingClientRect();
-  const availableHeight=Math.max(200,stageRect.height-150);
-  const targetWidth=Math.min(1440,stageRect.width-104,availableHeight*1.6);
-  sceneGeometry={x:stageRect.left+stageRect.width/2-(liveRect.left+liveRect.width/2),y:stageRect.top+stageRect.height/2-25-(liveRect.top+liveRect.height/2),scale:Math.max(1,targetWidth/liveRect.width)};
-  measureFeatureScenes();
-  updateScrollScene();
-}
-function updateScrollScene(){
-  scrollFrame=0;
-  if(!motionPreference.matches){
-    heroLive.style.transform='';heroCopy.style.transform='';heroCopy.style.opacity='';heroCopy.inert=false;
-    featureElements.forEach(el=>{const panel=el.querySelector('.live-shell');panel.style.transform='';panel.style.width='';panel.style.right='';panel.style.top='';el.querySelector('.live-section-heading').style.opacity='';el.querySelector('.live-section-heading').style.transform='';});
-    return;
+  /* ------------------------------------------------------------------ */
+  /* Demo windows: keep the product UI laid out at its native 1440px     */
+  /* width on desktop and switch to the product's mobile layout on small */
+  /* screens so text never becomes unreadable.                           */
+  /* ------------------------------------------------------------------ */
+  function fitDesktopPreviews() {
+    qa('.desktop-viewport').forEach((viewport) => {
+      const frames = [...viewport.querySelectorAll('iframe')]
+      const width = viewport.clientWidth
+      const height = viewport.clientHeight
+      if (!width || !height) return
+      frames.forEach((frame) => {
+        if (frame.id === 'city-showcase-frame') {
+          frame.style.width = '100%'
+          frame.style.height = '100%'
+          frame.style.transform = 'none'
+          frame.style.setProperty('--preview-scale', '1')
+          return
+        }
+        if (frame.hidden) return
+        const native = win.innerWidth < 768
+        if (native) {
+          frame.style.width = '100%'
+          frame.style.height = '100%'
+          frame.style.transform = 'none'
+          frame.style.setProperty('--preview-scale', '1')
+          return
+        }
+        const logical = 1440
+        const scale = width / logical
+        frame.style.width = `${logical}px`
+        frame.style.height = `${Math.ceil(height / scale)}px`
+        frame.style.transform = `scale(${scale})`
+        frame.style.transformOrigin = 'top left'
+        frame.style.setProperty('--preview-scale', String(scale))
+      })
+    })
   }
-  const top=scene.getBoundingClientRect().top;
-  const progress=clamp01((81-top)/Math.max(1,scene.offsetHeight-stage.offsetHeight));
-  const zoom=ease(clamp01((progress-.06)/.65));
-  const copyExit=ease(clamp01((progress-.04)/.3));
-  heroCopy.style.opacity=String(1-copyExit);
-  heroCopy.style.transform=`translate3d(${-copyExit*85}px,${-copyExit*30}px,0)`;
-  heroCopy.inert=copyExit>.97;
-  if(sceneGeometry)heroLive.style.transform=`translate3d(${sceneGeometry.x*zoom}px,${sceneGeometry.y*zoom}px,0) scale(${1+(sceneGeometry.scale-1)*zoom})`;
-  // The caption is optional; its absence must not stop the other scroll scenes.
-  if(sceneCaption){
-    sceneCaption.style.opacity=String(ease(clamp01((progress-.69)/.16)));
-    sceneCaption.style.transform=`translateY(${(1-ease(clamp01((progress-.69)/.16)))*18}px)`;
+  const resizeObserver = new ResizeObserver(() => fitDesktopPreviews())
+  qa('.desktop-viewport').forEach((viewport) => resizeObserver.observe(viewport))
+  observerList.push(resizeObserver)
+  listen(win, 'resize', fitDesktopPreviews)
+  listen(win, 'resize', () => {
+    if (win.innerWidth > 1000) options.closeMenu?.()
+  })
+  fitDesktopPreviews()
+
+  /* ------------------------------------------------------------------ */
+  /* Scroll: progress line, sticky header state, mobile dock, hero drift */
+  /* ------------------------------------------------------------------ */
+  const progressBar = q('#scroll-progress-bar')
+  const heroCopy = q('.hero-copy')
+  const heroStage = q('.hero-stage')
+  const scrollHint = q('.scroll-hint')
+
+  function onScroll() {
+    if (frame) return
+    frame = requestAnimationFrame(() => {
+      frame = 0
+      if (disposed) return
+      const y = win.scrollY
+      const max = Math.max(1, doc.documentElement.scrollHeight - win.innerHeight)
+      if (progressBar) progressBar.style.transform = `scaleX(${clamp(y / max)})`
+      root.classList.toggle('is-scrolled', y > 12)
+      const nearEnd = y + win.innerHeight > doc.documentElement.scrollHeight - 640
+      root.classList.toggle('dock-on', y > 620 && !nearEnd && win.innerWidth < 1001)
+      if (!reduced.matches && win.innerWidth > 1000) {
+        const drift = clamp(y / Math.max(1, win.innerHeight))
+        if (heroCopy) heroCopy.style.setProperty('--hero-y', `${(drift * -34).toFixed(2)}px`)
+        if (heroStage) heroStage.style.setProperty('--hero-y', `${(drift * 26).toFixed(2)}px`)
+        if (scrollHint) scrollHint.style.opacity = String(clamp(1 - y / 260))
+      }
+      updateMemoryScene()
+    })
   }
-  sceneProgress.style.transform=`scaleX(${progress})`;
-  revealElements.forEach(el=>{
-    const rect=el.getBoundingClientRect();
-    const naturalTop=rect.top-(parseFloat(el.style.getPropertyValue('--reveal-y'))||0);
-    const fraction=ease(clamp01((innerHeight*.97-naturalTop)/(innerHeight*.29)));
-    el.style.setProperty('--reveal-opacity',String(.12+.88*fraction));
-    el.style.setProperty('--reveal-y',`${(1-fraction)*38}px`);
-  });
-  updateFeatureScenes();
-  updateMemoryScene();
-}
-function queueScrollUpdate(){if(!scrollFrame)scrollFrame=requestAnimationFrame(updateScrollScene);}
-function resetMotion(){document.documentElement.classList.toggle('motion-ready',motionPreference.matches);measureScene();}
-listen(window,'scroll',queueScrollUpdate,{passive:true});
-listen(window,'resize',resetMotion);
-listen(motionPreference,'change',resetMotion);
 
+  /* ------------------------------------------------------------------ */
+  /* Memory scene: pinned on desktop, tab-driven on mobile               */
+  /* ------------------------------------------------------------------ */
+  const memoryScene = q('.memory-scene')
+  const memoryStage = q('.memory-stage')
 
-const featureGeometry=new Map();
-function measureFeatureScenes(){
-  featureElements.forEach(el=>{
-    const panel=el.querySelector('.live-shell');panel.style.transform='';panel.style.width='';panel.style.right='';panel.style.top='';
-    const box=el.getBoundingClientRect(),rect=panel.getBoundingClientRect();
-    const width=Math.min(1200,box.width,(box.height-145)*1.6);
-    featureGeometry.set(el,{startWidth:rect.width,targetWidth:Math.max(rect.width,width),stageWidth:box.width,stageHeight:box.height});
-  });
-}
-function updateFeatureScenes(){
-  featureElements.forEach(el=>{
-    const wrapper=el.parentElement,panel=el.querySelector('.live-shell'),heading=el.querySelector('.live-section-heading');
-    const progress=clamp01((81-wrapper.getBoundingClientRect().top)/Math.max(1,wrapper.offsetHeight-el.offsetHeight));
-    const zoom=ease(clamp01((progress-.04)/.66));
-    const exit=ease(clamp01((progress-.02)/.32));
-    const geometry=featureGeometry.get(el);
-    heading.style.opacity=String(1-exit);
-    heading.style.transform=`translateY(-50%) translate3d(${-exit*60}px,${-exit*20}px,0)`;
-    if(geometry&&!panel.classList.contains('expanded')){
-      // Lay out at the actual rendered size: text and canvases never get bitmap-scaled.
-      panel.style.width=Math.round(geometry.startWidth+(geometry.targetWidth-geometry.startWidth)*zoom)+'px';
-      panel.style.right=Math.round((geometry.stageWidth-geometry.targetWidth)/2*zoom)+'px';
-      panel.style.top=Math.round(geometry.stageHeight/2-18*zoom-panel.offsetHeight/2)+'px';
-      panel.style.transform='none';
+  function updateMemoryScene() {
+    if (!memoryScene || !memoryStage || !pinned.matches) return
+    const start = memoryScene.getBoundingClientRect().top + win.scrollY
+    const distance = Math.max(1, memoryScene.offsetHeight - memoryStage.offsetHeight)
+    const progress = clamp((win.scrollY - start) / distance)
+    const index = Math.min(2, Math.floor(progress * 3))
+    const fill = progress * 3 - index
+    memoryScene.style.setProperty('--memory-progress', String(progress))
+    memoryScene.style.setProperty('--chapter-fill', String(clamp(fill, 0.08, 1)))
+    if (index !== memoryPage) {
+      memoryPage = index
+      options.setMemoryPage?.(index)
     }
-    el.style.setProperty('--feature-caption',String(ease(clamp01((progress-.68)/.2))));
-    el.style.setProperty('--feature-progress',String(progress));
-  });
-  document.querySelectorAll('.cap-grid article').forEach(el=>{
-    const offset=parseFloat(el.style.getPropertyValue('--reveal-y'))||0;
-    el.style.setProperty('--card-tilt',`${offset/38*7}deg`);
-  });
-}
+  }
 
+  function chooseMemory(index) {
+    memoryPage = index
+    options.setMemoryPage?.(index)
+    if (!memoryScene || !memoryStage) return
+    if (pinned.matches) {
+      const start = memoryScene.getBoundingClientRect().top + win.scrollY
+      const distance = Math.max(1, memoryScene.offsetHeight - memoryStage.offsetHeight)
+      win.scrollTo({ top: start + distance * (index / 3 + 0.045) + 4, behavior: 'smooth' })
+    } else {
+      memoryScene.querySelector('.memory-visual')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
 
-const memoryScene=document.querySelector('.memory-scene');
-const memoryStage=document.querySelector('.memory-stage');
-let memoryPage=0;
-function setMemoryPage(index){
-  memoryPage=index;
-  document.querySelectorAll('[data-memory-tab]').forEach(button=>{const active=Number(button.dataset.memoryTab)===index;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;});
-  document.querySelectorAll('[data-memory-copy]').forEach(copy=>{const active=Number(copy.dataset.memoryCopy)===index;copy.hidden=!active;copy.classList.toggle('is-active',active);});
-  document.querySelectorAll('.memory-panel').forEach((panel,i)=>{const active=i===index;panel.classList.toggle('is-active',active);panel.inert=!active;panel.setAttribute('aria-hidden',String(!active));});
-  document.getElementById('memory-page-label').textContent=`0${index+1} / 03 · ${['人生章节','月迹','票夹'][index]}`;
-}
-function updateMemoryScene(){
-  if(!motionPreference.matches)return;
-  const progress=clamp01((81-memoryScene.getBoundingClientRect().top)/Math.max(1,memoryScene.offsetHeight-memoryStage.offsetHeight));
-  const index=Math.min(2,Math.floor(progress*3));
-  if(index!==memoryPage)setMemoryPage(index);
-  memoryScene.style.setProperty('--memory-progress',String(progress));
-  memoryScene.style.setProperty('--chapter-progress',String(clamp01(progress*3-index)));
-}
-function chooseMemory(index){
-  if(motionPreference.matches){const top=scrollY+memoryScene.getBoundingClientRect().top-81;const distance=memoryScene.offsetHeight-memoryStage.offsetHeight;window.scrollTo({top:top+distance*(index/3+.035),behavior:'smooth'});}else{setMemoryPage(index);memoryScene.style.setProperty('--chapter-progress','1');}
-}
-document.querySelectorAll('[data-memory-tab]').forEach(button=>{
-  button.addEventListener('click',()=>chooseMemory(Number(button.dataset.memoryTab)));
-  button.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const index=event.key==='Home'?0:event.key==='End'?2:(memoryPage+(event.key==='ArrowRight'?1:2))%3;chooseMemory(index);document.getElementById('memory-tab-'+index).focus();});
-});
-document.querySelectorAll('[data-jump-memory]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();if(!motionPreference.matches)memoryScene.scrollIntoView({behavior:'smooth'});chooseMemory(Number(link.dataset.jumpMemory));}));
-function selectMapView(view){
-  options.setMapView?.(view);
-  fitDesktopPreviews();
-}
+  /* ------------------------------------------------------------------ */
+  /* Fullscreen panels                                                   */
+  /* ------------------------------------------------------------------ */
+  function closeExpanded() {
+    qa('.expanded').forEach((panel) => {
+      panel.classList.remove('expanded')
+      const button = panel.querySelector('[data-expand]')
+      if (button) {
+        button.textContent = '全屏查看'
+        button.setAttribute('aria-expanded', 'false')
+      }
+    })
+    body.style.overflow = root.classList.contains('menu-open') ? 'hidden' : ''
+    fitDesktopPreviews()
+  }
 
-document.querySelectorAll('[data-map-view]').forEach(button=>{button.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const views=['3d','city','puzzle'];const current=views.indexOf(button.dataset.mapView);const view=event.key==='Home'?'3d':event.key==='End'?'puzzle':views[(current+(event.key==='ArrowRight'?1:2))%3];selectMapView(view);document.getElementById('map-view-'+view).focus();});});
-document.querySelectorAll('[data-jump-map]').forEach(link=>link.addEventListener('click',()=>selectMapView(link.dataset.jumpMap)));
+  qa('[data-expand]').forEach((button) => {
+    listen(button, 'click', () => {
+      const panel = root.querySelector('#' + button.dataset.expand)
+      if (!panel) return
+      const expanded = panel.classList.toggle('expanded')
+      button.textContent = expanded ? '退出全屏 ×' : '全屏查看'
+      button.setAttribute('aria-expanded', String(expanded))
+      body.style.overflow = expanded ? 'hidden' : ''
+      if (panel.id === 'live-map-shell') panel.style.width = ''
+      requestAnimationFrame(fitDesktopPreviews)
+    })
+  })
 
-resetMotion();
-if(document.fonts)document.fonts.ready.then(() => { if (!disposed) measureScene() });
+  listen(win, 'keydown', (event) => {
+    if (event.key === 'Escape') {
+      if (root.classList.contains('menu-open')) {
+        options.closeMenu?.()
+        return
+      }
+      if (q('.expanded')) closeExpanded()
+    }
+  })
 
+  qa('[data-reload]').forEach((button) => {
+    listen(button, 'click', () => {
+      const target = root.querySelector('#' + button.dataset.reload)
+      if (target) target.src = target.getAttribute('src')
+    })
+  })
 
-  return () => { disposed = true; controller.abort(); previewObserver.disconnect(); cancelAnimationFrame(scrollFrame); root.classList.remove('motion-ready'); window.document.body.style.overflow = originalOverflow; };
+  /* ------------------------------------------------------------------ */
+  /* Reveal on scroll                                                    */
+  /* ------------------------------------------------------------------ */
+  if (!reduced.matches && 'IntersectionObserver' in win) {
+    root.classList.add('reveal-ready')
+    const revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-in')
+            revealObserver.unobserve(entry.target)
+          }
+        })
+      },
+      { rootMargin: '0px 0px -12% 0px', threshold: 0.08 },
+    )
+    qa('[data-reveal]').forEach((element) => revealObserver.observe(element))
+    observerList.push(revealObserver)
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Section rail                                                        */
+  /* ------------------------------------------------------------------ */
+  const railLinks = qa('[data-rail]')
+  if (railLinks.length && 'IntersectionObserver' in win) {
+    const railObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return
+          const id = entry.target.id
+          railLinks.forEach((link) => link.classList.toggle('is-active', link.dataset.rail === id))
+        })
+      },
+      { rootMargin: '-42% 0px -50% 0px', threshold: 0 },
+    )
+    railLinks.forEach((link) => {
+      const section = root.querySelector('#' + link.dataset.rail)
+      if (section) railObserver.observe(section)
+    })
+    observerList.push(railObserver)
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Search demo: a quiet typewriter in the capability card              */
+  /* ------------------------------------------------------------------ */
+  const typed = q('#search-typed')
+  const queries = ['海边看日落的照片', '去年冬天，山里的雪', '和家人一起的晚餐', '在湖边散步的下午']
+  let typeTimer = 0
+  let queryIndex = 0
+  let charIndex = 0
+  let deleting = false
+  let typing = false
+  let typeStarted = false
+
+  function typeLoop() {
+    if (disposed || !typed) return
+    const query = queries[queryIndex]
+    if (!deleting) {
+      charIndex += 1
+      typed.textContent = query.slice(0, charIndex)
+      if (charIndex >= query.length) {
+        deleting = true
+        typeTimer = win.setTimeout(typeLoop, 2400)
+        return
+      }
+      typeTimer = win.setTimeout(typeLoop, 80 + Math.random() * 70)
+    } else {
+      charIndex -= 2
+      typed.textContent = query.slice(0, Math.max(0, charIndex))
+      if (charIndex <= 0) {
+        deleting = false
+        queryIndex = (queryIndex + 1) % queries.length
+        typeTimer = win.setTimeout(typeLoop, 420)
+        return
+      }
+      typeTimer = win.setTimeout(typeLoop, 34)
+    }
+  }
+
+  if (typed && !reduced.matches) {
+    const searchCard = typed.closest('.cap-search')
+    if (searchCard && 'IntersectionObserver' in win) {
+      const typeObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting && !typing) {
+              typing = true
+              if (!typeStarted) {
+                typeStarted = true
+                charIndex = queries[0].length
+                deleting = true
+                typeTimer = win.setTimeout(typeLoop, 1200)
+              } else {
+                typeLoop()
+              }
+            } else if (!entry.isIntersecting && typing) {
+              typing = false
+              win.clearTimeout(typeTimer)
+            }
+          })
+        },
+        { threshold: 0.2 },
+      )
+      typeObserver.observe(searchCard)
+      observerList.push(typeObserver)
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Pointer light: cards and the hero atmosphere                        */
+  /* ------------------------------------------------------------------ */
+  if (win.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    qa('[data-spotlight]').forEach((card) => {
+      listen(card, 'pointermove', (event) => {
+        const rect = card.getBoundingClientRect()
+        card.style.setProperty('--mx', `${event.clientX - rect.left}px`)
+        card.style.setProperty('--my', `${event.clientY - rect.top}px`)
+      })
+    })
+
+    const hero = q('.hero')
+    if (hero) {
+      listen(hero, 'pointermove', (event) => {
+        const rect = hero.getBoundingClientRect()
+        hero.style.setProperty('--px', `${((event.clientX - rect.left) / rect.width - 0.5).toFixed(3)}`)
+        hero.style.setProperty('--py', `${((event.clientY - rect.top) / rect.height - 0.5).toFixed(3)}`)
+      })
+      listen(hero, 'pointerleave', () => {
+        hero.style.setProperty('--px', '0')
+        hero.style.setProperty('--py', '0')
+      })
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Boot                                                                */
+  /* ------------------------------------------------------------------ */
+  listen(win, 'scroll', onScroll, { passive: true })
+  listen(win, 'load', fitDesktopPreviews)
+  listen(reduced, 'change', () => {
+    root.classList.remove('reveal-ready')
+    onScroll()
+  })
+  listen(pinned, 'change', () => {
+    memoryScene?.style.setProperty('--memory-progress', '0')
+    onScroll()
+  })
+
+  // Run once after layout settles and again once fonts are ready.
+  requestAnimationFrame(() => {
+    onScroll()
+    fitDesktopPreviews()
+  })
+  if (doc.fonts?.ready) doc.fonts.ready.then(() => { if (!disposed) fitDesktopPreviews() })
+
+  return {
+    refresh() {
+      requestAnimationFrame(() => {
+        fitDesktopPreviews()
+        updateMemoryScene()
+      })
+    },
+    chooseMemory,
+    destroy() {
+      disposed = true
+      controller.abort()
+      observerList.forEach((observer) => observer.disconnect())
+      win.clearTimeout(typeTimer)
+      cancelAnimationFrame(frame)
+      root.classList.remove('reveal-ready', 'is-scrolled', 'dock-on')
+      body.style.overflow = originalOverflow
+    },
+  }
 }
