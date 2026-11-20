@@ -1,14 +1,15 @@
 <template>
   <component
+    v-glass-refraction
     :is="to ? RouterLink : 'button'"
     :to="to"
     :type="to ? undefined : 'button'"
     :aria-label="label"
     :title="label"
     :disabled="to ? undefined : disabled"
-    class="ts-back-button"
+    class="ts-back-button ts-liquid-glass ts-glass-toolbar"
   >
-    <ChevronLeft class="h-6 w-6" />
+    <ChevronLeft aria-hidden="true" class="h-6 w-6" />
   </component>
 </template>
 
@@ -24,20 +25,13 @@ withDefaults(defineProps<{ label?: string; disabled?: boolean; to?: RouteLocatio
 
 <style scoped>
 @layer ts-control-layout {
-  .ts-back-button { display: inline-flex; }
+  .ts-back-button.ts-glass-toolbar { display: inline-flex; }
 }
 .ts-back-button {
   width: 44px;
   height: 44px;
-  flex-shrink: 0;
-  align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid var(--ts-color-border);
-  border-radius: 999px;
-  color: var(--ts-color-text);
-  background: var(--ts-glass-bg);
-  box-shadow: var(--ts-shadow-glass);
   cursor: pointer;
   transition: transform var(--ts-motion-fast) var(--ts-ease);
 }
@@ -46,7 +40,6 @@ withDefaults(defineProps<{ label?: string; disabled?: boolean; to?: RouteLocatio
 .ts-back-button:disabled { opacity: .4; cursor: not-allowed; transform: none; }
 @media (max-width: 767px) {
   .ts-back-button {
-    position: relative;
     width: 36px;
     height: 36px;
   }

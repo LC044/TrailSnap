@@ -424,11 +424,6 @@
           </div>
           <button class="quiet-icon" aria-label="关闭结果" @click="closeResults">×</button>
         </div>
-        <p
-          class="mt-4 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400"
-        >
-          这里展示的是共同记忆和直接关联的照片。同一记忆不代表两人同框，也不代表到访了同一地点。
-        </p>
         <p v-if="resultLoading" role="status" class="mt-5 text-sm">正在寻找共同片段…</p>
         <p v-if="resultError" role="alert" class="mt-5 text-sm">
           加载失败。<button class="text-link" @click="loadResults">重试</button>

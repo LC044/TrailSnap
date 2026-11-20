@@ -151,9 +151,9 @@ function filterPicker() {
     '@/stores/photoStore':{usePhotoStore:()=>store},
     '@/stores/uiStore':{useUiStore:()=>({setSelectionActive(){}})},
     '@/stores/photoPickerSearchStore':{usePhotoPickerSearchStore:()=>search},
-    '@vueuse/core':{onClickOutside(){}},'lucide-vue-next':{},'element-plus':{},
+    '@vueuse/core':{onClickOutside(){},useMediaQuery:()=>vue.ref(false),useResizeObserver(){}},'lucide-vue-next':{},'element-plus':{},
   }
-  for(const name of ['ui/ResponsiveDialog','FilterPanel','PhotoPickerScrollbar','AlbumTimeline','PhotoLightbox','PhotoGallery','ConfirmDialog','ParticleExplosion']) dependencies['@/components/'+name+'.vue']={}
+  for(const name of ['ui/ResponsiveDialog','ui/BackButton','FilterPanel','PhotoPickerScrollbar','AlbumTimeline','PhotoLightbox','PhotoGallery','ConfirmDialog','ParticleExplosion']) dependencies['@/components/'+name+'.vue']={}
   dependencies['@/views/search/MobileSearch.vue']={}
   const component=load('components/PhotoSelector.vue',dependencies).default
   const ctx=mount(component,{store,enableFilters:true,allowedFileTypes:['image','live_photo']})

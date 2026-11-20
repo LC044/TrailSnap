@@ -31,7 +31,7 @@
           </div>
         </div>
       </div>
-      <div v-if="isSelectionMode" class="ts-liquid-glass mb-2 flex items-center justify-between gap-2 rounded-2xl px-2 py-1 md:hidden" data-testid="recycle-selection-header">
+      <div v-if="isSelectionMode" v-glass-refraction.rim class="ts-liquid-glass ts-selection-glass mb-2 flex items-center justify-between gap-2 rounded-2xl px-2 py-1 md:hidden" data-testid="recycle-selection-header">
         <button type="button" class="ts-button ts-button-ghost" @click="toggleSelectAll">{{ isEverythingSelected ? '取消全选' : '全选' }}</button>
         <span class="text-sm font-semibold text-gray-900 dark:text-white" aria-live="polite">已选 {{ effectiveSelectedCount }} 项</span>
         <button type="button" class="ts-icon-button ts-button-ghost" aria-label="取消选择" @click="cancelSelection"><X class="h-5 w-5" /></button>

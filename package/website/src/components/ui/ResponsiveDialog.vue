@@ -31,7 +31,7 @@
           <div v-if="mobileMode === 'sheet'" class="sheet-drag-zone flex h-7 shrink-0 items-center justify-center md:hidden" @pointerdown="sheet.start" @pointermove="sheet.move" @pointerup="sheet.finish" @pointercancel="sheet.finish" @lostpointercapture="sheet.finish">
             <span class="h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-700" />
           </div>
-          <header class="responsive-dialog-header ts-divider flex min-h-[var(--ts-header-height)] shrink-0 items-center gap-3 border-b px-4 md:px-6" :class="{ 'sheet-drag-zone': mobileMode === 'sheet' }" @pointerdown="sheet.start" @pointermove="sheet.move" @pointerup="sheet.finish" @pointercancel="sheet.finish" @lostpointercapture="sheet.finish">
+          <header class="responsive-dialog-header ts-divider min-h-[var(--ts-header-height)] shrink-0 items-center gap-3 border-b px-4 md:px-6" :class="[customMobileHeader ? 'hidden md:flex' : 'flex', { 'sheet-drag-zone': mobileMode === 'sheet' }]" @pointerdown="sheet.start" @pointermove="sheet.move" @pointerup="sheet.finish" @pointercancel="sheet.finish" @lostpointercapture="sheet.finish">
             <BackButton v-if="mobileBack" class="md:hidden" label="返回" @click="close" />
             <div class="min-w-0 flex-1">
               <h2 :id="titleId" class="truncate text-base font-semibold text-[var(--ts-color-text)]">{{ title }}</h2>
@@ -76,6 +76,7 @@ const props = withDefaults(defineProps<{
   maxWidth?: string
   mobileMode?: 'sheet' | 'fullscreen'
   mobileBack?: boolean
+  customMobileHeader?: boolean
   closeOnBackdrop?: boolean
   closeOnEscape?: boolean
   glass?: boolean

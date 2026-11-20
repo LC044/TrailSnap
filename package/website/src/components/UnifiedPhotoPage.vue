@@ -6,9 +6,9 @@
       <div class="ts-browse-header pointer-events-auto flex items-center justify-between mx-auto">
         <!-- Back & Title -->
         <slot name="header-left" :scrolled="headerScrolled">
-          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled && !stableTitle ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
+          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2 text-gray-900 dark:text-white" data-testid="photo-page-title" :data-scrolled="headerScrolled">
             <BackButton label="返回" v-if="showBack" @click="$emit('back')" />
-            <div v-if="!loadingTitle" class="ts-title-block min-w-0 transition-colors duration-200" :class="[stableTitle ? 'ts-liquid-glass rounded-full px-3 py-1.5' : headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2', { 'ts-title-block--compact': subtitle && (stableTitle || !headerScrolled) }]">
+            <div v-if="!loadingTitle" v-glass-refraction.rim="stableTitle || headerScrolled" class="ts-title-block min-w-0 transition-colors duration-200" :class="[stableTitle || headerScrolled ? 'ts-liquid-glass ts-glass-title px-3 py-1.5' : 'pr-2', { 'ts-title-block--compact': subtitle && (stableTitle || !headerScrolled) }]">
               <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': (headerScrolled && !stableTitle) || subtitle }">
                 <span class="truncate">{{ title }}</span>
                 <slot name="title-extra"></slot>

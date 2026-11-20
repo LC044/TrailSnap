@@ -28,6 +28,7 @@ async function renderTitle(stableTitle, headerScrolled) {
     setup: () => ({ stableTitle, headerScrolled, title: '照片', showBack: false, loadingTitle: false, subtitle: '' }),
     render: moduleObject.exports.render,
   })
+  app.directive('glass-refraction', {})
   return (await renderToString(app)).replace(/data-scrolled="(?:true|false)"/g, '')
 }
 
@@ -38,4 +39,6 @@ test('photo header keeps identical rendered typography, color and background acr
 test('other browse pages retain the compact title on scroll', async () => {
   assert.notEqual(await renderTitle(false, false), await renderTitle(false, true))
   assert.match(await renderTitle(false, true), /ts-compact-title/)
+  assert.match(await renderTitle(false, true), /ts-glass-title/)
+  assert.doesNotMatch(await renderTitle(false, false), /ts-glass-title/)
 })

@@ -96,8 +96,8 @@
       </div>
     </template>
   </ResponsiveDialog>
-  <ResponsiveDialog v-model="showPicker" title="选择分类参考图片" max-width="64rem" mobile-mode="fullscreen" mobile-back panel-class="clip-reference-picker">
-    <div class="min-h-0 flex-1"><PhotoSelector v-if="showPicker" :store="pickerStore" enable-filters :allowed-file-types="['image', 'live_photo']" is-selector embedded @select="selectPhotos" @cancel="showPicker = false" /></div>
+  <ResponsiveDialog v-model="showPicker" title="选择分类参考图片" max-width="64rem" mobile-mode="fullscreen" custom-mobile-header panel-class="clip-reference-picker">
+    <div class="min-h-0 flex-1"><PhotoSelector v-if="showPicker" title="选择分类参考图片" :store="pickerStore" enable-filters :allowed-file-types="['image', 'live_photo']" is-selector embedded mobile-dialog-header @select="selectPhotos" @cancel="showPicker = false" /></div>
   </ResponsiveDialog>
   <ClipReferenceCropper :model-value="cropping" :source="cropSource" @update:model-value="cancelCrop" @confirm="useCrop" />
 </template>

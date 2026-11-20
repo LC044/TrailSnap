@@ -1,11 +1,11 @@
 <template>
   <AppPage size="content" bottom-safe class="toolbox-workflow py-5 md:py-8">
-    <header class="journal-index-header mb-4 flex min-w-0 items-center justify-between gap-3">
+    <ScrollGlassHeader :enabled="kind === 'cleanup'" class="journal-index-header mb-4 flex min-w-0 items-center justify-between gap-3" :class="kind === 'cleanup' && 'px-2 py-2'">
       <div class="flex min-w-0 items-start gap-3">
         <BackButton label="返回工具箱" @click="goBack" />
         <div class="min-w-0"><h1 class="ts-page-title">{{ kind === 'cleanup' ? ({ duplicate: '重复照片', similar: '相似照片', quality: '低质量照片' })[config.cleanup_mode] : titles[kind] }}</h1></div>
       </div>
-    </header>
+    </ScrollGlassHeader>
     <ol class="workflow-stages mb-4" aria-label="操作阶段">
       <li :aria-current="step < 3 ? 'step' : undefined">配置范围与规则</li>
       <li :aria-current="step === 3 ? 'step' : undefined">核对结果</li>
@@ -69,6 +69,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AppPage from '@/components/ui/AppPage.vue'
 import BackButton from '@/components/ui/BackButton.vue'
+import ScrollGlassHeader from '@/components/ui/ScrollGlassHeader.vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import MediaScopeSelector from './MediaScopeSelector.vue'

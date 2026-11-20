@@ -166,7 +166,6 @@ test.describe("足迹统计 @views-coverage", () => {
     await page.goto("/album/location")
     await expect(page.getByRole("button", { name: /上海，.*张照片，查看照片/ })).toBeVisible()
     await expect(page.getByRole("button", { name: /北京，.*张照片，查看照片/ })).toBeVisible()
-    await expect(page.getByText(/不代表独立到访次数/)).toBeVisible()
   })
   test("日历单元格可下钻，日期筛选展示正确", async ({ page }) => {
     await page.goto("/album/location")

@@ -261,7 +261,7 @@
       leave-to-class="transform -translate-y-full opacity-0"
     >
       <div v-if="viewMode === 'list' && isSelectionMode" class="fixed bottom-[20px] left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
-        <div class="bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border border-gray-200 dark:border-gray-700 shadow-lg rounded-full px-3 py-1 flex items-center gap-2 sm:gap-6 pointer-events-auto min-w-fit max-w-full overflow-x-auto scrollbar-hide">
+        <div v-glass-refraction class="ts-liquid-glass ts-selection-glass rounded-full px-3 py-1 flex items-center gap-2 sm:gap-6 pointer-events-auto min-w-0 max-w-full overflow-x-auto scrollbar-hide">
           <div class="flex items-center gap-1 md:gap-3 flex-shrink-0">
             <button @click="exitSelectionMode" class="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-600 dark:text-gray-300" title="取消选择">
               <X class="w-5 h-5" />

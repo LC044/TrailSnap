@@ -2,7 +2,7 @@
   <div class="w-full">
     <Transition :name="innerTransition" mode="out-in">
       <div v-if="screen === 'overview'" key="overview">
-        <div v-if="hosted" class="relative mb-6 -mx-[var(--ts-page-gutter)] -mt-[var(--ts-space-6)] flex min-h-[var(--ts-header-height)] items-center border-b border-gray-200 bg-white/95 px-[var(--ts-page-gutter)] backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 md:hidden">
+        <ScrollGlassHeader v-if="hosted" class="mb-6 -mx-[var(--ts-page-gutter)] -mt-[var(--ts-space-6)] flex min-h-[var(--ts-header-height)] items-center px-[var(--ts-page-gutter)] md:hidden">
           <BackButton label="返回设置" @click="emit('requestSettingsBack')" />
           <div class="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold">手机备份</div>
           <button
@@ -14,7 +14,7 @@
           >
             <Settings class="h-5 w-5" />
           </button>
-        </div>
+        </ScrollGlassHeader>
         <div class="ts-settings-page">
           <SettingsPageHeader title="手机备份" description="安全地将手机照片同步到你的服务器" />
 
@@ -118,10 +118,10 @@
       </div>
 
       <div v-else key="settings">
-        <header class="relative mb-6 flex min-h-[var(--ts-header-height)] items-center border-b border-gray-200 dark:border-gray-800">
+        <ScrollGlassHeader class="relative mb-6 flex min-h-[var(--ts-header-height)] items-center">
           <BackButton label="返回手机备份" @click="closeSettings" />
           <div class="absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold">备份设置</div>
-        </header>
+        </ScrollGlassHeader>
         <MobileBackupSettings embedded />
       </div>
     </Transition>
@@ -131,6 +131,7 @@
 <script setup lang="ts">
 import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import BackButton from '@/components/ui/BackButton.vue'
+import ScrollGlassHeader from '@/components/ui/ScrollGlassHeader.vue'
 import { computed, onMounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'

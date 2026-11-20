@@ -18,7 +18,7 @@
 
       <!-- Top Toolbar (Desktop) — hidden in edit mode；移动端见下方专用布局 -->
       <Transition name="viewer-controls">
-      <div v-if="!isEditing && controlsVisible" data-testid="photo-lightbox-toolbar" class="fixed top-0 left-0 right-0 z-[102] p-2 hidden md:flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+      <div v-if="!isEditing && controlsVisible" data-testid="photo-lightbox-toolbar" class="fixed top-0 left-0 right-0 z-[102] hidden md:flex items-center justify-between pointer-events-none">
         <div class="viewer-ident">
             <button type="button" @click.stop="close" class="viewer-close pointer-events-auto" aria-label="关闭照片查看器" title="关闭 (Esc)">
                 <X class="w-5 h-5" />
@@ -224,7 +224,7 @@
             @click.stop="prev"
             aria-label="上一张照片"
             :class="panoramaActive ? 'flex' : 'hidden md:flex'"
-            class="absolute left-4 z-[101] w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
+            class="absolute left-4 z-[101] w-12 h-12 items-center justify-center rounded-full transition-all p-0"
         >
             <ChevronLeft class="w-8 h-8" />
         </button>
@@ -233,7 +233,7 @@
             @click.stop="next"
             aria-label="下一张照片"
             :class="panoramaActive ? 'flex' : 'hidden md:flex'"
-            class="absolute right-4 z-[101] w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
+            class="absolute right-4 z-[101] w-12 h-12 items-center justify-center rounded-full transition-all p-0"
         >
             <ChevronRight class="w-8 h-8" />
         </button>
@@ -308,7 +308,7 @@
                         class="absolute rounded-full border-2 border-primary-400 z-20 pointer-events-none"
                         :style="faceBoxStyle"
                     >
-                         <div class="absolute -top-8 left-0 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded whitespace-nowrap flex items-center gap-1">
+                         <div class="viewer-image-label absolute -top-8 left-0 text-xs px-2 py-1 rounded whitespace-nowrap flex items-center gap-1">
                             <span class="font-bold">{{ highlightedFaceName }}</span>
                             <span v-if="highlightedFaceConfidence" class="text-yellow-400">
                                 {{ highlightedFaceConfidence }}% {{ highlightedFaceRecognitionConfidence }}%
@@ -359,7 +359,7 @@
               <div
                 v-else-if="image && image.file_type === 'video'"
                 data-testid="photo-lightbox-video"
-                class="viewer-video relative w-full h-full flex items-center justify-center bg-black"
+                class="viewer-video relative w-full h-full flex items-center justify-center"
                 @click.stop
               >
                 <div ref="videoPlayer" class="w-full h-full"></div>
@@ -388,8 +388,8 @@
             class="viewer-live-badge absolute left-4 md:left-8 z-[101] cursor-pointer"
             @click.stop="toggleLivePlayback"
           >
-            <span class="flex items-center gap-1 bg-gray-900/60 backdrop-blur-md rounded-full px-2 py-1 text-white/90 hover:bg-gray-800/80 transition-colors">
-              <span class="icon-[tabler--live-photo] w-4 h-4 text-white drop-shadow-md opacity-90" :class="{ 'animate-spin': isPlayingLive }"></span>
+            <span class="viewer-image-label flex items-center gap-1 rounded-full px-2 py-1 transition-colors">
+              <span class="icon-[tabler--live-photo] w-4 h-4" :class="{ 'animate-spin': isPlayingLive }"></span>
               <span class="text-xs font-medium">LIVE</span>
             </span>
           </button>
@@ -402,7 +402,7 @@
           v-if="!isEditing && controlsVisible"
           data-testid="photo-lightbox-mobile-toolbar"
           ref="mobileToolbar"
-          class="mobile-viewer-toolbar md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,var(--ts-safe-area-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
+          class="mobile-viewer-toolbar md:hidden fixed top-0 left-0 right-0 z-[102] flex justify-between gap-2 pointer-events-none"
         >
           <div class="flex items-start gap-1 min-w-0">
             <BackButton class="viewer-close pointer-events-auto" @click.stop="close" />
@@ -429,7 +429,7 @@
         <div
           v-if="!isEditing && !isCurrentVideo && controlsVisible && thumbnailWindow.length > 0 && (!showSidebar || isMobileDetailsDragging || isMobileDetailsSettling)"
           data-testid="photo-lightbox-thumbnails"
-          class="viewer-thumbnail-layer fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 pb-[calc(0.75rem+var(--ts-safe-area-bottom))] bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
+          class="viewer-thumbnail-layer fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 pb-[calc(0.75rem+var(--ts-safe-area-bottom))] pointer-events-none"
           @click.stop
         >
           <div ref="thumbnailStrip" class="photo-thumbnail-strip flex max-w-full items-center gap-2 overflow-x-auto px-1 py-1 pointer-events-auto">
@@ -438,7 +438,7 @@
               :key="entry.item.id"
               type="button"
               :data-photo-index="entry.index"
-              class="h-12 w-12 sm:h-14 sm:w-14 shrink-0 overflow-hidden rounded-md border-2 bg-black/30 transition-all focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+              class="h-12 w-12 sm:h-14 sm:w-14 shrink-0 overflow-hidden rounded-md border-2 transition-all focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
               :aria-current="entry.index === resolvedCurrentIndex ? 'true' : undefined"
               :aria-label="`查看第 ${entry.index + 1} 张照片`"
               @click.stop="navigateToIndex(entry.index)"
@@ -454,7 +454,7 @@
         <div
           v-if="mobileDockVisible"
           data-testid="photo-lightbox-mobile-actions"
-          class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,var(--ts-safe-area-bottom))] bg-black/85"
+          class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] pt-2"
           @click.stop
         >
           <div class="viewer-action-pill viewer-chrome-pill flex items-center">
@@ -472,9 +472,9 @@
       <!-- 更多功能面板（Mobile）：承接右上角合并入口 -->
       <Transition name="sheet">
         <div v-if="showMobileMenu" class="md:hidden fixed inset-0 z-[104]" data-testid="photo-lightbox-mobile-sheet" @click.stop="closeMobileMenu">
-          <div class="absolute inset-0 bg-black/55 backdrop-blur-[2px]"></div>
+          <div class="absolute inset-0 bg-[var(--ts-color-overlay)] backdrop-blur-[2px]"></div>
           <div
-            class="sheet-panel absolute bottom-0 left-0 right-0 rounded-t-2xl bg-gray-900/95 border-t border-white/10 px-3 pt-3 pb-[max(0.75rem,var(--ts-safe-area-bottom))]"
+            class="sheet-panel absolute"
             @click.stop
           >
             <div class="viewer-menu-header"><h2>更多</h2><button class="ts-icon-button ts-button-ghost" aria-label="关闭更多功能" @click.stop="closeMobileMenu"><X class="h-5 w-5" /></button></div>
@@ -493,74 +493,74 @@
                 <span class="w-11 h-11 flex items-center justify-center rounded-full"><Focus class="h-5 w-5" /></span>
                 <span class="text-[11px]">{{ panoramaState.high ? '标准全景画质' : '高清全景画质' }}</span>
               </button>
-              <button :disabled="!canSetDailyFrame" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0 disabled:opacity-40" @click.stop="runMobileAction(() => handleCommand('dailyFrame'))">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><Film class="w-5 h-5" /></span>
+              <button :disabled="!canSetDailyFrame" class="flex flex-col items-center gap-1.5 bg-transparent p-0 disabled:opacity-40" @click.stop="runMobileAction(() => handleCommand('dailyFrame'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><Film class="w-5 h-5" /></span>
                 <span class="text-[11px]">设为当天一帧</span>
               </button>
-              <button v-if="!panoramaActive" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(toggleOriginal)">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20" :class="{ 'text-primary-400': showOriginal }"><Focus class="w-5 h-5" /></span>
+              <button v-if="!panoramaActive" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(toggleOriginal)">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full" :class="{ 'text-primary-600 dark:text-primary-400': showOriginal }"><Focus class="w-5 h-5" /></span>
                 <span class="text-[11px]">{{ showOriginal ? '预览图' : '查看原图' }}</span>
               </button>
 
-              <button class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('ocr'))">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20" :class="{ 'text-primary-400': showOCR }"><ScanText class="w-5 h-5" /></span>
+              <button class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('ocr'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full" :class="{ 'text-primary-600 dark:text-primary-400': showOCR }"><ScanText class="w-5 h-5" /></span>
                 <span class="text-[11px]">{{ showOCR ? '关闭识别' : '文字识别' }}</span>
               </button>
 
-              <button v-if="allowAddToAlbum" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('addToAlbum'))">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><ImagePlus class="w-5 h-5" /></span>
+              <button v-if="allowAddToAlbum" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('addToAlbum'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><ImagePlus class="w-5 h-5" /></span>
                 <span class="text-[11px]">加入相册</span>
               </button>
 
-              <button v-if="allowAddToPerson" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('addToPerson'))">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><UserPlus class="w-5 h-5" /></span>
+              <button v-if="allowAddToPerson" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('addToPerson'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><UserPlus class="w-5 h-5" /></span>
                 <span class="text-[11px]">加入人物</span>
               </button>
 
-              <button v-if="allowMoveToFolder" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('moveToFolder'))">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><FolderOutput class="w-5 h-5" /></span>
+              <button v-if="allowMoveToFolder" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('moveToFolder'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><FolderOutput class="w-5 h-5" /></span>
                 <span class="text-[11px]">移动目录</span>
               </button>
 
-              <button v-if="allowEdit" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('adjustLocation'))">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><MapPin class="w-5 h-5" /></span>
+              <button v-if="allowEdit" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('adjustLocation'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><MapPin class="w-5 h-5" /></span>
                 <span class="text-[11px]">调整位置</span>
               </button>
 
-              <button class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('viewDescription'))">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><FileText class="w-5 h-5" /></span>
+              <button class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('viewDescription'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><FileText class="w-5 h-5" /></span>
                 <span class="text-[11px]">AI 分析</span>
               </button>
 
-              <button v-if="timeCompareLocationKey" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(openTimeCompare)">
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><History class="w-5 h-5" /></span>
+              <button v-if="timeCompareLocationKey" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(openTimeCompare)">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><History class="w-5 h-5" /></span>
                 <span class="text-[11px]">这里以前</span>
               </button>
 
               <button
                 class="flex flex-col items-center gap-1.5 bg-transparent p-0 disabled:opacity-40"
-                :class="showMobileProcessing ? 'text-primary-400' : 'text-white/90'"
+                :aria-expanded="showMobileProcessing"
                 :disabled="!canProcessCurrentPhoto"
                 @click.stop="showMobileProcessing = !showMobileProcessing"
               >
-                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><WandSparkles class="w-5 h-5" /></span>
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><WandSparkles class="w-5 h-5" /></span>
                 <span class="text-[11px]">重新识别</span>
               </button>
             </div>
 
             <!-- 重新识别的二级列表就地展开，避免再叠一层弹窗 -->
             <Transition name="fade">
-              <div v-if="showMobileProcessing && canProcessCurrentPhoto" data-testid="photo-lightbox-mobile-processing" class="mt-3 pt-3 border-t border-white/10 space-y-1">
+              <div v-if="showMobileProcessing && canProcessCurrentPhoto" data-testid="photo-lightbox-mobile-processing" class="mt-3 pt-3 border-t ts-divider space-y-1">
                 <button
                   v-for="item in photoProcessingOperations"
                   :key="item.operation"
-                  class="w-full min-h-10 px-2 flex items-center gap-3 rounded-lg text-sm text-white/90 active:bg-white/10 disabled:opacity-50 bg-transparent"
+                  class="w-full min-h-10 px-2 flex items-center gap-3 rounded-lg text-sm active:bg-[var(--ts-journal-active)] disabled:opacity-50 bg-transparent"
                   :disabled="isPhotoProcessingActive(item.operation)"
                   @click.stop="startPhotoProcessing(item.operation)"
                 >
                   <component :is="item.icon" class="w-4 h-4 shrink-0" />
                   <span class="flex-1 text-left">{{ item.label }}</span>
-                  <LoaderCircle v-if="isPhotoProcessingActive(item.operation)" class="w-4 h-4 animate-spin text-primary-400" />
+                  <LoaderCircle v-if="isPhotoProcessingActive(item.operation)" class="w-4 h-4 animate-spin text-primary-600 dark:text-primary-400" />
                   <span v-else-if="photoProcessingStatusLabel(item.operation)" class="text-xs" :class="photoProcessingStatusClass(item.operation)">
                     {{ photoProcessingStatusLabel(item.operation) }}
                   </span>
@@ -608,7 +608,7 @@
       <!-- <Transition name="fade">
         <div
           v-if="!isEditing && showShortcutHint"
-          class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[103] bg-gray-900/80 dark:bg-gray-100/90 text-white dark:text-gray-900 rounded-lg px-4 py-2 text-sm backdrop-blur-sm pointer-events-none select-none"
+          class="viewer-image-label fixed bottom-6 left-1/2 -translate-x-1/2 z-[103] rounded-lg px-4 py-2 text-sm pointer-events-none select-none"
         >
           <span class="text-primary-500 font-medium">←/→</span> 切换 ·
           <span class="text-primary-500 font-medium">+/-</span> 缩放 ·
@@ -1326,8 +1326,8 @@ const initPlayer = async () => {
             fluid: false, // 禁止流式布局，让width/height生效
             // 针对移动端的特殊配置
             commonStyle: {
-                progressColor: '#1989fa',
-                playedColor: '#1989fa',
+                progressColor: 'var(--theme-primary)',
+                playedColor: 'var(--theme-primary)',
             },
             // x5 内核适配
             x5: {
@@ -2539,19 +2539,20 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
  .analysis-content { overflow-wrap: anywhere; color: var(--ts-color-text); }
 .analysis-tag { max-width: 100%; padding: 6px 10px; border-radius: 10px; background: var(--ts-color-surface-muted); font-size: 12px; line-height: 1.5; }
 .photo-lightbox-shell {
-  --viewer-chrome-bg: #222a36;
-  --viewer-chrome-hover: #344155;
-  --viewer-chrome-border: rgb(226 232 240 / 22%);
-  --viewer-chrome-text: #f8fafc;
-  --viewer-chrome-quiet: #cbd5e1;
-  --viewer-chrome-accent: var(--ts-journal-on-image);
-  background: radial-gradient(ellipse at 50% 40%, #263246 0%, #121722 72%);
+  --viewer-background: color-mix(in srgb, var(--theme-primary) 5%, var(--ts-color-page));
+  --viewer-chrome-bg: var(--ts-glass-bg);
+  --viewer-chrome-hover: var(--ts-journal-active);
+  --viewer-chrome-border: var(--ts-color-border);
+  --viewer-chrome-text: var(--ts-color-text);
+  --viewer-chrome-quiet: var(--ts-color-text-secondary);
+  --viewer-chrome-accent: var(--theme-primary);
+  background: var(--viewer-background);
   color: var(--ts-color-text);
 }
-.photo-lightbox-shell.viewer-immersive { background: #000; }
+.viewer-video :deep(.xgplayer) { background: var(--viewer-background); }
 .viewer-framed .viewer-stage { padding-block: 66px 20px; }
 .viewer-framed.viewer-has-strip .viewer-stage { padding-bottom: calc(82px + var(--ts-safe-area-bottom)); }
-[data-testid="photo-lightbox-toolbar"] { gap: 16px; background: linear-gradient(#121722 25%, transparent); padding: 12px 16px; }
+[data-testid="photo-lightbox-toolbar"] { gap: 16px; background: linear-gradient(var(--viewer-background) 25%, transparent); padding: 12px 16px; }
 .viewer-ident { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .viewer-ident .viewer-caption { max-width: min(40vw, 420px); }
 .viewer-close, .viewer-chrome-pill, .viewer-stage > button {
@@ -2561,21 +2562,23 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
   color: var(--viewer-chrome-text);
 }
 .viewer-close { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; }
-.viewer-close:hover, .viewer-stage > button:hover { background: var(--viewer-chrome-hover); }
+.viewer-close:hover, .viewer-stage > button:hover { background: color-mix(in srgb, var(--theme-primary) 12%, var(--ts-color-surface)); }
 .viewer-chrome-pill { padding: 3px; gap: 0; }
 .viewer-chrome-pill .ts-glass-button { color: var(--viewer-chrome-text); min-width: 38px; }
 .viewer-chrome-pill .ts-glass-button:hover { background: var(--viewer-chrome-hover); }
-.viewer-chrome-pill .ts-glass-button[aria-pressed='true'] { color: var(--viewer-chrome-accent); }
-.viewer-chrome-pill .viewer-delete { color: #ffaaa0; }
+.viewer-chrome-pill .ts-glass-button:is([aria-pressed='true'], [aria-expanded='true']) { color: var(--ts-journal-accent-text); }
+.viewer-chrome-pill .viewer-delete { color: var(--ts-color-danger); }
 .viewer-chrome-pill .ts-glass-button:focus-visible, .viewer-close:focus-visible, .viewer-stage > button:focus-visible { outline: 2px solid var(--viewer-chrome-accent); outline-offset: 2px; }
 .viewer-desktop-actions .ts-glass-button:disabled { opacity: .45; cursor: not-allowed; }
 .viewer-caption { color: var(--viewer-chrome-text); }
 .viewer-caption > div:first-child { font-size: 14px; font-weight: 650; }
 .viewer-caption > div:nth-child(2) { color: var(--viewer-chrome-quiet); font-size: 11px; margin-top: 4px; }
-.mobile-viewer-toolbar { background: linear-gradient(#121722 25%, transparent); padding-inline: 12px; padding-top: calc(9px + var(--ts-safe-area-top)); padding-bottom: 8px; align-items: center; }
+.mobile-viewer-toolbar { background: linear-gradient(var(--viewer-background) 25%, transparent); padding-inline: 12px; padding-top: calc(9px + var(--ts-safe-area-top)); padding-bottom: 8px; align-items: center; }
 .mobile-viewer-toolbar .viewer-close { display: inline-flex; }
 .mobile-viewer-toolbar > div:first-child { align-items: center; gap: 10px; }
-.viewer-thumbnail-layer { background: linear-gradient(0deg, #121722 12%, transparent); }
+.viewer-thumbnail-layer { background: linear-gradient(0deg, var(--viewer-background) 12%, transparent); }
+.viewer-image-label { background: var(--ts-glass-panel); color: var(--viewer-chrome-text); backdrop-filter: blur(var(--ts-glass-blur-panel)); }
+.viewer-live-badge:hover .viewer-image-label { background: var(--ts-color-surface); }
 .viewer-live-badge { top: 96px; min-height: 44px; border-radius: 999px; }
 .viewer-framed .viewer-live-badge { top: 5px; }
 .viewer-live-badge:focus-visible { outline: 2px solid var(--viewer-chrome-accent); outline-offset: 2px; }
@@ -2594,6 +2597,7 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 .viewer-menu-header button { position: absolute; right: 0; background: var(--ts-color-surface-muted); border-radius: var(--ts-radius-pill); }
 .viewer-menu-grid { background: var(--ts-menu-card); border-radius: 24px; padding: 16px 8px; }
 .viewer-menu-grid button { min-height: 72px; }
+.viewer-menu-grid button[aria-expanded='true'] { color: var(--ts-journal-accent-text); }
 .viewer-menu-grid button > span:first-child { background: transparent; }
 .sheet-panel { inset-inline: 12px; bottom: calc(12px + var(--ts-safe-area-bottom)); border: 1px solid var(--ts-glass-border); border-radius: 32px; padding: 8px 16px 16px; max-height: calc(100dvh - var(--ts-safe-area-top) - var(--ts-safe-area-bottom) - 32px); }
 

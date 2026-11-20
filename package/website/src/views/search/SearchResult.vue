@@ -1,21 +1,16 @@
 <template>
   <ConditionSearchResult v-if="isConditionSearch(type)" />
   <div v-else class="mx-auto w-full max-w-screen-2xl min-h-screen pb-8 px-[var(--ts-page-gutter)]">
-    <!-- Header -->
-    <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] backdrop-blur-md bg-gray-50/90 dark:bg-gray-900/90">
-      <div class="ts-browse-header mx-auto flex items-center gap-3">
-        <BackButton label="返回" @click="goBack" />
-        <div>
-          <h1 class="journal-page-title">
-            {{ title }}
-          </h1>
-          <p class="text-xs text-gray-500">{{ subtitle }}</p>
-        </div>
+    <header class="pointer-events-none sticky top-0 z-30 flex min-w-0 items-center gap-2 py-2">
+      <BackButton class="pointer-events-auto" label="返回" @click="goBack" />
+      <div v-glass-refraction.rim class="ts-liquid-glass ts-glass-title pointer-events-auto flex h-9 min-w-0 items-center gap-2 px-3 md:h-11">
+        <h1 class="min-w-0 truncate text-sm font-semibold" :title="title">{{ title }}</h1>
+        <p class="ts-muted shrink-0 whitespace-nowrap text-xs">{{ subtitle }}</p>
       </div>
-    </div>
+    </header>
 
     <!-- Content -->
-    <div class="mx-auto py-6">
+    <div class="mx-auto pb-6 pt-2">
       <!-- Loading State (Initial) -->
       <div v-if="loading && photos.length === 0" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-4">
         <div v-for="i in 20" :key="i" class="aspect-square bg-gray-200 dark:bg-gray-800 rounded-lg animate-pulse"></div>
@@ -114,22 +109,7 @@ const goBack = useAppBack('/photos')
 const query = computed(() => route.query.q as string || '')
 const type = computed(() => route.query.type as string | undefined)
 
-const title = computed(() => {
-  if (!query.value) return '搜索结果'
-  const typeMap: Record<string, string> = {
-    'person': '人物',
-    'location': '地点',
-    'ocr': '文字',
-    'album': '相册',
-    'folder': '文件夹',
-    'filename': '文件',
-    'tag': '标签',
-    'scene': '景区',
-    'date': '日期'
-  }
-  const typeLabel = type.value ? typeMap[type.value] : ''
-  return typeLabel ? `搜索 ${typeLabel}: ${query.value}` : `搜索: ${query.value}`
-})
+const title = computed(() => query.value || '搜索结果')
 
 const loading = ref(false)
 const photos = ref<AlbumImage[]>([])

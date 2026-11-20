@@ -2,7 +2,7 @@
   <div class="memory-collection" :class="{ 'memory-collection--review': isReview }">
     <header ref="masthead" class="memory-masthead" tabindex="-1">
       <div v-if="isReview" class="memory-review-heading">
-        <RouterLink to="/memories" class="memory-command" aria-label="返回记忆"><ArrowLeft aria-hidden="true" /></RouterLink>
+        <BackButton to="/memories" label="返回记忆" />
         <h1 class="journal-page-title">整理记忆</h1>
       </div>
       <h1 v-else class="journal-page-title">记忆</h1>
@@ -108,7 +108,8 @@ import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, BookHeart, Bot, ChevronRight, Film, ListChecks, ListFilter, MoreHorizontal, Network, Plus, RefreshCw } from 'lucide-vue-next'
+import { BookHeart, Bot, ChevronRight, Film, ListChecks, ListFilter, MoreHorizontal, Network, Plus, RefreshCw } from 'lucide-vue-next'
+import BackButton from '@/components/ui/BackButton.vue'
 import MemoryCard from '@/components/memory/MemoryCard.vue'
 import ChapterShelf from '@/components/chapter/ChapterShelf.vue'
 import { memoryApi } from '@/api/memory'

@@ -394,6 +394,7 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
   gap: var(--ts-toolbar-gap);
 }
 .ts-glass-toolbar > .ts-icon-button { min-height: var(--ts-toolbar-control-size); height: var(--ts-toolbar-control-size); }
+.ts-selection-glass { --glass-tint: var(--ts-glass-panel); }
 
 .ts-glass-button {
   flex-shrink: 0; align-items: center; justify-content: center;
@@ -466,14 +467,15 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 .ts-page-inset { padding-inline: var(--ts-page-gutter); }
 
 /* Dates float over photos with the same restrained glass as the controls. */
-.ts-photo-date {
+.ts-photo-date,
+.ts-glass-title {
   --glass-tint: var(--ts-glass-bg);
+  --glass-blur: var(--ts-glass-blur-panel);
   border-radius: var(--ts-radius-pill);
   border-color: var(--ts-glass-border);
-  backdrop-filter: blur(var(--ts-glass-blur)) saturate(var(--ts-glass-saturation));
-  -webkit-backdrop-filter: blur(var(--ts-glass-blur)) saturate(var(--ts-glass-saturation));
 }
-.ts-photo-date::before { opacity: .22; }
+.ts-photo-date::before,
+.ts-glass-title::before { opacity: .55; }
 
 /* System album menus: frosted shell, quiet separators and clear content groups. */
 .ts-desktop-menu { width: min(220px, calc(100vw - 32px)); padding: 4px; border-radius: 20px; border-color: var(--ts-glass-border); }

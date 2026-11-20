@@ -1,6 +1,6 @@
 <template>
   <SurfaceCard padding="lg" :elevated="false">
-    <h2 class="stats-title">多日记录的地方</h2><p class="stats-caption mt-1">{{ scope }} · 按有照片的天数排列，不代表独立到访次数</p>
+    <h2 class="stats-title">多日记录的地方</h2><p class="stats-caption mt-1">{{ scope }}</p>
     <div v-if="loading" class="stats-empty"><el-skeleton :rows="3" animated /></div>
     <div v-else-if="error" class="stats-empty"><span>地点记录加载失败</span><button class="text-primary-500" @click="$emit('retry')">重试</button></div>
     <div v-else-if="!revisits.length" class="stats-empty">还没有在多个日期留下照片的地点</div>

@@ -4,7 +4,7 @@
     :title="title"
     max-width="80rem"
     mobile-mode="fullscreen"
-    mobile-back
+    custom-mobile-header
     :before-close="() => !busy"
     panel-class="photo-selector-dialog"
   >
@@ -14,10 +14,11 @@
       :store="store"
       :title="title"
       embedded
+      mobile-dialog-header
       :single-select="singleSelect"
       :busy="busy"
       @select="$emit('select', $event)"
-      @cancel="visible = false"
+      @cancel="!busy && (visible = false)"
     />
   </ResponsiveDialog>
 </template>

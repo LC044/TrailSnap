@@ -5,7 +5,7 @@ const displacementScale = 56
 const surfaces = new WeakMap<HTMLElement, () => void>()
 let nextFilterId = 0
 
-function createDisplacementMap(width: number, height: number, radius: number) {
+function createDisplacementMap(width: number, height: number, radius: number, rimOnly: boolean) {
   const resolution = Math.min(1, 360 / Math.max(width, height))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(width * resolution))
@@ -18,7 +18,7 @@ function createDisplacementMap(width: number, height: number, radius: number) {
   const halfHeight = height / 2
   const rim = Math.min(14, halfHeight * .6, halfWidth * .6)
   const magnification = 1 + Math.min(.12, 30 / Math.max(width, height))
-  const lensOffset = 1 - 1 / magnification
+  const lensOffset = rimOnly ? 0 : 1 - 1 / magnification
   for (let row = 0; row < canvas.height; row++) {
     const y = (row + .5) * height / canvas.height - halfHeight
     for (let col = 0; col < canvas.width; col++) {
@@ -46,7 +46,7 @@ function createDisplacementMap(width: number, height: number, radius: number) {
   return canvas.toDataURL()
 }
 
-function attachRefraction(element: HTMLElement) {
+function attachRefraction(element: HTMLElement, rimOnly: boolean) {
   // Recognizing the CSS syntax does not guarantee backdrop displacement.
   if (!/\b(?:Headless)?Chrom(?:e|ium)\//.test(navigator.userAgent) || !CSS.supports('backdrop-filter', 'url("#test")')) return
 
@@ -69,7 +69,7 @@ function attachRefraction(element: HTMLElement) {
   map.setAttribute('result', 'surface')
   displacement.setAttribute('in', 'SourceGraphic')
   displacement.setAttribute('in2', 'surface')
-  displacement.setAttribute('scale', String(displacementScale))
+  displacement.setAttribute('scale', String(rimOnly ? displacementScale * .4 : displacementScale))
   displacement.setAttribute('xChannelSelector', 'R')
   displacement.setAttribute('yChannelSelector', 'G')
   displacement.setAttribute('result', 'lens')
@@ -89,7 +89,7 @@ function attachRefraction(element: HTMLElement) {
     if (!width || !height) return
     const borderRadius = Number.parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0
     const radius = Math.min(borderRadius, width / 2, height / 2)
-    const source = createDisplacementMap(width, height, radius)
+    const source = createDisplacementMap(width, height, radius, rimOnly)
     if (!source) return
     filter.setAttribute('width', String(width))
     filter.setAttribute('height', String(height))
@@ -110,12 +110,12 @@ function attachRefraction(element: HTMLElement) {
 
 export const glassRefraction: ObjectDirective<HTMLElement, boolean | undefined> = {
   mounted(element, binding) {
-    if (binding.value !== false) attachRefraction(element)
+    if (binding.value !== false) attachRefraction(element, Boolean(binding.modifiers.rim))
   },
-  updated(element, { oldValue, value }) {
+  updated(element, { oldValue, value, modifiers }) {
     if (oldValue === value) return
     if (value === false) surfaces.get(element)?.()
-    else if (!surfaces.has(element)) attachRefraction(element)
+    else if (!surfaces.has(element)) attachRefraction(element, Boolean(modifiers.rim))
   },
   beforeUnmount(element) {
     surfaces.get(element)?.()

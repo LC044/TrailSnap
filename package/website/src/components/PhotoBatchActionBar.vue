@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible && showMobileHeader" class="selection-mobile-header" data-testid="photo-selection-header">
+    <div v-if="visible && showMobileHeader" v-glass-refraction.rim class="ts-liquid-glass ts-selection-glass selection-mobile-header" data-testid="photo-selection-header">
       <button class="ts-button ts-button-ghost" @click="$emit('select-all')">{{ isAllSelected ? '取消全选' : '全选' }}</button>
       <span class="font-semibold" aria-live="polite">已选 {{ selectionCount }} 项</span>
       <button class="ts-icon-button ts-button-ghost" aria-label="取消选择" @click="$emit('cancel')"><X class="h-5 w-5" /></button>
@@ -14,7 +14,7 @@
       leave-to-class="transform translate-y-6 opacity-0"
     >
       <div v-if="visible" data-testid="photo-selection-bar" class="fixed bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] left-0 right-0 z-40 flex justify-center pointer-events-none px-3">
-        <div v-glass-refraction class="ts-liquid-glass selection-toolbar pointer-events-auto">
+        <div v-glass-refraction class="ts-liquid-glass ts-selection-glass selection-toolbar pointer-events-auto">
           <div class="selection-summary flex items-center gap-2">
             <button @click="$emit('cancel')" class="ts-icon-button ts-button-ghost sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="取消选择" aria-label="取消选择">
               <X class="w-5 h-5 text-gray-600 dark:text-gray-300" />
@@ -196,12 +196,12 @@ const emit = defineEmits<{
 
 <style scoped>
 .selection-mobile-header { display: none; }
-.selection-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 24px; background: var(--ts-glass-panel); max-width: 100%; }
+.selection-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 24px; max-width: 100%; }
 .selection-summary { flex-shrink: 0; }
 .selection-actions { display: flex; gap: 4px; }
 .selection-actions :deep(button) { width: auto; padding-inline: 12px; gap: 6px; font-size: 13px; }
 @media (max-width: 767px) {
-  .selection-mobile-header { position: fixed; top: 0; inset-inline: 0; z-index: 60; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: calc(var(--ts-header-height) + var(--ts-safe-area-top)); padding: calc(8px + var(--ts-safe-area-top)) 12px 8px; background: var(--ts-glass-panel); color: var(--ts-color-text); border-bottom: 1px solid var(--ts-color-divider); backdrop-filter: blur(var(--ts-glass-blur-panel)); }
+  .selection-mobile-header { position: fixed; top: 0; inset-inline: 0; z-index: 60; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: calc(var(--ts-header-height) + var(--ts-safe-area-top)); padding: calc(8px + var(--ts-safe-area-top)) 12px 8px; }
   .selection-toolbar { width: min(100%, 440px); padding: 6px; border-radius: var(--ts-radius-pill); }
   .selection-summary { display: none; }
   .selection-summary { width: 100%; }

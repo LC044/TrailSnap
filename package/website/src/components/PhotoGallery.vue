@@ -74,6 +74,7 @@
                       :class="dateHeaderContainerClass"
                     >
                         <div
+                          v-glass-refraction.rim
                           class="ts-liquid-glass ts-photo-date flex items-center font-semibold pointer-events-auto"
                           :class="dateHeaderContentClass"
                           @click="mobileDateHeaderMode === 'day' && isSelectionMode && toggleDaySelection(day)"

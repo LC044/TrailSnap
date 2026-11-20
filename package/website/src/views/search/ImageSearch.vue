@@ -26,8 +26,8 @@
     <FlatPhotoGallery v-if="photos.length" :photos="photos" :loading="loading" :show-action-bar="false" @click-photo="openPhoto" />
     <PhotoLightbox :visible="visible" :image="photos[index] ?? null" :images="photos" :current-index="index"
       :has-prev="index > 0" :has-next="index < photos.length - 1" @close="close" @prev="prev" @next="next" @select="value => index = value" />
-    <ResponsiveDialog v-model="showPicker" title="选择搜索图片" max-width="64rem" mobile-mode="fullscreen" mobile-back panel-class="image-search-picker">
-      <div class="min-h-0 flex-1 md:h-[72dvh] md:flex-none"><PhotoSelector v-if="showPicker" is-selector single-select embedded @select="selectPhoto" @cancel="showPicker = false" /></div>
+    <ResponsiveDialog v-model="showPicker" title="选择搜索图片" max-width="64rem" mobile-mode="fullscreen" custom-mobile-header panel-class="image-search-picker">
+      <div class="min-h-0 flex-1 md:h-[72dvh] md:flex-none"><PhotoSelector v-if="showPicker" title="选择搜索图片" is-selector single-select embedded mobile-dialog-header @select="selectPhoto" @cancel="showPicker = false" /></div>
     </ResponsiveDialog>
   </div>
 </template>

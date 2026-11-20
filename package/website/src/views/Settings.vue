@@ -74,11 +74,11 @@
       </div>
 
       <main v-else ref="contentRef" class="min-w-0 flex-1 overflow-y-auto">
-        <div v-if="activeTab !== 'mobile-backup'" class="ts-page-header sticky top-0 z-20 flex items-center border-b px-[var(--ts-page-gutter)] md:hidden">
+        <ScrollGlassHeader v-if="isNarrow && activeTab !== 'mobile-backup'" class="flex min-h-[var(--ts-header-height)] items-center px-[var(--ts-page-gutter)]">
           <BackButton label="返回设置" @click="goBack" />
           <h1 class="min-w-0 flex-1 truncate px-2 text-center text-[17px] font-semibold">{{ activeItem?.label }}</h1>
           <div id="ts-mobile-page-actions" class="ml-auto flex shrink-0 items-center justify-end gap-2"></div>
-        </div>
+        </ScrollGlassHeader>
         <div class="mx-auto w-full max-w-5xl ts-page-inset ts-page-content settings-page-content ts-bottom-safe">
           <Transition :name="transitionName" mode="out-in">
             <MobileBackup v-if="activeTab === 'mobile-backup'" :key="activeTab" hosted @request-settings-back="goBack" />
@@ -93,6 +93,7 @@
 <script setup lang="ts">
 import { resolveSettingsTab } from '@/config/settingsNavigation'
 import BackButton from '@/components/ui/BackButton.vue'
+import ScrollGlassHeader from '@/components/ui/ScrollGlassHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Activity, ChevronRight, CloudUpload, FolderOpen, HardDrive, Info, KeyRound, ListChecks, MapPin, MessageSquare, Palette, ScanFace, Smartphone, Sparkles, UserCircle, UsersRound, Wrench } from 'lucide-vue-next'
@@ -210,7 +211,6 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
   .settings-shell :deep(.ts-settings-page-header:not(:has(.ts-settings-page-actions))) { display: none; }
   .settings-shell :deep(.ts-settings-page-header) { min-height: 0; }
   .settings-shell :deep(.ts-settings-page-actions) { width: 100%; }
-  .settings-shell :deep(.ts-back-button) { border: 0; box-shadow: none; background: transparent; }
   .settings-page-content { padding-top: 16px; }
   .settings-shell :deep(.ts-settings-page) { gap: 20px; }
   .settings-shell :deep(.settings-native-group) { background: transparent; overflow: visible; }

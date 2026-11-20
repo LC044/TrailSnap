@@ -7,7 +7,7 @@ import { ensureAuthSession } from '../../helpers/auth';
  * /search 此前只有 search.spec.ts 一条简单 smoke，缺少对 query 参数路由 /
  * 标题渲染 / 空态文案 / 顶部 header 的深度验证。本文件补齐：
  *   - 默认无 query 时显示"搜索结果"标题
- *   - 带 ?q= 参数时标题渲染"搜索: xxx"
+ *   - 带 ?q= 参数时顶部胶囊显示搜索关键词
  *   - 顶部返回按钮可见
  *   - 空 query 时显示 empty state 文案（验证与有数据分支同样能渲染）
  *   - 头部副标题文案随加载/数据状态切换
@@ -23,10 +23,10 @@ test.describe('Smoke - 桌面端搜索结果页 @smoke', () => {
     await expect(page.locator('h1', { hasText: '搜索结果' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('带 ?q=test - 标题渲染"搜索: test"且 URL 保留参数', async ({ page }) => {
+  test('带 ?q=test - 顶部胶囊显示关键词且 URL 保留参数', async ({ page }) => {
     await page.goto('/search?q=test');
     await expect(page).toHaveURL(/\/search\?q=test/);
-    await expect(page.locator('h1', { hasText: '搜索: test' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { level: 1, name: 'test', exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('顶部返回按钮可见 - main 区域首个 sticky 按钮', async ({ page }) => {
