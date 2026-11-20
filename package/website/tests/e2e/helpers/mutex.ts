@@ -17,11 +17,15 @@ import path from 'node:path'
  */
 
 const LOCK_DIR = path.join(os.tmpdir(), 'trailsnap-e2e-locks')
+
 try {
   fs.mkdirSync(LOCK_DIR, { recursive: true })
 } catch {
   // 多 worker 并发创建目录可能抛 EEXIST，忽略
 }
+
+/** 锁的最长持有时间：超过后按 stale 接管，避免持锁进程卡死导致全体等待者超时。 */
+const STALE_LOCK_MS = 10 * 60 * 1000
 
 function lockPath(name: string): string {
   // 仅允许字母数字下划线短横，避免路径注入
@@ -39,6 +43,39 @@ function pidAlive(pid: number): boolean {
 }
 
 /**
+ * 判定锁文件是否已失效（stale）。
+ *
+ * 失效的三种情形：
+ *  1. 持锁进程已退出（崩溃/被 kill）—— PID 不再存活；
+ *  2. 锁文件内容不是合法 PID（例如持锁进程在 open 与 write 之间被 kill，
+ *     文件为空或残留 NUL 字节）—— 此时无法判断持锁者，任何等待者都必须接管，
+ *     否则该锁永远无法释放，后续所有用例都会在 acquireMutex 上超时；
+ *  3. 锁的持有时间已超过 STALE_LOCK_MS（持锁进程卡死）—— 按年龄接管。
+ */
+function isStaleLock(file: string): boolean {
+  let ageMs = 0
+  let pidStr = ''
+  try {
+    const stat = fs.statSync(file)
+    ageMs = Date.now() - stat.mtimeMs
+    pidStr = fs.readFileSync(file, 'utf8').trim()
+  } catch {
+    // 文件已被删除：当作 stale，交给调用方 unlink（失败也会被忽略）
+    return true
+  }
+
+  // 情形 2：内容不是合法 PID（空串、NUL 字节等）
+  if (!/^[0-9]+$/.test(pidStr)) return true
+
+  // 情形 1：持锁进程已退出
+  const pid = Number(pidStr)
+  if (pid > 0 && !pidAlive(pid)) return true
+
+  // 情形 3：持锁进程卡死，锁已超时
+  return ageMs > STALE_LOCK_MS
+}
+
+/**
  * 获取名为 `name` 的互斥锁，返回释放函数。超时抛错。
  * 释放函数可安全地多次调用。
  */
@@ -52,9 +89,9 @@ export async function acquireMutex(
 
   for (;;) {
     try {
-      const fd = fs.openSync(file, 'wx')
-      fs.writeSync(fd, String(process.pid))
-      fs.closeSync(fd)
+      // 用 writeFileSync + 'wx' 一次性写入 PID，避免 open 与 write 之间被 kill
+      // 留下空/NUL 字节的锁文件（那种锁无法通过 PID 判定 stale，会永久阻塞）。
+      fs.writeFileSync(file, String(process.pid), { flag: 'wx' })
       let released = false
       return async () => {
         if (released) return
@@ -69,16 +106,14 @@ export async function acquireMutex(
       const err = e as NodeJS.ErrnoException
       if (err.code !== 'EEXIST') throw err
 
-      // 锁文件已存在——检测持锁进程是否还活着，死了就接管
-      try {
-        const pidStr = fs.readFileSync(file, 'utf8').trim()
-        const pid = Number(pidStr)
-        if (pid && !pidAlive(pid)) {
+      // 锁文件已存在——持锁进程已死或锁已超时（stale）就接管
+      if (isStaleLock(file)) {
+        try {
           fs.unlinkSync(file)
-          continue
+        } catch {
+          // 已被其他等待者接管，忽略
         }
-      } catch {
-        // 读失败/解析失败，保持等待
+        continue
       }
 
       if (Date.now() - start > timeoutMs) {
