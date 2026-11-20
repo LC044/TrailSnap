@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-full bg-gray-50 px-4 py-6 dark:bg-gray-900 md:px-8">
+  <div class="journal-neutral-page min-h-full px-4 py-6 md:px-8">
     <div class="mx-auto max-w-5xl">
       <BackButton label="返回章节" @click="router.back()" />
-      <h1 class="mt-5 font-serif text-3xl text-gray-900 dark:text-white">{{ chapter ? '整理这本影像日记' : '把这些年的照片，装订成日记' }}</h1>
+      <h1 class="journal-page-title mt-5">{{ chapter ? '整理这本影像日记' : '把这些年的照片，装订成日记' }}</h1>
       <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">先选一段时光和一张封面。日记会按年份收录照片，每一页都可以手写或让 AI 起草。</p>
       <div class="mt-7 grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <form class="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 md:p-7" @submit.prevent="save(false)">

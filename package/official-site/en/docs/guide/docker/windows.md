@@ -1,4 +1,10 @@
-# Step 1: Install Docker Desktop
+---
+title: Windows Deployment
+description: "Step-by-step Windows deployment with Docker Desktop: install, edit the Compose file, start services, and verify."
+---
+# Windows Deployment
+
+## Step 1: Install Docker Desktop
 Docker Compose is already integrated into Docker Desktop, so install it first:
 1. Go to the Docker official website to download: https://www.docker.com/products/docker-desktop/
 2. Double-click the downloaded installer and keep clicking **Next** (check **Use WSL 2 instead of Hyper-V**).
@@ -31,7 +37,7 @@ Docker Compose is already integrated into Docker Desktop, so install it first:
 
 ---
 
-# Step 2: Prepare the `docker-compose.yml` File
+## Step 2: Prepare the `docker-compose.yml` File
 1. Create a new empty folder, e.g., `D:\TrailSnap`.
 2. Inside the folder, create a file named `docker-compose.yml`.
 3. Open it with a text editor and paste the content below:
@@ -135,7 +141,7 @@ If you have **multiple photo folders** (e.g., `D:\TrailSnap\photos1`, `D:\TrailS
 
 ---
 
-# Step 3: Run Deployment Commands
+## Step 3: Run Deployment Commands
 1. Open Command Prompt (`Win + R` → `cmd`), then navigate to the folder containing `docker-compose.yml`:
    ```bash
    # Example: if the file is in D:\TrailSnap
@@ -169,7 +175,7 @@ time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\
 
 ---
 
-# Step 4: Verify Deployment
+## Step 4: Verify Deployment
 Open your browser at `http://localhost:3180`. The mobile app and CLI use the same TrailSnap address.
 
 You will see the TrailSnap web interface.
@@ -182,7 +188,7 @@ If you have multiple volumes, add:
 
 ---
 
-# Troubleshooting (For Beginners)
+## Troubleshooting (For Beginners)
 1. **“docker-compose.yml not found”**
    Make sure your Command Prompt is in the same folder as the file.
    Or run:
@@ -195,7 +201,7 @@ If you have multiple volumes, add:
 
 ---
 
-# Summary
+## Summary
 1. **Prerequisite**: Install Docker Desktop and verify with `docker --version`.
 2. **Key step**: Place `docker-compose.yml` in a folder, `cd` into it, then run `docker-compose up -d`.
 3. **Management commands**:

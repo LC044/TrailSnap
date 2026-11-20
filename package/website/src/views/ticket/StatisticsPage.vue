@@ -3,7 +3,7 @@
     <header class="dashboard-header">
       <div class="dashboard-title">
         <BackButton label="返回列表" @click="goBack" />
-        <h1 class="ts-page-title">出行概览</h1>
+        <h1 class="journal-page-title">出行概览</h1>
       </div>
       <TicketStatisticsFilters
         v-model:period="period"

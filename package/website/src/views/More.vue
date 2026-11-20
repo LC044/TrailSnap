@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 px-[var(--ts-page-gutter)] py-4 md:py-6 transition-colors duration-300">
     <!-- 页面标题 -->
-    <h1 class="text-[clamp(1.5rem,5vw,2.5rem)] font-bold text-gray-800 dark:text-gray-100 mb-6 text-center">
+    <h1 class="journal-page-title mb-6 text-center">
       车票信息编辑
     </h1>
     <!-- 主要内容区域：桌面端左右布局，移动端上下布局 -->

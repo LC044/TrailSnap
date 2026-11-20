@@ -1,15 +1,11 @@
 <template>
-  <div class="min-h-full bg-gray-50 px-[var(--ts-page-gutter)] ts-browse-page dark:bg-gray-900">
+  <div class="journal-neutral-page min-h-full px-[var(--ts-page-gutter)] ts-browse-page">
     <div class="mx-auto max-w-screen-2xl">
       <header class="ts-browse-header flex flex-wrap items-center gap-3">
         <BackButton label="返回" @click="router.back()" />
-        <div class="min-w-0 flex-1"><h1 class="ts-page-title text-gray-900 dark:text-white">新建记忆</h1><p class="text-sm text-gray-500 dark:text-gray-400">选择属于同一段经历的照片</p></div>
+        <div class="min-w-0 flex-1"><h1 class="journal-page-title">新建记忆</h1><p class="text-sm text-gray-500 dark:text-gray-400">选择属于同一段经历的照片</p></div>
         <button class="ts-button ts-button-primary bg-primary-500 text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAgentCreate"><Bot class="mr-1.5 inline h-4 w-4" />和 AI 对话创建</button>
       </header>
-
-      <div class="mt-5 rounded-2xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-900 dark:bg-primary-900/20">
-        <p class="text-sm text-primary-800 dark:text-primary-200">你可以直接告诉 AI：“把去年国庆在西安拍的照片整理成一段记忆”。AI 会继续询问线索、展示候选照片，并在你确认后创建。</p>
-      </div>
 
       <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section class="ts-surface p-4 md:p-5">
@@ -33,9 +29,10 @@
               <span v-if="selectedIds.includes(photo.id)" class="absolute inset-0 border-4 border-primary-500"></span>
             </button>
           </div>
+          <button v-if="selectedIds.length" type="button" class="compose-next ts-button lg:hidden" @click="continueToDetails">填写记忆信息 <ArrowDown class="h-4 w-4" /></button>
         </section>
 
-        <aside class="h-fit rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 lg:sticky lg:top-5">
+        <aside ref="details" tabindex="-1" class="compose-details ts-surface h-fit p-5 lg:sticky lg:top-5">
           <h2 class="font-semibold text-gray-900 dark:text-white">记忆信息</h2>
           <el-form label-position="top" class="mt-4">
             <el-form-item label="标题" required><el-input v-model="title" maxlength="255" placeholder="例如：秋日杭州三日行" /></el-form-item>
@@ -64,7 +61,7 @@ import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Bot, Check, LoaderCircle } from 'lucide-vue-next'
+import { ArrowDown, Bot, Check, LoaderCircle } from 'lucide-vue-next'
 import { albumService } from '@/api/album'
 import { memoryApi } from '@/api/memory'
 import type { Photo } from '@/types/album'
@@ -72,6 +69,11 @@ import { thumbnailUrl } from '@/utils/mediaUrl'
 import { useUiStore } from '@/stores/uiStore'
 
 const router = useRouter()
+const details = ref<HTMLElement | null>(null)
+function continueToDetails() {
+  details.value?.focus({ preventScroll: true })
+  details.value?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
+}
 const uiStore = useUiStore()
 const photos = ref<Photo[]>([])
 const selectedIds = ref<string[]>([])
@@ -122,3 +124,8 @@ onMounted(async () => {
   finally { loading.value = false }
 })
 </script>
+<style scoped>
+.compose-next { position: sticky; z-index: 2; bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom)); margin: 12px 0 0 auto; background: var(--ts-journal-action); color: white; }
+.compose-details { scroll-margin-top: 14px; }
+.compose-details:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: 3px; }
+</style>

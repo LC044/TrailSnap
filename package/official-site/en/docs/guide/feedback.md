@@ -1,3 +1,7 @@
+---
+description: "Feedback channels: community group, feature request board, and bug reports, with what to include when filing."
+---
+
 # Feedback
 
 If you encounter any problems during use, or have any suggestions, please feel free to contact us through the following methods.

@@ -1,3 +1,7 @@
+---
+description: "Developer guide: environment setup, project structure, backend, frontend and AI workflows, migrations, and common tasks."
+---
+
 # TrailSnap Developer Documentation
 
 This document aims to provide developers with a guide to the TrailSnap project, covering environment setup, project structure, development process, etc.

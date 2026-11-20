@@ -1,5 +1,6 @@
 ---
 outline: [2, 3]
+description: "TrailSnap CLI reference: pip, npm and binary installs, plus commands for searching, exporting and managing photos."
 ---
 
 # TrailSnap CLI

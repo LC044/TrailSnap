@@ -1,3 +1,7 @@
+---
+description: "TrailSnap FAQ: deployment options and platforms, external library errors, API usage, and data migration."
+---
+
 # FAQ
 
 ## Installation & Deployment

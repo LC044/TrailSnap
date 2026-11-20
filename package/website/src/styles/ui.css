@@ -65,12 +65,18 @@
 }
 .ts-button-sm { min-height: var(--ts-control-sm); padding-inline: var(--ts-space-3); }
 .ts-button-lg { min-height: var(--ts-control-lg); padding-inline: var(--ts-space-5); font-size: 16px; }
-.ts-button-primary { background: var(--theme-primary); color: white; box-shadow: 0 3px 10px rgba(var(--theme-rgb), .16); }
-.ts-button-secondary { border-color: var(--ts-color-border); background: var(--ts-color-surface); color: var(--ts-color-text); }
+.ts-button-primary { background-color: var(--ts-journal-action); color: white; }
+.ts-button-secondary { border-color: var(--ts-color-border); background-color: var(--ts-glass-control); color: var(--ts-color-text); }
+.ts-button-primary, .ts-button-secondary, .ts-glass-control,
+:where(.ts-app-shell, .el-dialog__footer, .el-message-box__btns) .el-button:not(.is-text, .is-link, .is-plain, .is-disabled) {
+  background-image: var(--ts-glass-sheen);
+  box-shadow: var(--ts-glass-rim);
+}
+.ts-button-primary { box-shadow: var(--ts-glass-rim), 0 3px 10px rgba(var(--theme-rgb), .16); }
 .ts-button-ghost { background: transparent; color: var(--ts-color-text-secondary); }
 .ts-button-danger { background: var(--ts-color-danger); color: white; }
 .ts-button-primary:hover, .ts-button-danger:hover { filter: brightness(.94); }
-.ts-button-secondary:hover, .ts-button-ghost:hover { background: var(--ts-color-surface-muted); color: var(--ts-color-text); }
+.ts-button-secondary:hover, .ts-button-ghost:hover { background-color: var(--ts-color-surface-muted); color: var(--ts-color-text); }
 .ts-is-pressed { box-shadow: inset 0 3px 7px rgb(0 0 0 / 22%), inset 0 -1px 0 var(--ts-glass-highlight) !important; }
 .el-button, .ts-action-row { transition: background-color var(--ts-motion-fast) ease, color var(--ts-motion-fast) ease, box-shadow 120ms ease; }
 .ts-button:disabled, .ts-icon-button:disabled { opacity: .45; cursor: not-allowed; transform: none; filter: none; }
@@ -121,6 +127,10 @@
 .el-textarea .el-textarea__inner { border-radius: var(--ts-radius-control); padding: var(--ts-space-3); }
 .el-form .el-form-item { margin-bottom: var(--ts-space-6); }
 .el-form-item .el-form-item__label { color: var(--ts-color-text-secondary); font-weight: 500; }
+:is(.ts-desktop-menu, .ts-glass-sheet, .el-dialog, .el-message-box, .el-drawer, .el-popper.is-light) {
+  --ts-color-text-secondary: var(--ts-glass-text-secondary);
+  --el-text-color-regular: var(--ts-glass-text-secondary);
+}
 .el-dialog, .el-message-box, .el-drawer {
   --el-dialog-bg-color: var(--ts-glass-panel);
   --el-messagebox-border-radius: var(--ts-radius-dialog);
@@ -137,7 +147,15 @@
 .el-dialog .el-dialog__headerbtn { width: 44px; height: 44px; }
 .el-dialog .el-dialog__footer, .el-message-box .el-message-box__btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .el-dialog__footer .el-button + .el-button, .el-message-box__btns .el-button + .el-button { margin-left: 0; }
-.el-popper.is-light { --el-bg-color-overlay: var(--ts-glass-panel); border-color: var(--ts-color-border); border-radius: var(--ts-radius-control); box-shadow: var(--ts-shadow-floating); }
+.el-popper.is-light:not(.el-picker__popper) {
+  --el-bg-color-overlay: var(--ts-glass-panel);
+  background-image: var(--ts-glass-sheen);
+  border-color: var(--ts-glass-border);
+  border-radius: var(--ts-radius-control);
+  box-shadow: var(--ts-shadow-glass);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+  backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+}
 .el-dropdown-menu { padding: 8px; border-radius: var(--ts-radius-control); }
 .el-dropdown-menu .el-dropdown-menu__item { min-height: var(--ts-control-sm); border-radius: 8px; }
 .ts-settings-section.el-collapse { --el-collapse-header-height: 64px; --el-collapse-header-bg-color: transparent; --el-collapse-content-bg-color: transparent; border: 1px solid var(--ts-color-border); }
@@ -157,8 +175,15 @@
   .el-dialog .el-dialog__header, .el-dialog .el-dialog__footer { flex-shrink: 0; }
   .el-message-box { max-width: calc(100vw - 32px); }
 }
-@supports not (backdrop-filter: blur(8px)) {
-  .ts-glass, .ts-liquid-glass, .ts-page-header, .el-dialog, .el-message-box, .el-drawer { background: var(--ts-color-surface); }
+@supports not ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+  .ts-glass, .ts-liquid-glass, .ts-page-header, .el-dialog, .el-message-box, .el-drawer, .el-popper.is-light { background-color: var(--ts-color-surface); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ts-glass, .ts-liquid-glass, .ts-page-header, .el-dialog, .el-message-box, .el-drawer, .el-popper.is-light {
+    background-color: var(--ts-color-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .ts-button, .ts-icon-button, .ts-input { transition: none; }

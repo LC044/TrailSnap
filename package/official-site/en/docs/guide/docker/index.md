@@ -1,5 +1,6 @@
 ---
 title: Docker Deployment (Generic)
+description: "Generic Docker deployment: start frontend, backend, database and AI services with Compose and mount your photo folder."
 ---
 
 # Docker Deployment (Generic)

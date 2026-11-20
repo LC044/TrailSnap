@@ -3,9 +3,9 @@
     <!-- Header -->
     <div class="ts-browse-header mb-6 flex items-center gap-3 flex-shrink-0">
       <div class="classification-title-group flex items-center gap-3 w-full md:w-auto">
-        <h1 class="ts-page-title text-xl md:text-2xl font-bold text-gray-800 dark:text-white">智能分类</h1>
+        <h1 class="journal-page-title">智能分类</h1>
       </div>
-      <div class="ts-liquid-glass ts-glass-toolbar ml-auto shrink-0" aria-label="智能分类操作">
+      <div v-glass-refraction class="ts-liquid-glass ts-glass-toolbar ml-auto shrink-0" aria-label="智能分类操作">
         <button class="ts-glass-button" aria-label="分类规则" title="分类规则" @click="manageRules = true"><Settings2 class="h-5 w-5" /></button>
       </div>
     </div>

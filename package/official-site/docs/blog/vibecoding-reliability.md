@@ -1,5 +1,10 @@
 ---
 title: 独立开发者 vibecoding 实录：15 万行代码，我怎么防止 AI 把旧功能改坏
+description: 95% 代码由 AI 编写的开源相册 TrailSnap，如何靠工程约定、自动化测试与 CI 兜住可靠性，防止新功能悄悄改坏旧功能。
+date: "2026-09-08"
+updated: "2026-11-03"
+author: 司小远
+source: https://blog.siyuan.ink/post/48
 ---
 
 # 独立开发者 vibecoding 实录：15 万行代码，我怎么防止 AI 把旧功能改坏

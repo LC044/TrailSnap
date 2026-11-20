@@ -120,7 +120,7 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
     // e2e-admin 是首个注册用户（必然 superuser）；#user 是 superuserOnly tab，
-    // 且开放注册/后台处理性能等分区按 admin computed 门控（user_info 异步拉取）。
+    // 且开放注册/后台任务设置等分区按 admin computed 门控（user_info 异步拉取）。
     // 预置 is_superuser，跳过身份回填时序。
     await page.addInitScript(() => {
       const raw = localStorage.getItem('user_info')
@@ -132,16 +132,16 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
 
   test('设置分区页渲染安全/任务/地图分区', async ({ page }) => {
     // 设置重组后：开放注册 → /settings#user（直渲染 section）；
-    // 后台处理性能 → /settings#tasks（TaskManagement 的 <details> 折叠）；
+    // 后台任务设置 → /settings#tasks（TaskManagement 的 <details> 折叠）；
     // 地图设置 → /settings#map（el-collapse 折叠面板）。
-    // 后台处理性能收起时内容隐藏，先点开 <details> 的 summary 再断言。
+    // 任务分区收起时内容隐藏，先点开 <details> 的 summary 再断言。
     await page.goto('/settings#user')
     const securityHeader = page.locator('.settings-native-group > header h2').filter({ hasText: '开放注册' }).first()
     await expect(securityHeader, '分区 开放注册 应可见').toBeVisible({ timeout: 15_000 })
 
     await page.goto('/settings#tasks')
-    // 后台处理性能是 <details> 折叠（summary 常显，内容收起）；断言 summary 文本即可。
-    await expect(page.locator('.task-performance > summary'), '分区 后台处理性能 应可见').toContainText('后台处理性能')
+    // 任务分区是 <details> 折叠（summary 常显，内容收起）；断言 summary 文本即可。
+    await expect(page.locator('.task-performance > summary'), '分区 后台任务设置 应可见').toContainText('后台任务设置')
 
     await page.goto('/settings#map')
     const mapHeader = page.locator('.el-collapse-item__header, .el-collapse-item .ts-section-title').filter({ hasText: '地图设置' }).first()

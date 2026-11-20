@@ -1,3 +1,7 @@
+---
+description: "Connect TrailSnap CLI to Claude Code: create a token, install the Skill, and query your photo library in natural language."
+---
+
 # Claude Code
 
 > Use the trailsnap-cli skill in Claude Code to manage your album with AI.

@@ -1,5 +1,6 @@
 ---
 title: Ugreen NAS Deployment
+description: "Deploy TrailSnap on UGREEN NAS (UGOS Pro) with Docker Compose, including ports and photo folder mounting."
 ---
 
 # Ugreen NAS Deployment

@@ -10,7 +10,7 @@
       </span>
     </div>
     <div v-else-if="message" class="absolute inset-x-4 top-20 flex justify-center" @click.stop @mousedown.stop @touchstart.stop>
-      <div class="ts-liquid-glass ts-glass-toolbar flex max-w-full items-center gap-2 rounded-full px-3 py-1 pointer-events-auto">
+      <div v-glass-refraction class="ts-liquid-glass ts-glass-toolbar flex max-w-full items-center gap-2 rounded-full px-3 py-1 pointer-events-auto">
         <span role="status" class="text-sm">{{ message }}</span>
         <button type="button" class="ts-glass-button shrink-0" aria-label="重试加载全景" title="重试加载全景" @click="loadInfo"><RotateCcw class="h-4 w-4" /></button>
       </div>

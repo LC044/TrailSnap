@@ -1,3 +1,7 @@
+---
+description: "Backend stack and module layout: FastAPI, async SQLAlchemy, task queues, authentication, and database migrations."
+---
+
 # Backend Framework Analysis Document
 
 ## 1. Tech Stack Detailed Description

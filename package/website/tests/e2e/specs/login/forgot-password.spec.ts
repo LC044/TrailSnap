@@ -27,8 +27,8 @@ test.describe('Smoke - 找回密码 @smoke', () => {
     await expect(page).toHaveURL(/\/forgot-password/);
     await expect(page.locator('body')).toBeVisible();
 
-    // 模板硬编码 <h2>找回密码</h2>
-    await expect(page.locator('h2', { hasText: '找回密码' })).toBeVisible({ timeout: 10_000 });
+    // 模板硬编码 <h1 class="journal-page-title">找回密码</h1>
+    await expect(page.locator('h1', { hasText: '找回密码' })).toBeVisible({ timeout: 10_000 });
   });
 
   test('找回密码页面渲染方式切换与第一步输入框', async ({ authedPage: page }) => {

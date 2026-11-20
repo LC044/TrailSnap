@@ -6,7 +6,7 @@
         <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ts-color-text-tertiary)]" />
         <input :value="searchQuery" @input="handleSearchInput" type="search" aria-label="搜索车票" placeholder="搜索车次 / 地点 / 乘车人" class="ts-input w-full pl-9" />
       </div>
-      <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center">
+      <div v-glass-refraction class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center">
         <button class="ts-glass-button lg:hidden" aria-label="搜索车票" :aria-expanded="showSearch" @click="showSearch = !showSearch"><Search class="h-5 w-5" /></button>
         <button class="ts-glass-button hidden md:inline-flex" aria-label="统计报表" @click="emit('go-to-statistics')"><BarChart2 class="h-5 w-5" /></button>
         <button class="ts-glass-button hidden md:inline-flex" aria-label="导入车票" @click="triggerImport"><Upload class="h-5 w-5" /></button>

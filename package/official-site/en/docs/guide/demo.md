@@ -1,3 +1,7 @@
+---
+description: "OCR demo: real train ticket samples showing field extraction, tilted shots and busy backgrounds."
+---
+
 # Recognition Demo
 
 TrailSnap is powered by an OCR engine optimized specifically for train ticket recognition.

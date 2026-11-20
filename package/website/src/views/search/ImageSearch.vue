@@ -2,12 +2,13 @@
   <div class="ts-page-background mx-auto w-full max-w-screen-2xl min-h-full px-[var(--ts-page-gutter)] pb-8">
     <header class="ts-browse-header flex items-center gap-3">
       <BackButton label="返回" @click="goBack" />
-      <h1 class="ts-page-title">以图搜图</h1>
+      <h1 class="journal-page-title">以图搜图</h1>
     </header>
-    <section class="ts-surface mb-6 space-y-4 p-4 sm:p-6" aria-label="搜索来源">
-      <p class="ts-muted text-sm">上传图片或选择图库照片，查找画面相似的照片。</p>
+    <section class="image-search-source" aria-label="搜索来源" @dragover.prevent @drop.prevent="dropFile">
+      <div v-if="!previewUrl" class="image-search-mark" aria-hidden="true"><ScanSearch /></div>
+      <p class="ts-muted text-sm">拖放图片、上传文件或从图库选择，查找相似画面。</p>
       <div class="flex flex-wrap gap-3">
-        <button class="ts-button ts-button-primary" :disabled="loading" @click="fileInput?.click()"><Upload class="h-4 w-4" />上传图片</button>
+        <button class="ts-button image-search-upload" :disabled="loading" @click="fileInput?.click()"><Upload class="h-4 w-4" />上传图片</button>
         <button class="ts-button ts-button-secondary" :disabled="loading" @click="showPicker = true"><Images class="h-4 w-4" />从图库选择</button>
         <input ref="fileInput" class="hidden" type="file" accept="image/*" aria-label="上传搜索图片" @change="selectFile" />
       </div>
@@ -34,7 +35,7 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Upload, Images } from 'lucide-vue-next'
+import { Upload, Images, ScanSearch } from 'lucide-vue-next'
 import BackButton from '@/components/ui/BackButton.vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import PhotoSelector from '@/components/PhotoSelector.vue'
@@ -85,11 +86,20 @@ const search = async () => {
     if (current === requestId) loading.value = false
   }
 }
-const selectFile = async (event: Event) => {
+const selectFile = (event: Event) => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (!file) return
+  if (file) void useSourceFile(file)
+}
+function dropFile(event: DragEvent) {
+  if (loading.value) return
+  const files = event.dataTransfer?.files
+  if (!files?.length) return
+  if (files.length === 1) void useSourceFile(files[0])
+  else error.value = '一次只能搜索一张图片'
+}
+async function useSourceFile(file: File) {
   if (!file.type.startsWith('image/') || file.size === 0 || file.size > 20 * 1024 * 1024) {
     error.value = '请选择不超过 20 MB 的有效图片'
     return
@@ -129,4 +139,12 @@ onUnmounted(() => { ++requestId; releasePreview() })
   overflow: hidden;
   padding: 0;
 }
+</style>
+<style scoped>
+.image-search-source { display: grid; gap: 13px; justify-items: center; margin: 12px 0 22px; padding: clamp(24px, 5vw, 66px) 15px; border: 1px dashed var(--ts-color-border); border-radius: 21px; background: var(--ts-journal-rail); text-align: center; }
+.image-search-mark { display: grid; width: 58px; height: 58px; place-items: center; border-radius: 17px; background: var(--ts-journal-active); color: var(--ts-journal-accent-text); }
+.image-search-mark svg { width: 28px; height: 28px; }
+.image-search-upload { background: var(--ts-journal-action); color: white; }
+.image-search-upload:hover { background: var(--ts-journal-action-hover); }
+.image-search-source .flex { justify-content: center; }
 </style>

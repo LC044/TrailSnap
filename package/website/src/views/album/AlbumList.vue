@@ -1,15 +1,14 @@
 <template>
   <div class="ts-browse-page album-library mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] pb-6">
     <!-- Header -->
-    <div class="ts-browse-header mb-5 flex items-center justify-between gap-3 sm:mb-8">
+    <div class="ts-browse-header album-masthead flex items-center justify-between gap-3">
       <div class="min-w-0">
-        <h1 class="ts-page-title text-gray-900 dark:text-white">相册</h1>
-
+        <h1 class="journal-page-title">相册</h1>
       </div>
-      <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0" aria-label="相册工具栏">
-        <button class="ts-glass-button" aria-label="搜索相册" :aria-expanded="showAlbumSearch" @click="showAlbumSearch = !showAlbumSearch"><Search class="h-5 w-5" /></button>
+      <div v-glass-refraction class="ts-liquid-glass ts-glass-toolbar flex shrink-0" aria-label="相册工具栏">
+        <button ref="albumSearchTrigger" class="ts-glass-button" aria-label="搜索相册" :aria-expanded="showAlbumSearch" @click="toggleAlbumSearch"><Search class="h-5 w-5" /></button>
         <div class="relative">
-          <button class="ts-glass-button" aria-label="新建相册" :aria-expanded="showCreateActions" aria-haspopup="menu" @click="showAlbumActions = false; showCreateActions = !showCreateActions"><Plus class="h-5 w-5" /></button>
+          <button class="ts-glass-button album-create-button" aria-label="新建相册" :aria-expanded="showCreateActions" aria-haspopup="menu" @click="showAlbumActions = false; showCreateActions = !showCreateActions"><Plus class="h-5 w-5" /></button>
           <AdaptiveMenu v-model="showCreateActions" title="新建相册" mobile-presentation="popover" glass>
             <button v-for="kind in createKinds" :key="kind.value" class="ts-action-row" @click="showCreateActions = false; openCreateModal(kind.value)"><component :is="kind.icon" /><span>{{ kind.label }}</span></button>
           </AdaptiveMenu>
@@ -25,97 +24,57 @@
       </div>
     </div>
 
-    <div v-if="showAlbumSearch" class="mb-5">
-      <input v-model="albumSearch" aria-label="相册名称" placeholder="搜索相册名称" type="search" class="ts-input w-full" />
+    <div v-if="showAlbumSearch" class="album-searchbox">
+      <Search aria-hidden="true" />
+      <input ref="albumSearchInput" v-model="albumSearch" aria-label="相册名称" placeholder="搜索相册名称" type="search" @keydown.esc.stop="toggleAlbumSearch" />
+      <button type="button" class="ts-icon-button ts-button-ghost" aria-label="关闭相册搜索" @click="toggleAlbumSearch"><X class="h-5 w-5" /></button>
     </div>
 
-
     <div class="album-sections flex flex-col gap-8">
-    <!-- Custom Albums Section -->
-    <section v-if="!store.hiddenSections.includes('mine')" :style="{ order: sectionRank('mine') }">
-      <h2 class="mb-3 sm:mb-4"><button class="ts-section-title flex min-h-11 w-full items-center gap-2 text-gray-800 dark:text-gray-100" :aria-expanded="!collapsed.mine" @click="collapsed.mine = !collapsed.mine">
-        <ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed.mine }" />我的相册
-      </button></h2>
-      <div v-show="!collapsed.mine">
-      
-      <HorizontalStrip v-if="visibleAlbums.length > 0" label="我的相册" strip-class="album-cover-strip">
-        <div
-          v-for="album in visibleAlbums"
-          :key="album.id"
-          class="album-cover-card group relative cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-          role="button"
-          tabindex="0"
-          :aria-label="`打开相册 ${album.title}`"
-          @click="navigateToAlbum(album.id)"
-          @keydown.enter="navigateToAlbum(album.id)"
-          @keydown.space.prevent="navigateToAlbum(album.id)"
-          @touchstart="album.type !== 'system' ? onAlbumTouchStart(album, $event) : undefined"
-        >
-          <!-- Cover -->
-          <div class="relative mb-2.5 aspect-square overflow-hidden rounded-2xl border border-gray-100 bg-gray-100 shadow-sm transition-all duration-300 group-hover:shadow-md dark:border-gray-800 dark:bg-gray-800 sm:mb-3 sm:rounded-xl">
-            <img
-              :src="album.cover.thumbnail"
-              :alt="`${album.title}的封面`"
-              class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-              loading="lazy"
-            />
-            <!-- Overlay -->
-            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
-            <!-- Type Badge -->
-            <div class="absolute left-2 top-2 flex gap-1">
-               <span v-if="album.type === 'smart'" class="bg-primary-600/90 backdrop-blur-sm text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-                 <Sparkles class="w-3 h-3 text-white" /> 智能
-               </span>
-               <span v-if="album.type === 'conditional'" class="bg-primary-500/90 backdrop-blur-sm text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-                 <Filter class="w-3 h-3 text-white" /> 条件
-               </span>
-            </div>
-
-            <!-- Actions (Only for User Albums) -->
-            <div v-if="album.type !== 'system'" class="absolute right-2 top-2 z-10 hidden gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 md:flex md:group-hover:opacity-100">
-              <button
-                type="button"
-                @click.stop="openEditModal(album)"
-                class="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow-sm backdrop-blur-sm hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-800/90 dark:text-gray-300"
-                title="编辑"
-                :aria-label="`编辑相册 ${album.title}`"
-              >
-                <Edit2 class="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                @click.stop="confirmDelete(album)"
-                class="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow-sm backdrop-blur-sm hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-800/90 dark:text-gray-300"
-                title="删除"
-                :aria-label="`删除相册 ${album.title}`"
-              >
-                <Trash2 class="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-          <!-- Info -->
-          <div class="px-0.5">
-            <h3 class="ts-card-title truncate text-sm font-semibold text-gray-900 dark:text-white sm:text-base sm:font-bold">{{ album.title }}</h3>
-            <div class="flex justify-between items-center mt-1">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ album.count }} 个项目</p>
-              <!-- <p class="text-xs text-gray-400 dark:text-gray-400">{{ formatDate(album.createdAt) }}</p> -->
-            </div>
-          </div>
+    <section v-if="searchingAlbums || !store.hiddenSections.includes('mine')" :style="{ order: sectionRank('mine') }">
+      <h2 v-if="searchingAlbums" class="album-search-heading" aria-live="polite">{{ visibleAlbums.length }} 个相册</h2>
+      <h2 v-else class="mb-3 sm:mb-4">
+        <button type="button" class="ts-section-title flex min-h-11 w-full items-center gap-2" :aria-expanded="!collapsed.mine" @click="collapsed.mine = !collapsed.mine">
+          <ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed.mine }" />我的相册
+        </button>
+      </h2>
+      <div v-show="searchingAlbums || !collapsed.mine">
+        <div v-if="visibleAlbums.length" class="album-book-grid" :class="{ 'album-book-grid--search': searchingAlbums }">
+          <article v-for="album in displayedAlbums" :key="album.id" class="album-book">
+            <RouterLink :to="`/album/${album.id}`" class="album-book-link" :aria-label="`打开相册 ${album.title}`" @click.capture="guardAlbumClick" @touchstart.passive="onAlbumTouchStart(album, $event)">
+              <div class="album-book-cover">
+                <img v-if="album.cover.id && !failedAlbumCovers.has(album.cover.thumbnail)" :src="album.cover.preview || album.cover.thumbnail" alt="" loading="lazy" @error="failedAlbumCovers.add(album.cover.thumbnail)" />
+                <FolderHeart v-else aria-hidden="true" class="album-book-placeholder" />
+              </div>
+              <div class="album-book-caption">
+                <span class="album-book-type" v-if="album.type === 'smart' || album.type === 'conditional'">{{ album.type === 'smart' ? '智能相册' : '条件相册' }}</span>
+                <h3>{{ album.title }}</h3>
+                <span>{{ album.count.toLocaleString('zh-CN') }} 个项目</span>
+              </div>
+              <ArrowUpRight class="album-book-open" aria-hidden="true" />
+            </RouterLink>
+            <button v-if="album.type !== 'system'" type="button" class="album-book-more" :aria-label="`管理相册 ${album.title}`" @click="openContextMenu(album)">
+              <MoreHorizontal aria-hidden="true" />
+            </button>
+          </article>
         </div>
-      </HorizontalStrip>
-      
-      <!-- Empty State for Custom Albums -->
-      <div v-else class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-12 text-center text-gray-400 dark:text-gray-500 dark:border-gray-800 dark:bg-gray-800/50 sm:py-20">
-        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-          <FolderOpen class="w-8 h-8 text-gray-300 dark:text-gray-600" />
+        <div v-if="!searchingAlbums && visibleAlbums.length > collectionPreviewSize && !collectionExpanded" class="mt-3 text-center">
+          <button type="button" class="ts-button ts-button-secondary" @click="collectionExpanded = true">
+            显示全部 {{ visibleAlbums.length }} 个相册 <ChevronDown class="h-4 w-4" />
+          </button>
         </div>
-        <p>{{ albumSearch ? '没有匹配的相册' : '暂无自定义相册' }}</p>
-        <button type="button" @click="openCreateModal('user')" class="ts-button ts-button-ghost mt-4 text-primary-600 dark:text-primary-400">创建第一个相册</button>
-      </div>
+        <div v-if="!visibleAlbums.length && albumCollectionLoading" class="album-book-grid" aria-busy="true" aria-label="正在加载相册">
+          <span v-for="item in 3" :key="item" class="album-book-skeleton"></span>
+        </div>
+        <div v-else-if="!visibleAlbums.length" class="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--ts-color-border)] px-4 py-12 text-center ts-muted">
+          <FolderOpen class="mb-3 h-8 w-8" aria-hidden="true" />
+          <p>{{ searchingAlbums ? '没有匹配的相册' : '还没有自建相册' }}</p>
+          <button v-if="!searchingAlbums" type="button" @click="openCreateModal('user')" class="ts-button ts-button-secondary mt-4">创建相册</button>
+        </div>
       </div>
     </section>
 
-    <section v-if="!store.hiddenSections.includes('memories')" :style="{ order: sectionRank('memories') }">
+    <section v-if="!searchingAlbums && !store.hiddenSections.includes('memories')" :style="{ order: sectionRank('memories') }">
       <h2 class="mb-3 flex items-center gap-2">
         <button class="ts-section-title flex min-h-11 flex-1 items-center gap-2 text-left text-gray-900 dark:text-white" :aria-expanded="!collapsed.memories" @click="collapsed.memories = !collapsed.memories"><ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed.memories }" />回忆</button>
         <button class="min-h-11 text-xs text-gray-500 dark:text-gray-400" aria-label="查看全部回忆" @click="router.push('/memories')">{{ memoryTotal }} <ChevronRight class="inline h-4 w-4" /></button>
@@ -139,7 +98,7 @@
       </div>
     </section>
 
-    <section v-if="!store.hiddenSections.includes('tickets')" :style="{ order: sectionRank('tickets') }">
+    <section v-if="!searchingAlbums && !store.hiddenSections.includes('tickets')" :style="{ order: sectionRank('tickets') }">
       <h2 class="mb-3 flex items-center gap-2"><button class="ts-section-title flex min-h-11 flex-1 items-center gap-2 text-left text-gray-900 dark:text-white" :aria-expanded="!collapsed.tickets" @click="collapsed.tickets = !collapsed.tickets"><ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed.tickets }" />票夹</button><RouterLink to="/ticket" class="min-h-11 flex items-center text-xs text-primary-600 dark:text-primary-400">查看全部</RouterLink></h2>
       <div v-show="!collapsed.tickets"><TicketWalletPreview /></div>
     </section>
@@ -386,16 +345,15 @@ import type { MemoryItem } from '@/types/memory'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue';
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
-import { ref, reactive, onMounted, computed, type Component } from 'vue'
+import { ref, reactive, onMounted, computed, nextTick, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import type { Album, FaceIdentity, CreateAlbumDto } from '@/types/album'
-import { ArrowUp, ArrowDown, SlidersHorizontal, Search, MoreHorizontal, BookHeart, ChevronDown, Plus, Sparkles, Edit2, Trash2, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, SearchCheck, Stethoscope, WandSparkles, ChevronRight } from 'lucide-vue-next'
+import { ArrowUp, ArrowDown, ArrowUpRight, BookHeart, SlidersHorizontal, Search, MoreHorizontal, ChevronDown, Plus, Sparkles, Edit2, Trash2, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, SearchCheck, Stethoscope, WandSparkles, ChevronRight, X } from 'lucide-vue-next'
 import { albumService, type SmartAlbumRepresentative, type SmartAlbumSection } from '@/api/album'
 import { locationService } from '@/api/location'
 import { faceApi } from '@/api/face'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { format } from 'date-fns'
 import { useWindowSize } from '@vueuse/core'
 import { useUiStore } from '@/stores/uiStore'
 import { useOverlayStack } from '@/composables/useOverlayStack'
@@ -421,10 +379,6 @@ const startMemoryDetective = () => {
 
 const { width } = useWindowSize()
 const isMobile = computed(() => width.value < 768)
-
-const formatDate = (timestamp: number) => {
-  return format(new Date(timestamp), 'yyyy-MM-dd')
-}
 
 // Smart Albums Configuration
 type SmartAlbumKind = 'people' | 'location' | 'classification'
@@ -458,7 +412,7 @@ const loadMemoryPreviews = async (append = false) => {
 const collapsed = computed(() => store.collapsedSections)
 const showSectionSettings = ref(false)
 const sectionRank = (id: string) => store.sections.findIndex(section => section.id === id)
-const visibleSmartAlbums = computed(() => smartAlbums.value.filter(group => !store.hiddenSections.includes(group.id)))
+const visibleSmartAlbums = computed(() => searchingAlbums.value ? [] : smartAlbums.value.filter(group => !store.hiddenSections.includes(group.id)))
 const onGroupScroll = (id: SmartAlbumKind, event: Event) => {
   const element = event.target as HTMLElement
   if (element.scrollWidth - element.scrollLeft - element.clientWidth < 180) void store.loadMoreSection(id)
@@ -469,9 +423,26 @@ const onMemoryScroll = (event: Event) => {
 }
 const showAlbumSearch = ref(false)
 const albumSearch = ref('')
+const albumSearchInput = ref<HTMLInputElement | null>(null)
+const albumSearchTrigger = ref<HTMLButtonElement | null>(null)
+const albumCollectionLoading = ref(true)
+const collectionExpanded = ref(false)
+const collectionPreviewSize = 7
+const failedAlbumCovers = ref(new Set<string>())
+const searchingAlbums = computed(() => Boolean(showAlbumSearch.value && albumSearch.value.trim()))
 const showCreateActions = ref(false)
 const showAlbumActions = ref(false)
-const visibleAlbums = computed(() => store.allAlbums.filter(album => !showAlbumSearch.value || album.title.toLocaleLowerCase().includes(albumSearch.value.trim().toLocaleLowerCase())))
+const visibleAlbums = computed(() => store.allAlbums.filter(album => !searchingAlbums.value || album.title.toLocaleLowerCase().includes(albumSearch.value.trim().toLocaleLowerCase())))
+const displayedAlbums = computed(() => searchingAlbums.value || collectionExpanded.value
+  ? visibleAlbums.value
+  : visibleAlbums.value.slice(0, collectionPreviewSize))
+async function toggleAlbumSearch() {
+  showAlbumSearch.value = !showAlbumSearch.value
+  if (!showAlbumSearch.value) albumSearch.value = ''
+  await nextTick()
+  if (showAlbumSearch.value) albumSearchInput.value?.focus()
+  else albumSearchTrigger.value?.focus()
+}
 const createKinds = [
   { value: 'user', label: '普通相册', icon: FolderHeart },
   { value: 'conditional', label: '条件相册', icon: Filter },
@@ -538,10 +509,6 @@ const navigateToSmartAlbum = (album: any) => {
   } else {
     ElMessage.info('功能开发中，敬请期待')
   }
-}
-
-const navigateToAlbum = (id: string) => {
-  router.push(`/album/${id}`)
 }
 
 // Modal Logic
@@ -828,24 +795,25 @@ const confirmDelete = async (album: Album) => {
   }
 }
 
-onMounted(async () => {
-  await Promise.all([store.fetchAlbums(), loadSmartOverview(), loadMemoryPreviews()])
+onMounted(() => {
+  void store.fetchAlbums().finally(() => { albumCollectionLoading.value = false })
+  void loadSmartOverview()
+  void loadMemoryPreviews()
 })
 
-// ----- 移动端长按相册卡片触发的位置感知的上下文菜单 -----
-interface ContextMenuPos { x: number; y: number }
 const contextMenuAlbum = ref<Album | null>(null)
-const menuPos = ref<ContextMenuPos>({ x: 0, y: 0 })
 const showContextMenu = ref(false)
 useOverlayStack(showContextMenu, () => {
   showContextMenu.value = false
   contextMenuAlbum.value = null
 })
 
-const openContextMenu = (album: Album, pos: ContextMenuPos) => {
+const openContextMenu = (album: Album) => {
   contextMenuAlbum.value = album
-  menuPos.value = pos
   showContextMenu.value = true
+}
+const guardAlbumClick = (event: MouseEvent) => {
+  if (showContextMenu.value) event.preventDefault()
 }
 
 const closeContextMenu = () => {
@@ -865,16 +833,11 @@ const deleteFromContextMenu = async () => {
   if (album) await confirmDelete(album)
 }
 
-// useLongPress 接收 onLongPress 时一并返回触点坐标,避免闭包泄露 DOM 引用
 const { onTouchstart: longPressHandler } = useLongPress({
-  onLongPress: (event: TouchEvent) => {
+  onLongPress: () => {
     const album = currentAlbumForLongPress.value
     if (!album || album.type === 'system') return
-    const touch = event.changedTouches?.[0]
-    const pos: ContextMenuPos = touch
-      ? { x: touch.clientX, y: touch.clientY }
-      : menuPos.value
-    openContextMenu(album, pos)
+    openContextMenu(album)
   },
 })
 
@@ -889,20 +852,60 @@ const onAlbumTouchStart = (album: Album, event: TouchEvent) => {
 </script>
 
 <style scoped>
+.album-searchbox { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding: 3px 5px 3px 15px; border: 1px solid var(--ts-color-border); border-radius: 999px; background: var(--ts-color-surface); }
+.album-searchbox:focus-within { border-color: var(--ts-journal-focus); }
+.album-searchbox > svg { width: 19px; color: var(--ts-color-text-secondary); flex-shrink: 0; }
+.album-searchbox input { flex: 1; width: 0; padding-block: 8px; background: transparent; font-size: 16px; outline: none; }
+.album-searchbox input::-webkit-search-cancel-button { display: none; }
+.album-search-heading { margin-bottom: 12px; color: var(--ts-color-text-secondary); font-size: 14px; }
+.album-book-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.album-book, .album-book-skeleton { position: relative; min-width: 0; min-height: clamp(170px, 17vw, 264px); border-radius: 18px; }
+.album-book-skeleton { background: var(--ts-color-surface-muted); }
+.album-book-grid:not(.album-book-grid--search) > :first-child { grid-column: span 2; }
+.album-book-link { position: relative; isolation: isolate; display: flex; min-height: inherit; height: 100%; flex-direction: column; justify-content: end; overflow: hidden; border-radius: inherit; color: #f8fafc; background: #293548; }
+.album-book-link::after { content: ''; position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, rgb(2 6 23 / 30%), transparent 30%, rgb(2 6 23 / 88%) 100%); }
+.album-book-cover { position: absolute; z-index: -2; inset: 0; display: grid; place-items: center; overflow: hidden; background: radial-gradient(ellipse at 70% 30%, #45556d, #1e293b 72%); }
+.album-book-cover img { width: 100%; height: 100%; object-fit: cover; transition: transform 500ms cubic-bezier(.22,.61,.36,1); }
+.album-book-grid:not(.album-book-grid--search) > :first-child img { object-position: center 67%; }
+.album-book-placeholder { width: 42px; height: 42px; color: var(--ts-journal-on-image); stroke-width: 1; }
+.album-book-link:hover img { transform: scale(1.065); }
+.album-book-link:focus-visible, .album-book-more:focus-visible { outline: 2px solid var(--ts-journal-on-image); outline-offset: -3px; }
+.album-book-caption { display: grid; justify-items: start; gap: 5px; padding: 16px 36px 16px 16px; }
+.album-book-caption h3 { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-family: var(--ts-journal-serif); font-size: clamp(19px, 2vw, 29px); font-weight: 700; line-height: 1.19; overflow-wrap: anywhere; }
+.album-book-caption span { color: #e2e8f0; font-size: 12px; font-weight: 550; }
+.album-book-caption .album-book-type { border-bottom: 1px solid var(--ts-journal-on-image); color: var(--ts-journal-on-image); padding-bottom: 3px; }
+.album-book-open { position: absolute; right: 12px; bottom: 17px; width: 17px; height: 17px; }
+.album-book-more { display: grid; position: absolute; top: 7px; right: 7px; width: 44px; height: 44px; place-items: center; border-radius: 50%; color: #f8fafc; background: rgb(15 23 42 / 68%); }
+.album-book-more:hover { background: #1e293b; }
+.album-book-more svg { width: 19px; }
+.album-masthead { margin-bottom: 16px; padding-block: 24px 14px; border-bottom: 1px solid var(--ts-color-divider); }
+.album-create-button { background: var(--ts-journal-action); color: white; }
+.album-create-button:hover { background: var(--ts-journal-action-hover); color: white; }
+.album-sections > section + section { border-top: 1px solid var(--ts-color-divider); padding-top: 14px; }
+.album-sections .ts-section-title { font-size: clamp(19px, 2.1vw, 25px); font-weight: 650; letter-spacing: -.035em; }
+.album-custom-cover { outline: 1px solid var(--ts-color-border); outline-offset: -1px; }
+.album-cover-card:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; border-radius: 14px; }
 .album-details-form :deep(.el-select), .album-details-form :deep(.el-tree-select) { min-width: 0; }
 
 :deep(.album-cover-strip) { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: var(--ts-page-gutter); padding: 2px 2px 8px; padding-bottom: 4px; scrollbar-width: none; }
   :deep(.album-cover-strip)::-webkit-scrollbar { display: none; }
   .album-cover-card { flex: 0 0 clamp(140px, 18vw, 220px); min-width: 0; scroll-snap-align: start; }
 @media (max-width: 767px) {
+  .album-book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .album-book, .album-book-skeleton { min-height: clamp(142px, 42vw, 230px); border-radius: 14px; }
+  .album-book-grid:not(.album-book-grid--search) > :first-child { min-height: clamp(200px, 54vw, 310px); }
+  .album-book-grid:not(.album-book-grid--search) > .album-book:nth-child(even):last-child { grid-column: span 2; }
+  .album-book-caption { padding: 12px 28px 12px 12px; }
+  .album-book-open { right: 9px; bottom: 14px; width: 15px; }
+  .album-book-more { top: 4px; right: 4px; }
   /* Leave part of the next square cover visible to invite horizontal swiping. */
-  .album-library { --album-cover-columns: 3.5; --album-cover-gap: 8px; }
-  .album-library .ts-browse-header { margin-bottom: 8px; }
-  .album-sections { gap: 8px; }
+  .album-library { --album-cover-columns: 2.6; --album-cover-gap: 10px; }
+  .album-library .album-masthead { margin-bottom: 10px; padding-block: 14px 8px; }
+  .album-sections { gap: 16px; }
   .album-sections > section > h2 { margin-bottom: 4px; }
   .album-sections > section > h2 > :is(button, a) { position: relative; min-height: 36px; }
   .album-sections > section > h2 > :is(button, a)::after { content: ''; position: absolute; inset: -4px 0; }
-  .album-sections .ts-section-title { font-size: 16px; }
+  .album-sections .ts-section-title { font-size: 18px; }
   :deep(.album-cover-strip) { gap: var(--album-cover-gap); padding-bottom: 2px; }
   .album-cover-card { flex-basis: calc((100% - (var(--album-cover-columns) - 1) * var(--album-cover-gap)) / var(--album-cover-columns)); }
   .album-cover-card > div:first-child { width: 100%; border-radius: 12px; margin-bottom: 4px; }
@@ -912,7 +915,13 @@ const onAlbumTouchStart = (album: Album, event: TouchEvent) => {
   .album-cover-card:active { transform: scale(.98); }
 }
 @media (min-width: 420px) and (max-width: 767px) {
-  .album-library { --album-cover-columns: 4.5; }
+  .album-library { --album-cover-columns: 3.4; }
+}
+@media (min-width: 1024px) {
+  .album-book-grid:not(.album-book-grid--search):has(> .album-book:nth-child(4):last-child) { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .album-cover-card :deep(img), .album-cover-card > div, .album-book-cover img { transition-duration: 0s; }
 }
 
 </style>

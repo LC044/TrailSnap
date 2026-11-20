@@ -1,3 +1,7 @@
+---
+description: "Design drafts for upcoming TrailSnap features, including photo editing and generated travel journals, open for discussion."
+---
+
 # Feature Design Document
 
 This document collects design drafts for upcoming TrailSnap features, serving as a reference for community discussion and contributions.

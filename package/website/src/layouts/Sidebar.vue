@@ -1,19 +1,19 @@
 <template>
   <aside
     :class="[
-      'ts-sidebar ts-glass flex flex-col border-r shrink-0 z-40',
-      isCollapsed ? 'w-16' : 'w-60'
+      'ts-sidebar journal-sidebar flex flex-col border-r shrink-0 z-40',
+      isCollapsed ? 'w-16' : 'w-56'
     ]"
   >
     <!-- 顶部 Logo 区域 (可折叠) -->
     <div
-      class="h-14 flex items-center border-b border-slate-200 dark:border-slate-800 shrink-0"
+      class="journal-sidebar-brand h-20 flex items-center shrink-0"
       :class="isCollapsed ? 'justify-center px-2' : 'justify-between px-4'"
     >
-      <div v-if="!isCollapsed" class="flex items-center overflow-hidden whitespace-nowrap">
-        <img src="@/assets/logo.svg" alt="Logo" class="w-8 h-8 shrink-0 rounded-lg" />
-        <h1 class="ml-3 font-bold text-lg text-slate-800 dark:text-slate-100">行影集</h1>
-      </div>
+      <RouterLink v-if="!isCollapsed" to="/" class="flex items-center gap-2.5 whitespace-nowrap" aria-label="行影集首页">
+        <img src="@/assets/logo.svg" alt="" class="w-8 h-8 shrink-0 rounded-lg" />
+        <span>行影集</span>
+      </RouterLink>
       <!-- 折叠按钮 (仅在非手机端显示？也可以手机端隐藏侧边栏) -->
       <button
         @click="toggleCollapse"
@@ -21,7 +21,7 @@
         :aria-label="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
         class="ts-icon-button ts-button-sm ts-button-ghost hidden md:inline-flex"
       >
-        <Menu v-if="isCollapsed" class="w-5 h-5" />
+        <PanelLeftOpen v-if="isCollapsed" class="w-5 h-5" />
         <ChevronLeft v-else class="w-5 h-5" />
       </button>
     </div>
@@ -159,7 +159,6 @@
         </span>
         <span v-if="!isCollapsed" class="ml-2.5 min-w-0">
           <span class="block truncate text-sm font-semibold">AI 助手</span>
-          <span class="block truncate text-[11px] text-slate-500 dark:text-slate-400">搜照片、整理相册</span>
         </span>
         <Sparkles v-if="!isCollapsed" class="ml-auto h-4 w-4 shrink-0 text-primary-500/70" />
       </button>
@@ -190,6 +189,7 @@
             :title="isCollapsed ? item.label : undefined"
             class="sidebar-nav-button text-slate-700 dark:text-slate-200"
             :class="{ 'sidebar-nav-active': isDesktopNavActive(item) }"
+            :aria-current="isDesktopNavActive(item) ? 'page' : undefined"
           >
             <component :is="item.icon" class="w-5 h-5 shrink-0" />
             <transition name="fade">
@@ -269,7 +269,7 @@
     </nav>
 
     <!-- 底部设置与回收站入口 -->
-    <div class="flex shrink-0 flex-col space-y-1 border-t border-slate-200 p-2.5 dark:border-slate-800">
+    <div class="flex shrink-0 flex-col space-y-1 border-t border-[var(--ts-color-divider)] p-2.5">
       <SidebarTaskManager :is-collapsed="isCollapsed" />
 
       <RouterLink
@@ -340,7 +340,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Images,
   ChevronLeft,
-  Menu,
+  PanelLeftOpen,
   Search,
   X,
   User,
@@ -360,7 +360,7 @@ import {
   Bot,
   Bell,
 } from 'lucide-vue-next'
-import { useDebounceFn } from '@vueuse/core'
+import { useDebounceFn, useMediaQuery } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'
 import searchService, { type SearchSuggestion } from '@/api/search'
 import { injectNavItems, getNavIcon, getThumbnailUrl } from '@/composables/useNavItems'
@@ -437,9 +437,9 @@ const isDesktopNavActive = (item: AppNavItem) => {
 const SIDEBAR_SECTIONS_KEY = 'trailsnap_sidebar_sections'
 const loadExpandedSections = (): Record<string, boolean> => {
   try {
-    return JSON.parse(localStorage.getItem(SIDEBAR_SECTIONS_KEY) || '{}')
+    return { 探索: true, ...JSON.parse(localStorage.getItem(SIDEBAR_SECTIONS_KEY) || '{}') }
   } catch {
-    return {}
+    return { 探索: true }
   }
 }
 const expandedSections = ref<Record<string, boolean>>(loadExpandedSections())
@@ -476,9 +476,9 @@ const isActiveRoute = (path: string) => {
 }
 
 // 平板横向空间有限，默认收起导航，仅保留可辨识的图标栏；用户仍可手动展开。
-const isCollapsed = ref(
-  typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1280
-)
+const compactViewport = useMediaQuery('(min-width: 768px) and (max-width: 1199px)')
+const isCollapsed = ref(compactViewport.value)
+watch(compactViewport, compact => { isCollapsed.value = compact })
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
@@ -685,6 +685,12 @@ const getIcon = (type: string) => {
 </script>
 
 <style scoped>
+.journal-sidebar { background: var(--ts-journal-rail); border-color: var(--ts-color-divider); }
+.journal-sidebar-brand span { color: var(--ts-color-text); font-family: var(--ts-journal-serif); font-size: 22px; font-weight: 700; letter-spacing: -.05em; }
+.journal-sidebar-brand a:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: 4px; border-radius: 7px; }
+.journal-sidebar :deep(.ts-input) { border-color: var(--ts-color-border); }
+.journal-sidebar :deep(.ts-input:focus) { border-color: var(--ts-journal-focus); outline-color: var(--ts-journal-focus); }
+
 .sidebar-nav-button,
 .sidebar-icon-button {
   position: relative;
@@ -705,8 +711,8 @@ const getIcon = (type: string) => {
 .sidebar-nav-button:hover,
 .sidebar-icon-button:hover,
 .sidebar-quick-button:hover {
-  color: var(--theme-primary);
-  background: rgba(var(--theme-rgb), 0.08);
+  color: var(--ts-color-text);
+  background: var(--ts-color-surface-muted);
 }
 
 .sidebar-nav-button:active,
@@ -720,17 +726,22 @@ const getIcon = (type: string) => {
 .sidebar-icon-button:focus-visible,
 .sidebar-quick-button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--theme-primary);
+  box-shadow: 0 0 0 2px var(--ts-journal-focus);
 }
 
 .sidebar-nav-active {
-  color: var(--theme-primary) !important;
+  color: var(--ts-journal-accent-text) !important;
   font-weight: 600;
-  background:
-    linear-gradient(100deg, rgba(var(--theme-rgb), 0.13), rgba(var(--theme-rgb), 0.07)) !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(var(--theme-rgb), 0.12),
-    0 3px 10px rgba(var(--theme-rgb), 0.06);
+  background: var(--ts-journal-active) !important;
+}
+
+.sidebar-nav-active::before {
+  content: "";
+  position: absolute;
+  inset: 12px auto 12px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--ts-journal-focus);
 }
 
 .sidebar-quick-button {
@@ -748,12 +759,8 @@ const getIcon = (type: string) => {
 }
 
 .ai-assistant-button {
-  border: 1px solid rgba(var(--theme-rgb), 0.16);
-  background:
-    linear-gradient(135deg, rgba(var(--theme-rgb), 0.13), rgba(var(--theme-rgb), 0.04));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    0 4px 12px rgba(var(--theme-rgb), 0.06);
+  border: 1px solid var(--ts-color-border);
+  background: var(--ts-color-surface);
   transition:
     color 160ms ease,
     border-color 160ms ease,
@@ -762,13 +769,9 @@ const getIcon = (type: string) => {
 }
 
 .ai-assistant-button:hover {
-  border-color: rgba(var(--theme-rgb), 0.3);
-  color: var(--theme-primary);
-  background:
-    linear-gradient(135deg, rgba(var(--theme-rgb), 0.18), rgba(var(--theme-rgb), 0.07));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.42),
-    0 6px 16px rgba(var(--theme-rgb), 0.12);
+  border-color: var(--ts-color-text-tertiary);
+  color: var(--ts-color-text);
+  background: var(--ts-color-surface-muted);
 }
 
 .fade-enter-active,
@@ -793,5 +796,8 @@ const getIcon = (type: string) => {
 }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #475569;
+}
+@media (prefers-reduced-motion: reduce) {
+  .journal-sidebar, .journal-sidebar button, .journal-sidebar a, .journal-sidebar .fade-enter-active, .journal-sidebar .fade-leave-active { transition-duration: 0s; }
 }
 </style>

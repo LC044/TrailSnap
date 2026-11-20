@@ -1,9 +1,9 @@
 <template>
-  <div class="h-full flex flex-col md:flex-row gap-4 p-4 lg:p-6 bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
+  <div class="guess-city journal-neutral-page h-full flex flex-col md:flex-row gap-4 p-4 lg:p-6 overflow-hidden relative">
     
     <!-- Header/Title -->
     <div class="absolute top-4 left-6 z-10 hidden md:block pointer-events-none">
-      <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+      <h1 class="journal-page-title flex items-center gap-2">
         <i class="mgc_location_line text-primary-500"></i>
         猜城市
       </h1>
@@ -18,7 +18,7 @@
         <template v-if="photoId">
           <img
             :src="toServerUrl(`/api/medias/${photoId}/file`)"
-            class="w-full h-full object-contain bg-gray-100 dark:bg-gray-900"
+            class="w-full h-full object-contain bg-slate-900" alt="用于猜城市的照片"
           />
         </template>
         <div v-else-if="noPhoto" class="w-full h-full flex flex-col items-center justify-center gap-4 p-6 text-center bg-gray-100 dark:bg-gray-900">
@@ -42,7 +42,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 md:p-6 flex flex-col gap-4 h-full md:h-auto overflow-y-auto">
           
           <div class="flex justify-between items-center md:hidden">
-            <h1 class="text-xl font-bold text-gray-800 dark:text-gray-100">猜城市</h1>
+            <h1 class="journal-page-title">猜城市</h1>
           </div>
 
           <!-- Attempts Left -->

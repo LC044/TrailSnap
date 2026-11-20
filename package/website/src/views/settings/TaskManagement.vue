@@ -16,35 +16,39 @@
         <button type="button" class="ts-button ts-button-secondary mt-4" :disabled="loading" @click="fetchTasks">重新加载</button>
       </div>
       <template v-else>
-        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <div class="flex min-w-0 items-start gap-3">
+        <div class="task-overview-head">
+          <div class="task-overview-heading">
             <span class="task-overview-icon" :class="{ 'task-has-failures': summary.failed > 0 }">
               <AlertCircle v-if="summary.failed" class="h-6 w-6" />
               <Clock3 v-else-if="summary.pending" class="h-6 w-6" />
               <CheckCircle2 v-else class="h-6 w-6" />
             </span>
-            <h2 class="ts-section-title">{{ overviewTitle }}</h2>
+            <div class="min-w-0">
+              <h2 class="ts-section-title">{{ overviewTitle }}</h2>
+              <p class="task-overview-sub">{{ overviewDescription }}</p>
+            </div>
           </div>
           <button v-if="summary.failed" type="button" class="ts-button ts-button-sm task-failure-cta" :aria-label="`查看并处理 ${formatCount(summary.failed)} 项失败任务`" @click="taskFilter = 'failed'">
-            处理失败项 <span class="tabular-nums">{{ formatCount(summary.failed) }}</span> <ChevronRight class="h-4 w-4" />
+            <span>处理失败项 <span class="tabular-nums">{{ formatCount(summary.failed) }}</span></span>
+            <ChevronRight class="h-4 w-4" />
           </button>
         </div>
         <!-- 状态摘要即筛选：胶囊计数与下方列表 taskFilter 联动 -->
         <div class="task-summary-row mt-5" role="group" aria-label="按状态筛选任务">
           <button v-for="statusFilter in summaryFilters" :key="statusFilter.value" type="button"
-            class="task-summary-chip" :class="{ 'task-chip-active': taskFilter === statusFilter.value }"
+            class="task-summary-chip" :class="[`task-summary-chip-${statusFilter.value}`, { 'task-chip-active': taskFilter === statusFilter.value }]"
             :aria-pressed="taskFilter === statusFilter.value" :aria-label="`${statusFilter.label} ${formatCount(statusFilter.count)}，${taskFilter === statusFilter.value ? '已选中' : '点击筛选'}`"
             @click="taskFilter = taskFilter === statusFilter.value && statusFilter.value !== 'all' ? 'all' : statusFilter.value">
             <span class="task-chip-dot" :class="`task-dot-${statusFilter.value}`" aria-hidden="true" />
-            <span>{{ statusFilter.label }}</span>
-            <span class="tabular-nums">{{ formatCount(statusFilter.count) }}</span>
+            <span class="task-chip-label">{{ statusFilter.label }}</span>
+            <span class="task-chip-count tabular-nums" :class="{ 'task-count-zero': statusFilter.count === 0 }">{{ formatCount(statusFilter.count) }}</span>
           </button>
         </div>
       </template>
     </section>
 
     <section class="task-groups" aria-labelledby="task-list-title">
-      <h2 id="task-list-title" class="ts-section-title mb-3">{{ filteredTitle }}</h2>
+      <h2 id="task-list-title" class="task-list-title ts-section-title mb-3">{{ filteredTitle }}</h2>
 
       <!-- 需要关注：失败 / 等待条件 / 已暂停 -->
       <section v-if="attentionTasks.length" class="task-tier" aria-label="需要关注">
@@ -98,7 +102,7 @@
     <details class="task-performance ts-surface">
       <summary class="flex cursor-pointer items-center gap-3 p-4 md:p-6">
         <Settings2 class="h-5 w-5 shrink-0 ts-muted" />
-        <span class="min-w-0 flex-1"><span class="block text-[15px] font-semibold">后台处理性能</span><span class="ts-muted mt-1 block text-sm">调整处理模式与快速模式，不影响任务列表的查看</span></span>
+        <span class="min-w-0 flex-1"><span class="block text-[15px] font-semibold">后台任务设置</span></span>
         <ChevronDown class="task-performance-chevron h-4 w-4 shrink-0 ts-muted" />
       </summary>
       <div class="border-t ts-divider p-4 md:p-6">
@@ -166,6 +170,13 @@ const overviewTitle = computed(() => {
   if (summary.value.failed) return '有失败任务需要处理'
   if (summary.value.pending) return '还有任务待处理'
   return '当前没有待处理任务'
+})
+
+// 总览副标题：移动端与桌面端共用，补充“点按钮之后会发生什么”
+const overviewDescription = computed(() => {
+  if (summary.value.failed) return `共 ${formatCount(summary.value.failed)} 项失败任务，处理后会重新排队`
+  if (summary.value.pending) return `共 ${formatCount(summary.value.pending)} 项任务正在排队处理`
+  return '后台任务已清空，新任务会自动出现在这里'
 })
 
 // 状态摘要胶囊：与 taskFilter 一一对应，计数分别为任务数与类目数
@@ -424,6 +435,9 @@ onUnmounted(() => {
 .task-management { min-width: 0; container: task-management / inline-size; }
 /* —— 总览：警示态 + 状态胶囊 —— */
 .task-overview-alert { border-color: rgb(239 68 68 / 35%); }
+.task-overview-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 16px; }
+.task-overview-heading { display: flex; min-width: 0; align-items: flex-start; gap: 12px; }
+.task-overview-sub { margin-top: 4px; font-size: 13px; line-height: 1.55; color: var(--ts-color-text-secondary); overflow-wrap: anywhere; }
 .task-overview-icon { display: flex; flex-shrink: 0; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; color: var(--theme-primary); background: rgba(var(--theme-rgb), .1); }
 .task-has-failures { color: var(--ts-color-danger); background: rgb(239 68 68 / 10%); }
 .task-failure-cta { color: var(--ts-color-danger); }
@@ -432,7 +446,7 @@ onUnmounted(() => {
   display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
   padding: 4px 12px 4px 10px; border-radius: 10px; font-size: 13px;
   color: var(--ts-color-text-secondary); background: var(--ts-color-surface-muted);
-  transition: background-color var(--ts-motion-fast) ease, color var(--ts-motion-fast) ease;
+  transition: background-color var(--ts-motion-fast) ease, color var(--ts-motion-fast) ease, box-shadow var(--ts-motion-fast) ease;
 }
 .task-summary-chip:hover { color: var(--ts-color-text); }
 .task-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ts-color-text-tertiary); }
@@ -478,7 +492,45 @@ onUnmounted(() => {
   .task-row-idle { padding: 12px 20px; }
 }
 @media (max-width: 767px) {
-  .task-summary-chip { min-height: 44px; }
+  /* 移动端总览：竖排信息区 + 整宽主操作 + 四段等分统计条，避免胶囊换行 */
   .task-overview.ts-settings-panel { padding: 16px; }
+  .task-overview-head { display: block; }
+  .task-overview-heading { align-items: center; gap: 10px; }
+  .task-overview-icon { width: 40px; height: 40px; border-radius: 11px; }
+  .task-overview-icon svg { width: 20px; height: 20px; }
+  .task-overview-sub { margin-top: 3px; }
+  .task-failure-cta {
+    display: flex; width: 100%; min-height: 46px; margin-top: 14px; padding: 0 14px;
+    justify-content: space-between; border-radius: 13px; border-color: transparent;
+    background: color-mix(in srgb, var(--ts-color-danger) 10%, transparent);
+    font-size: 15px; font-weight: 600;
+  }
+  .task-failure-cta:active { background: color-mix(in srgb, var(--ts-color-danger) 18%, transparent); }
+  .task-summary-row {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px;
+    padding: 2px; background: var(--ts-color-surface-muted); border-radius: 14px;
+  }
+  /* 移动端用分区小标题（需要关注/进行中）承担层级，去掉重复的“处理类型”大标题 */
+  .task-list-title { display: none; }
+  .task-tier + .task-tier { margin-top: 18px; }
+  .task-tier-title { margin-bottom: 8px; padding-left: 4px; font-size: 12px; font-weight: 500; letter-spacing: .01em; color: var(--ts-color-text-secondary); }
+  .task-tier-attention { font-weight: 600; color: var(--ts-color-danger); }
+  .task-summary-chip {
+    display: flex; flex-direction: column-reverse; align-items: center; justify-content: center;
+    gap: 2px; min-height: 56px; padding: 8px 2px; border-radius: 12px;
+    background: transparent; font-size: 11px; line-height: 1.25;
+  }
+  .task-summary-chip:hover { color: var(--ts-color-text-secondary); }
+  .task-chip-dot { display: none; }
+  .task-chip-label { font-size: 11px; font-weight: 500; white-space: nowrap; color: var(--ts-color-text-secondary); }
+  .task-chip-count { font-size: 18px; font-weight: 600; color: var(--ts-color-text); }
+  .task-chip-active { background: var(--ts-color-surface); box-shadow: 0 1px 4px rgb(15 23 42 / 8%); }
+  .task-chip-active .task-chip-label { color: var(--theme-primary); font-weight: 600; }
+  .task-summary-chip-failed .task-chip-count { color: var(--ts-color-danger); }
+  .task-summary-chip-paused .task-chip-count { color: #b45309; }
+  .task-count-zero { color: var(--ts-color-text-tertiary) !important; }
+  .task-chip-active .task-chip-count, .task-chip-active .task-chip-label { color: var(--theme-primary); }
 }
+:global(.dark .task-summary-chip-paused .task-chip-count) { color: #fbbf24; }
+:global(.dark .task-summary-chip-failed .task-chip-count) { color: #f87171; }
 </style>

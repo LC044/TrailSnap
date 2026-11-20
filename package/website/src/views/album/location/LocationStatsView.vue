@@ -2,7 +2,7 @@
   <div class="location-stats flex-1 min-h-0 mx-auto w-full max-w-screen-2xl overflow-y-auto pb-8">
     <div class="space-y-4">
       <header class="flex flex-wrap items-start justify-between gap-3 py-2">
-        <div><h1 class="text-xl font-semibold tracking-tight">足迹统计</h1><p class="stats-caption mt-1">{{ rangeLabel }} · 从照片中回看走过的地方与记录的日子</p></div>
+        <div><h1 class="journal-page-title">足迹统计</h1><p class="stats-caption mt-1">{{ rangeLabel }} · 从照片中回看走过的地方与记录的日子</p></div>
       </header>
       <StatsOverviewCard :overview="overviewError ? null : overview" :loading="overviewLoading" />
       <div v-if="overviewError" class="stats-caption flex items-center gap-3" role="alert">足迹概览加载失败<button class="text-primary-500" @click="fetchOverview">重试</button></div>

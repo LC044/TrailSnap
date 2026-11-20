@@ -1,3 +1,7 @@
+---
+description: "前端技术栈说明：Vue 3 + TypeScript + Vite，Element Plus 与 TailwindCSS 的分工及目录结构。"
+---
+
 # 前端框架分析文档
 
 ## 1. 技术栈拆解

@@ -1,3 +1,7 @@
+---
+description: "External libraries: add folder paths, match Docker mounts, and mount several photo folders at once."
+---
+
 # External Libraries
 
 Add external folder paths and the system will scan images in those folders. Images in external folders will not be moved or modified; generated thumbnails will be stored in the main directory.

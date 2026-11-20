@@ -1,3 +1,7 @@
+---
+description: "Access tokens: create, name and expire tokens so CLI and MCP tools can call the TrailSnap API."
+---
+
 # Token Settings
 
 ::: info Token

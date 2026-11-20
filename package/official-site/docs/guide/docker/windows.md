@@ -1,4 +1,10 @@
-### 第一步：安装Docker Desktop
+---
+title: Windows 部署
+description: "在 Windows 上用 Docker Desktop 部署 TrailSnap 的完整步骤：安装、Compose 配置、启动与验证。"
+---
+# Windows 部署
+
+## 第一步：安装Docker Desktop
 Docker Compose已经集成在Docker Desktop中，所以先安装它：
 1. 访问Docker官网下载：https://www.docker.com/products/docker-desktop/
 2. 双击下载的安装包，一路点击「Next」（勾选「Use WSL 2 instead of Hyper-V」）
@@ -27,7 +33,7 @@ Docker Compose已经集成在Docker Desktop中，所以先安装它：
    ```
    如果能显示版本号，说明安装成功。
 
-### 第二步：准备docker-compose.yml文件
+## 第二步：准备docker-compose.yml文件
 1. 新建一个空白文件夹，例如`D:\TrailSnap`
 2. 在文件夹中新建一个文件，命名为`docker-compose.yml`
 3. 用文本编辑器打开`docker-compose.yml`文件，复制粘贴以下内容：
@@ -140,7 +146,7 @@ networks:
 ```
 冒号前面是本地目录，冒号后面是TrailSnap用到的目录。
 
-### 第三步：执行部署命令
+## 第三步：执行部署命令
 1. 打开命令提示符（`Win + R` → `cmd`），切换到`docker-compose.yml`所在的文件夹：
    ```bash
    # 示例：如果文件在D盘的TrailSnap文件夹，执行
@@ -169,19 +175,19 @@ time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\
  ✔ Container trailsnap-frontend-1            Created                                                              0.1s
 ```
 
-### 第四步：验证部署是否成功
+## 第四步：验证部署是否成功
 
 打开浏览器，访问 `http://localhost:3180`，即可看到 TrailSnap。移动 App 与 CLI 也使用同一个地址。
 
 然后点击更多 → 设置 → 照片文件夹，添加`/app/Photos`。
 
-### 常见问题解决
+## 常见问题解决
 1. **启动时提示“找不到docker-compose.yml”**：确认命令行当前目录是文件所在目录，或执行`docker-compose -f 完整路径/文件名.yml up -d`。
 2. **端口被占用**：查看`docker-compose.yml`中的`ports`配置（比如`8080:80`），修改前面的端口（如`8081:80`），再重新执行`docker-compose up -d`。
 
 ---
 
-### 总结
+## 总结
 1. **核心前提**：安装Docker Desktop并验证成功（`docker --version`）。
 2. **关键步骤**：将`docker-compose.yml`放在单独文件夹，用`cd`切换到该目录，执行`docker-compose up -d`启动服务。
 3. **验证/维护**：用`docker-compose ps`查看状态，`docker-compose logs`排查问题，`docker-compose down`停止并删除容器。

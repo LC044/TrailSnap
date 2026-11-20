@@ -1,3 +1,7 @@
+---
+description: "TrailSnap changelog: new features, refinements and fixes listed by release, so you can track what changed."
+---
+
 # Changelog
 
 ## 2026-11-16 (0.21.0)

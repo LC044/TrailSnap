@@ -1,3 +1,7 @@
+---
+description: "User guide: the dashboard, uploading and browsing photos, external libraries, albums, and everyday tasks."
+---
+
 # TrailSnap User Guide
 
 Welcome to TrailSnap! This guide covers the main features and how to use them.

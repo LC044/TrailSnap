@@ -1,11 +1,15 @@
 <template>
   <AppPage size="content" bottom-safe class="toolbox-workflow py-5 md:py-8">
-    <header class="mb-6 flex min-w-0 items-start justify-between gap-3">
+    <header class="journal-index-header mb-4 flex min-w-0 items-center justify-between gap-3">
       <div class="flex min-w-0 items-start gap-3">
         <BackButton label="返回工具箱" @click="goBack" />
         <div class="min-w-0"><h1 class="ts-page-title">{{ kind === 'cleanup' ? ({ duplicate: '重复照片', similar: '相似照片', quality: '低质量照片' })[config.cleanup_mode] : titles[kind] }}</h1></div>
       </div>
     </header>
+    <ol class="workflow-stages mb-4" aria-label="操作阶段">
+      <li :aria-current="step < 3 ? 'step' : undefined">配置范围与规则</li>
+      <li :aria-current="step === 3 ? 'step' : undefined">核对结果</li>
+    </ol>
     <p v-if="error" role="alert" class="mb-4 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
     <div class="space-y-5">
       <div v-loading="busy" class="ts-surface min-w-0 p-4 md:p-6">
@@ -234,4 +238,9 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(pollTimer) })
 .toolbox-workflow :deep(.el-button + .el-button) {
   margin-left: 0;
 }
+.workflow-stages { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.workflow-stages li { display: flex; gap: 9px; align-items: center; padding: 10px 12px; border: 1px solid var(--ts-color-border); border-radius: 10px; font-size: 13px; color: var(--ts-color-text-secondary); }
+.workflow-stages li::before { content: ''; width: 7px; height: 7px; border: 1px solid currentColor; border-radius: 50%; }
+.workflow-stages li[aria-current='step'] { color: var(--ts-color-text); background: var(--ts-journal-active); font-weight: 650; }
+.workflow-stages li[aria-current='step']::before { background: var(--ts-journal-focus); border-color: var(--ts-journal-focus); }
 </style>

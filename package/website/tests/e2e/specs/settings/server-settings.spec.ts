@@ -65,7 +65,8 @@ test.describe('Smoke - ServerSettings 配置自托管服务 @smoke', () => {
     await page.goto(`/connect?url=${encodeURIComponent('http://192.168.1.20:3180')}`);
 
     await expect(page.locator('input[placeholder*="192.168"]')).toHaveValue('http://192.168.1.20:3180');
-    await expect(page.getByText('二维码在哪里？')).toBeVisible();
+    // 二维码提示折叠为 details，展开后可见指引文本
+    await page.locator('summary').filter({ hasText: '二维码在哪里？' }).click();
     await expect(page.getByText('设置 → 连接手机 App')).toBeVisible();
     await expect(page.getByAltText(/连接二维码/)).toHaveCount(0);
   });

@@ -1,3 +1,7 @@
+---
+description: "TrailSnap overview: what the self-hosted AI album does, its key features, and the roadmap ahead."
+---
+
 # Overview 🚀
 
 TrailSnap is an intelligent **AI photo album** app. It helps you record, organize, and review your travel experiences, turning photos into memories worth cherishing.

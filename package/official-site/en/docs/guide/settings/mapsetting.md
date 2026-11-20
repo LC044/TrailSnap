@@ -1,3 +1,7 @@
+---
+description: "Map settings: apply for a Tianditu or Amap API key to enable the footprint map and city lighting."
+---
+
 # Map Settings Guide
 
 TrailSnap uses map services to display the geographical distribution of photos (Footprint Map). In order to use the map function normally, you need to apply for and configure the API Key of the map service yourself.

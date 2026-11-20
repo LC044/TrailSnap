@@ -16,7 +16,7 @@
         </div>
       </div>
       <div class="min-w-0 flex-1">
-        <h1 class="truncate text-xl font-bold">{{ data?.people.map(p => p.name).join('与') || '人物时光线' }}</h1>
+        <h1 class="journal-page-title truncate">{{ data?.people.map(p => p.name).join('与') || '人物时光线' }}</h1>
         <p v-if="data" class="text-sm text-gray-500 dark:text-gray-400">{{ data.year_count }} 个有照片的年份 · {{ data.photo_count }} 张{{ withId ? '同框' : '' }}照片</p>
         <p v-if="peopleTags" class="text-xs text-primary-600 dark:text-primary-400">{{ peopleTags }}</p>
       </div>
@@ -54,7 +54,6 @@
         <a v-for="item in data.years" :key="item.year" :href="`#year-${item.year}`" class="mb-2 block shrink-0 rounded-lg px-3 py-2 text-sm text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30">{{ item.year }}</a>
       </nav>
       <div class="space-y-5">
-        <p class="text-xs text-gray-500 dark:text-gray-400">照片只证明人物在画面中；已确认记忆会单独标注。</p>
         <section v-for="item in data.years" :id="`year-${item.year}`" :key="item.year" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
           <div class="flex items-center justify-between gap-3">
             <div><h2 class="text-xl font-bold">{{ item.year }}</h2><p class="text-sm text-gray-500 dark:text-gray-400">{{ item.photo_count }} 张{{ withId ? '同框' : '' }}照片</p></div>

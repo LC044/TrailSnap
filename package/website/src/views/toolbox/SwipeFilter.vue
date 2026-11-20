@@ -1,5 +1,5 @@
 <template>
-  <div class="swipe-filter-page h-full min-h-0 w-full bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 flex flex-col overflow-hidden relative select-none">
+  <div class="swipe-filter-page journal-neutral-page h-full min-h-0 w-full flex flex-col overflow-hidden relative select-none">
     <!-- 顶部状态栏 -->
     <header class="flex-none h-14 flex items-center justify-between px-4 z-20 bg-gradient-to-b from-slate-50/80 dark:from-slate-900/80 to-transparent">
       <BackButton label="返回工具箱" @click="handleBack" />

@@ -1,27 +1,17 @@
 <template>
-  <!-- 移动端液体玻璃底栏，仅 <768px 显示。 -->
   <Transition name="bottom-nav-slide">
     <nav
+      v-glass-refraction
       v-show="!uiStore.selectionActive"
-      class="ts-liquid-glass liquid-glass-nav fixed inset-x-[var(--ts-space-3)] bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] z-40 md:hidden"
-      :class="{ 'is-flowing': bubbleMoving, 'is-dark': isDarkMode }"
+      class="journal-dock ts-liquid-glass inset-x-[var(--ts-space-3)] bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] z-40 md:hidden"
       aria-label="主导航"
     >
       <div class="relative z-10 grid h-14 grid-cols-5 px-1">
         <span
-          class="liquid-bubble-track"
+          class="journal-dock-indicator"
           :style="{ transform: `translate3d(${displayedTabIndex * 100}%, 0, 0)` }"
           aria-hidden="true"
-        >
-          <span
-            class="liquid-bubble"
-            :class="[
-              bubbleMoving ? 'is-moving' : '',
-              bubbleDirection === 'right' ? 'moves-right' : 'moves-left',
-              displayedTabIndex === 2 ? 'is-search' : '',
-            ]"
-          />
-        </span>
+        ></span>
 
         <!-- 首页 -->
         <RouterLink
@@ -78,6 +68,7 @@
           :class="tabClass(displayedTabIndex === 4)"
           aria-label="更多"
           aria-haspopup="dialog"
+          :aria-expanded="moreSheetVisible"
         >
           <Menu class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">更多</span>
@@ -100,8 +91,8 @@
       <div class="relative mb-4 flex items-center justify-between pt-3">
         <div class="absolute left-1/2 top-0 h-1 w-10 -translate-x-1/2 rounded-full bg-slate-300 dark:bg-slate-600" />
         <div>
-          <h1 class="text-lg font-bold text-slate-900 dark:text-slate-100">更多</h1>
-          <p class="text-xs text-slate-500 dark:text-slate-400">探索、整理与应用设置</p>
+          <h1 class="text-lg font-bold text-[var(--ts-color-text)]">更多</h1>
+          <p class="ts-muted text-xs">探索、整理与应用设置</p>
         </div>
         <button
           type="button"
@@ -134,7 +125,7 @@
           </span>
           <span class="min-w-0">
             <span class="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">{{ accountName }}</span>
-            <span class="block truncate text-xs text-slate-500 dark:text-slate-400">{{ userStore.userInfo?.username || '个人资料' }}</span>
+            <span class="ts-muted block truncate text-xs">{{ userStore.userInfo?.username || '个人资料' }}</span>
           </span>
         </RouterLink>
         <button
@@ -151,14 +142,14 @@
       <!-- 按使用场景分组，避免把所有二级功能铺成一张无层次的九宫格。 -->
       <div class="mt-3 space-y-4">
         <section v-for="section in mobileMoreSections" :key="section.label">
-          <h2 class="mb-1.5 px-1 text-xs font-semibold tracking-wide text-slate-400 dark:text-slate-500">{{ section.label }}</h2>
+          <h2 class="ts-muted mb-1.5 px-1 text-xs font-semibold">{{ section.label }}</h2>
           <div class="grid grid-cols-3 gap-2">
             <RouterLink
               v-for="item in section.items"
               :key="item.href"
               :to="item.href"
               @click.prevent="navigateFromMore(item.href)"
-              class="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl text-slate-600 transition-colors hover:bg-slate-100 hover:text-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-300 dark:hover:bg-slate-700/60 dark:hover:text-primary-400"
+              class="more-sheet-link flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl font-medium transition-colors hover:bg-slate-100 hover:text-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:hover:bg-slate-700/60 dark:hover:text-primary-400"
               :class="isCurrentPath(item.href) ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400' : ''"
             >
               <component :is="item.icon" class="w-5 h-5 shrink-0" />
@@ -170,7 +161,7 @@
 
       <!-- 快捷访问 -->
       <div v-if="navItemsList.length" class="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
-        <div class="px-1 mb-2 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">快捷访问</div>
+        <h2 class="ts-muted mb-2 px-1 text-xs font-semibold">快捷访问</h2>
         <div class="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto">
           <RouterLink
             v-for="item in navItemsList"
@@ -192,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
@@ -211,13 +202,11 @@ import { useUserStore } from '@/stores/user'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { mobileMoreSections, type NavGroup } from '@/config/navigation'
 import { isTauriApp, toServerUrl } from '@/config/server'
-import { injectTheme } from '@/composables/useTheme'
 
 const route = useRoute()
 const router = useRouter()
 const uiStore = useUiStore()
 const userStore = useUserStore()
-const { isDarkMode } = injectTheme()
 
 const { items: navItemsList } = injectNavItems()
 
@@ -300,7 +289,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('popstate', handleMoreHistoryPopState)
   if (historyEntryActive && isCurrentMoreHistoryEntry()) window.history.back()
-  if (bubbleTimer) clearTimeout(bubbleTimer)
   if (pendingTabTimer) clearTimeout(pendingTabTimer)
   if (preloadTimer) clearTimeout(preloadTimer)
   resolvePendingClose()
@@ -311,19 +299,15 @@ const isCurrentPath = (href: string) => route.path === href || route.path.starts
 const moreActive = computed(() =>
   mobileMoreSections.some(section => section.items.some(item => isCurrentPath(item.href)))
 )
-const albumsTabActive = computed(() => isGroup('albums') && !moreActive.value)
 const routeTabIndex = computed(() => {
   if (moreActive.value) return 4
   if (isGroup('albums')) return 3
-  if (isGroup('search')) return 2
+  if (isGroup('search') || route.path.startsWith('/search')) return 2
   if (isGroup('photos')) return 1
-  return 0
+  return isGroup('home') ? 0 : 4
 })
 const activeTabIndex = computed(() => moreSheetVisible.value ? 4 : routeTabIndex.value)
 const pendingTabIndex = ref<number | null>(null)
-const bubbleMoving = ref(false)
-const bubbleDirection = ref<'left' | 'right'>('right')
-let bubbleTimer: ReturnType<typeof setTimeout> | undefined
 let pendingTabTimer: ReturnType<typeof setTimeout> | undefined
 
 const preloadTab = (index: number) => {
@@ -346,17 +330,6 @@ const previewTab = (index: number) => {
 }
 
 const displayedTabIndex = computed(() => pendingTabIndex.value ?? activeTabIndex.value)
-
-watch(displayedTabIndex, async (nextIndex, previousIndex) => {
-  bubbleDirection.value = nextIndex >= previousIndex ? 'right' : 'left'
-  bubbleMoving.value = false
-  await nextTick()
-  bubbleMoving.value = true
-  if (bubbleTimer) clearTimeout(bubbleTimer)
-  bubbleTimer = setTimeout(() => {
-    bubbleMoving.value = false
-  }, 340)
-})
 
 watch(routeTabIndex, () => {
   pendingTabIndex.value = null
@@ -382,10 +355,8 @@ const handleLogout = async () => {
 
 const tabClass = (active: boolean) =>
   [
-    'liquid-tab-item relative isolate my-0.5 flex flex-col items-center justify-center gap-0.5 rounded-full transition-colors duration-200 focus-visible:outline-none',
-    active
-      ? 'is-active'
-      : 'text-slate-600 dark:text-slate-300'
+    'journal-dock-tab relative my-0.5 flex flex-col items-center justify-center gap-1 rounded-full transition-colors duration-200',
+    active ? 'is-active' : '',
   ].join(' ')
 
 // 路由切换时复位选择模式标志，防止「选择中跳走 → Tab 栏卡在隐藏」残留
@@ -405,132 +376,43 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+.more-sheet-link { color: var(--ts-color-text); }
+.more-sheet-link.router-link-exact-active { color: var(--ts-journal-accent-text); }
 </style>
 
 <style scoped>
-/* The bar shares its material with every floating toolbar. */
-.liquid-glass-nav { position: fixed; overflow: hidden; border-radius: var(--ts-radius-pill); transition: transform var(--ts-motion-normal) var(--ts-ease); }
-.liquid-glass-nav.is-flowing { transform: scale(1.006); }
-
-.liquid-bubble-track {
+.journal-dock {
+  --glass-tint: var(--ts-glass-control);
+  position: fixed;
+  border-radius: var(--ts-radius-pill);
+  color: var(--ts-color-text);
+}
+.journal-dock-indicator {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 4px;
   z-index: -1;
+  inset: 5px auto 5px 4px;
   width: calc((100% - 8px) / 5);
-  padding: 4px;
-  transition: transform var(--ts-motion-page) var(--ts-ease);
-  will-change: transform;
+  border-radius: var(--ts-radius-pill);
+  background: var(--ts-journal-active);
+  transition: transform 300ms cubic-bezier(.2,.75,.24,1);
 }
-
-.liquid-bubble {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: var(--ts-border-unit, 1px) solid rgba(255, 255, 255, 0.64);
-  border-radius: 9999px;
-  background:
-    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.74), transparent 38%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.4), rgba(var(--theme-rgb), 0.13));
-  box-shadow:
-    0 7px 18px rgba(var(--theme-rgb), 0.16),
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.88),
-    inset 0 -1px 1px rgba(var(--theme-rgb), 0.1);
-  -webkit-backdrop-filter: blur(2px) saturate(155%);
-  backdrop-filter: blur(2px) saturate(155%);
-  transition: transform var(--ts-motion-fast) var(--ts-ease);
-  will-change: transform;
+.journal-dock-tab {
+  font-weight: 600;
+  text-shadow: var(--ts-glass-label-shadow);
 }
-
-.liquid-bubble.is-search:not(.is-moving) {
-  transform: scaleX(1.12);
-}
-
-.liquid-bubble.is-moving.moves-right {
-  transform-origin: right center;
-  animation: liquid-stretch-right var(--ts-motion-page) var(--ts-ease);
-}
-
-.liquid-bubble.is-moving.moves-left {
-  transform-origin: left center;
-  animation: liquid-stretch-left var(--ts-motion-page) var(--ts-ease);
-}
-
-.liquid-tab-item :deep(svg) {
-  width: var(--ts-mobile-icon-size, 20px);
-  height: var(--ts-mobile-icon-size, 20px);
-  transition: transform 100ms ease, filter 200ms ease;
-}
-
-.liquid-tab-item:hover,
-.liquid-tab-item.is-active {
-  color: var(--theme-primary);
-}
-
-.liquid-tab-item:focus-visible {
-  box-shadow:
-    0 0 0 2px rgba(var(--theme-rgb), 0.7),
-    0 0 0 4px rgba(255, 255, 255, 0.7);
-}
-
-.liquid-tab-item:active :deep(svg) {
-  transform: scale(0.9);
-}
-
-.liquid-tab-item.is-active :deep(svg) {
-  animation: liquid-icon-pop 260ms cubic-bezier(0.22, 1, 0.36, 1);
-  filter: drop-shadow(0 2px 4px rgba(var(--theme-rgb), 0.24));
-}
-
-.liquid-glass-nav.is-dark .liquid-bubble {
-  border-color: rgba(255, 255, 255, 0.22);
-  background:
-    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.18), transparent 40%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(var(--theme-rgb), 0.2));
-  box-shadow:
-    0 5px 16px rgba(var(--theme-rgb), 0.18),
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.2),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.12);
-}
-
-@keyframes liquid-stretch-right {
-  0% { transform: scaleX(1); }
-  34% { transform: scaleX(1.34) scaleY(0.96); }
-  72% { transform: scaleX(0.96) scaleY(1.03); }
-  100% { transform: scaleX(1); }
-}
-
-@keyframes liquid-stretch-left {
-  0% { transform: scaleX(1); }
-  34% { transform: scaleX(1.34) scaleY(0.96); }
-  72% { transform: scaleX(0.96) scaleY(1.03); }
-  100% { transform: scaleX(1); }
-}
-
-@keyframes liquid-icon-pop {
-  0% { transform: scale(0.9) translateY(1px); }
-  58% { transform: scale(1.08) translateY(-1px); }
-  100% { transform: scale(1) translateY(0); }
-}
-
-.bottom-nav-slide-enter-active,
-.bottom-nav-slide-leave-active {
+.journal-dock-tab > svg { filter: drop-shadow(var(--ts-glass-label-shadow)); }
+.journal-dock-tab.is-active { color: var(--ts-journal-accent-text); font-weight: 700; }
+.journal-dock-tab:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
+.journal-dock-tab svg { transition: transform 190ms ease; }
+.journal-dock-tab:active svg { transform: scale(.9); }
+.bottom-nav-slide-enter-active, .bottom-nav-slide-leave-active {
   transition: transform var(--ts-motion-page) var(--ts-ease), opacity var(--ts-motion-normal) ease;
 }
-.bottom-nav-slide-enter-from,
-.bottom-nav-slide-leave-to {
-  transform: translateY(calc(100% + 24px)) scale(0.96);
+.bottom-nav-slide-enter-from, .bottom-nav-slide-leave-to {
+  transform: translateY(calc(100% + 24px));
   opacity: 0;
 }
-
 @media (prefers-reduced-motion: reduce) {
-  .liquid-glass-nav,
-  .liquid-bubble-track,
-  .liquid-bubble,
-  .liquid-tab-item :deep(svg) {
-    animation: none !important;
-    transition-duration: 0.01ms !important;
-  }
+  .journal-dock, .journal-dock-indicator, .journal-dock-tab, .journal-dock-tab svg { transition-duration: 0s !important; }
 }
 </style>

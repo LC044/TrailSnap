@@ -1,3 +1,7 @@
+---
+description: "Settings overview: profile, appearance, external tool tokens, photo folders, maps, and AI options."
+---
+
 # Settings Guide
 
 Open **Settings** in TrailSnap and choose a section. Some server-wide options are visible only to administrators. The current application interface uses Chinese labels, shown in parentheses below.

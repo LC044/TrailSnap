@@ -1,5 +1,6 @@
 ---
 outline: [2, 3]
+description: "Use TrailSnap CLI as an Agent Skill: supported platforms, MCP setup, and examples of natural-language album queries."
 ---
 
 # Agent Skills

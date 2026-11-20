@@ -74,7 +74,7 @@ test.describe('P0 核心路径 - 路由守卫 @p0', () => {
     // 给路由守卫 + 懒加载足够时间
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
     // 页面应包含「找回密码」标题（无论 URL 是 /forgot-password 还是被重定向）
-    const hasForgotHeading = await page.locator('h2', { hasText: '找回密码' }).count();
+    const hasForgotHeading = await page.locator('h1', { hasText: '找回密码' }).count();
     const url = page.url();
     if (hasForgotHeading > 0) {
       // 成功：路由守卫放行 + 组件加载

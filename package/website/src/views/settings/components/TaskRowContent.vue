@@ -10,13 +10,15 @@
           <span class="task-state-label" :class="`task-state-${state}`">{{ taskStateLabels[state] }}</span>
           <ChevronDown class="h-3.5 w-3.5 ts-muted transition-transform" :class="{ 'rotate-180': expanded }" />
         </span>
-        <!-- 空闲行不再重复“暂无待处理任务”：徽章已表达 -->
-        <span v-if="task.pending > 0" class="ts-muted mt-1 block text-sm">{{ remainingLabel }}</span>
+        <!-- 移动端一行元信息替代桌面端的“剩余/积压”文案，避免与操作条重复 -->
+        <span class="task-row-meta">{{ mobileMeta }}</span>
+        <!-- 剩余/积压文案仅桌面端展示，移动端由上一行元信息承担 -->
+        <span v-if="task.pending > 0" class="task-row-remaining ts-muted mt-1 hidden text-sm md:block">{{ remainingLabel }}</span>
         <span v-if="task.waiting_reason && task.pending > 0" class="task-waiting-reason mt-1 block text-xs leading-5">{{ task.waiting_reason }}</span>
       </span>
     </button>
-    <div class="task-row-actions flex flex-wrap items-center justify-end gap-2">
-      <button v-if="task.failed > 0" type="button" class="task-failure-link min-h-11 text-sm font-medium" :aria-label="`${task.task_name}：${task.failed} 项失败，查看详情`" @click="$emit('show-failed')">失败 {{ formatCount(task.failed) }} 项 <ChevronRight class="inline h-4 w-4" /></button>
+    <div class="task-row-actions">
+      <button v-if="task.failed > 0" type="button" class="task-failure-link" :aria-label="`${task.task_name}：${task.failed} 项失败，查看详情`" @click="$emit('show-failed')">{{ isMobile ? '处理失败' : '失败' }} <span class="tabular-nums">{{ formatCount(task.failed) }}</span> 项 <ChevronRight class="h-4 w-4" /></button>
       <!-- 暂停/继续仅对有排队的类型有意义：空闲行只保留菜单入口 -->
       <button v-if="task.pending > 0" type="button" class="ts-button ts-button-secondary ts-button-sm hidden md:inline-flex" :disabled="disabled" @click="$emit('category-command', task.status === 'paused' ? 'resume' : 'pause')">{{ task.status === 'paused' ? '继续' : '暂停' }}</button>
       <div class="shrink-0">
@@ -65,6 +67,12 @@ const isMobile = useMediaQuery('(max-width: 767px)')
 const state = computed(() => getTaskState(props.task))
 const stateIcons = { paused: PauseCircle, waiting: Clock3, pending: Clock3, failed: AlertCircle, idle: Circle }
 const formatCount = (count: number) => count.toLocaleString('zh-CN')
+// 移动端单行元信息：桌面端由 actions 区的“暂停/失败”入口与剩余文案承担
+const mobileMeta = computed(() => {
+  if (state.value === 'idle') return '无待处理任务'
+  if (props.task.status === 'paused') return `已暂停 · 积压 ${formatCount(props.task.pending)} 项`
+  return `优先级 ${props.task.priority} · 待处理 ${formatCount(props.task.pending)} 项`
+})
 const remainingLabel = computed(() => {
   // 暂停类型的积压会恢复调度，等待类型受阻于外部条件，措辞区分开。
   if (props.task.status === 'paused') return `已暂停 · 积压 ${formatCount(props.task.pending)} 项`
@@ -82,15 +90,36 @@ const remainingLabel = computed(() => {
 .task-state-pending { color: var(--theme-primary); background: rgba(var(--theme-rgb), .1); }
 .task-state-paused, .task-state-waiting { color: #b45309; background: rgb(245 158 11 / 10%); }
 .task-state-failed { color: var(--ts-color-danger); background: rgb(239 68 68 / 10%); }
-.task-failure-link { color: var(--ts-color-danger); }
+.task-failure-link { display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; min-height: 44px; font-size: 14px; font-weight: 500; color: var(--ts-color-danger); }
 .task-waiting-reason { overflow-wrap: anywhere; color: var(--ts-color-text-secondary); }
+.task-row-meta { display: none; }
 .task-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .task-row-main:has(.task-failure-link) .task-row-actions { grid-column: 1 / -1; }
+.task-row-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .task-details-trigger { padding-block: 4px; }
 .task-details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--ts-color-divider); }
 button:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; border-radius: 8px; }
 :global(.dark .task-state-paused), :global(.dark .task-state-waiting) { color: #fbbf24; }
 @container task-management (min-width: 560px) {
   .task-row-main:has(.task-failure-link) .task-row-actions { grid-column: auto; }
+}
+@media (max-width: 767px) {
+  /* 移动端：图标 + 标题 + 一行元信息，操作收进整宽操作条，像原生列表单元 */
+  .task-row-main { align-items: start; row-gap: 10px; }
+  .task-details-trigger { align-items: start; padding-block: 0; }
+  .task-state-icon { width: 38px; height: 38px; border-radius: 11px; }
+  .task-row-meta {
+    display: block; margin-top: 4px; font-size: 12px; line-height: 1.5;
+    color: var(--ts-color-text-secondary); overflow-wrap: anywhere;
+  }
+  .task-row-remaining { display: none; }
+  .task-failure-link {
+    flex: 0 1 auto; align-self: flex-start; justify-content: flex-start; gap: 2px;
+    min-height: 40px; padding: 0 12px 0 14px;
+    border-radius: 10px; background: color-mix(in srgb, var(--ts-color-danger) 9%, transparent);
+    font-size: 14px; font-weight: 600;
+  }
+  .task-failure-link:active { background: color-mix(in srgb, var(--ts-color-danger) 18%, transparent); }
+  .task-row-actions { justify-content: space-between; flex-wrap: nowrap; gap: 8px; }
 }
 </style>

@@ -3,10 +3,10 @@
     class="ticket-wallet ts-browse-page mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] pb-8"
   >
     <header
-      class="ts-browse-header mb-5 flex items-center justify-between gap-3"
+      class="journal-index-header mb-4 flex items-center justify-between gap-3"
     >
-      <div class="min-w-0"><h1 class="ts-page-title">票夹</h1></div>
-      <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0">
+      <div class="min-w-0"><h1 class="journal-page-title">票夹</h1></div>
+      <div v-glass-refraction class="ts-liquid-glass ts-glass-toolbar flex shrink-0">
         <button
           class="ts-glass-button"
           aria-label="搜索票据"
@@ -16,7 +16,7 @@
           <Search class="h-5 w-5" />
         </button>
         <button
-          class="ts-glass-button"
+          class="ts-glass-button ticket-add"
           aria-label="新增票据"
           @click="typeOpen = true"
         >
@@ -126,18 +126,22 @@
         查看全部
       </button>
     </div>
-    <div
-      class="mb-5 flex items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-800"
-    >
+    <div class="ticket-view-bar">
+      <button type="button" class="journal-secondary-link text-sm" @click="viewMode = viewMode === 'timeline' ? 'grid' : 'timeline'"
+        :aria-label="viewMode === 'timeline' ? '切换为卡片视图' : '切换为按月浏览'">
+        <ListTree v-if="viewMode === 'timeline'" class="h-4 w-4" /><LayoutGrid v-else class="h-4 w-4" />
+        {{ viewMode === 'timeline' ? '按月' : '卡片' }}
+      </button>
+      <RouterLink to="/statistics" class="journal-secondary-link text-sm"><BarChart2 class="h-4 w-4" />交通统计</RouterLink>
+    </div>
+    <div class="ticket-type-bar mb-5 flex items-center justify-between gap-2">
       <nav class="flex min-w-0 gap-4 sm:gap-6" aria-label="票据类型">
         <button
           v-for="tab in typeTabs"
           :key="tab.value"
           class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-0.5 text-sm font-medium"
           :class="
-            activeType === tab.value
-              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-              : 'border-transparent text-gray-500 dark:text-gray-400'
+            activeType === tab.value ? 'ticket-type-active' : 'ticket-type-inactive'
           "
           :aria-pressed="activeType === tab.value"
           @click="filters.type = tab.value"
@@ -1290,3 +1294,14 @@ async function importFile(event: Event) {
   }
 }
 </script>
+<style scoped>
+.ticket-add { background: var(--ts-journal-action); color: white; }
+.ticket-add:hover { background: var(--ts-journal-action-hover); color: white; }
+.ticket-view-bar { display: flex; justify-content: space-between; align-items: center; gap: 9px; }
+.ticket-type-bar { border-block: 1px solid var(--ts-color-divider); padding-block: 5px; }
+.ticket-type-bar nav { gap: 4px; }
+.ticket-type-bar nav button { min-height: 44px; padding-inline: clamp(9px, 1.2vw, 15px); border: 0; border-radius: 999px; }
+.ticket-type-active { background: var(--ts-journal-active); color: var(--ts-journal-accent-text); }
+.ticket-type-inactive { color: var(--ts-color-text-secondary); }
+.ticket-type-bar nav button:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -3px; }
+</style>

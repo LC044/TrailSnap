@@ -9,7 +9,7 @@ test.describe('Smoke - 首页 @smoke', () => {
   test('首页正常加载', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: '首页', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: '影像手记', exact: true })).toBeVisible();
   });
 
   test('导航栏正常显示', async ({ page }) => {

@@ -1,5 +1,6 @@
 ---
 outline: [2, 3]
+description: "Data, privacy and backups for self-hosted TrailSnap: where photos live, what leaves your server, and how to back up."
 ---
 
 # Data, privacy, and backups

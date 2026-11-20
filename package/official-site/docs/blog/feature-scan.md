@@ -1,5 +1,6 @@
 ---
 title: 功能全景速览：TrailSnap 能做什么？
+description: 一次扫完 TrailSnap 行影集的核心能力：智能相册、AI 识别与以文搜图、行程票据管理、出行统计、年度报告与足迹地图。
 ---
 
 # 功能全景速览：TrailSnap 能做什么？

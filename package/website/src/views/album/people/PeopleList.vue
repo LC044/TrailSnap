@@ -6,7 +6,7 @@
     >
       <div class="people-toolbar-leading flex items-center gap-3 flex-wrap">
         <div class="people-title-group flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-          <h1 class="ts-page-title text-xl md:text-2xl font-bold text-gray-800 dark:text-white">
+          <h1 class="journal-page-title">
             {{ isMergeMode ? `已选择 ${selectedIds.length} 项` : '人物' }}
           </h1>
         </div>
@@ -34,7 +34,7 @@
         </div>
       </div>
 
-      <div v-if="viewMode === 'solo'" class="people-actions flex items-center justify-end" :class="!isMergeMode && 'ts-liquid-glass ts-glass-toolbar'">
+      <div v-if="viewMode === 'solo'" v-glass-refraction="!isMergeMode" class="people-actions flex items-center justify-end" :class="!isMergeMode && 'ts-liquid-glass ts-glass-toolbar'">
         <el-popover
           v-if="!isMergeMode" 
           placement="bottom-end"

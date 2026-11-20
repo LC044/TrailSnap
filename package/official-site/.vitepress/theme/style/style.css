@@ -103,7 +103,11 @@
 .custom-download-page .VPContent,
 .custom-download-page .VPDoc,
 .custom-download-page .container,
-.custom-download-page div[class*="_doc"] {
+.custom-download-page div[class*="_doc"],
+.custom-cli-page .VPContent,
+.custom-cli-page .VPDoc,
+.custom-cli-page .container,
+.custom-cli-page div[class*="_doc"] {
   max-width: 100% !important;
   padding: 0 !important;
   margin: 0 !important;

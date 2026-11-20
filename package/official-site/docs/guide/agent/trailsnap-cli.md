@@ -1,5 +1,6 @@
 ---
 outline: [2, 3]
+description: "TrailSnap CLI 的安装与命令参考：pip、npm、二进制三种安装方式，以及检索、导出等常用子命令。"
 ---
 
 

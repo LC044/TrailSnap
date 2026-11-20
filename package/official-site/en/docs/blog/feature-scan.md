@@ -1,5 +1,6 @@
 ---
 title: Feature Panorama - What can TrailSnap do?
+description: "A panorama of what TrailSnap can do: AI albums, search by text or face, footprint maps, ticket recognition, and yearly reports."
 ---
 
 # Feature Panorama: What can TrailSnap do?

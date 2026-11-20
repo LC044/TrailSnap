@@ -1,5 +1,6 @@
 ---
 outline: [2, 3]
+description: "把 TrailSnap CLI 作为 Agent Skill 使用：支持的平台、MCP 接入方式与自然语言查询相册的示例。"
 ---
 
 # Agent Skills

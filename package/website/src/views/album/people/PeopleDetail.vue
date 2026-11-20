@@ -41,7 +41,7 @@
           <div v-else class="h-12 w-12 shrink-0 animate-pulse rounded-full bg-gray-200 dark:bg-gray-800 sm:h-20 sm:w-20"></div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <h1 class="truncate text-lg font-bold text-gray-900 dark:text-gray-100 sm:text-2xl">{{ identity?.identity_name || '人物相册' }}</h1>
+              <h1 class="journal-page-title truncate">{{ identity?.identity_name || '人物相册' }}</h1>
               <button type="button" class="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" title="编辑人物信息" aria-label="编辑人物信息" :disabled="!identity" @click="editDialogVisible = true">
                 <PencilIcon class="h-4 w-4" />
               </button>

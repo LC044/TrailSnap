@@ -3,7 +3,7 @@
   <div
     :class="[isDarkMode ? 'dark' : '']"
     :style="themeStyle"
-    class="ts-page-background h-screen w-full flex font-sans transition-colors duration-300 overflow-hidden"
+    class="ts-app-shell ts-page-background h-screen w-full flex font-sans transition-colors duration-300 overflow-hidden"
   >
     <!-- 左侧导航栏 -->
     <Sidebar class="hidden md:flex" />
@@ -43,6 +43,7 @@ import NotificationDrawer from '@/components/NotificationDrawer.vue';
 import { injectTheme } from '@/composables/useTheme';
 import { useUiStore } from '@/stores/uiStore';
 import { useOverlayStack } from '@/composables/useOverlayStack';
+import '@/styles/journal-pages.css';
 
 const uiStore = useUiStore();
 const isAgentOpen = computed({
@@ -52,14 +53,7 @@ const isAgentOpen = computed({
 useOverlayStack(isAgentOpen, () => uiStore.closeAgent());
 
 // 注入由 App.vue 提供的主题状态
-const {
-  isDarkMode,
-  currentTheme,
-  themeStyle,
-  themeColors,
-  setMode,
-  setTheme
-} = injectTheme();
+const { isDarkMode, themeStyle } = injectTheme();
 
 watch(isDarkMode, dark => {
   if (Capacitor.getPlatform() !== 'android') return;
@@ -68,3 +62,15 @@ watch(isDarkMode, dark => {
 }, { immediate: true });
 
 </script>
+
+<style>
+.ts-app-shell {
+  height: 100dvh;
+  --ts-journal-serif: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", Georgia, serif;
+}
+.ts-app-shell .ts-main-scroll { scrollbar-color: var(--ts-color-border) transparent; }
+.ts-app-shell .ts-browse-header :is(button, a):focus-visible { outline-color: var(--ts-journal-focus); }
+@media (prefers-reduced-motion: reduce) {
+  .ts-app-shell, .ts-app-shell .ts-main-content { transition-duration: 0s; }
+}
+</style>

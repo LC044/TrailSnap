@@ -1,3 +1,7 @@
+---
+description: "How the TrailSnap AI microservice works: OCR, face recognition and scene classification, and how backend tasks call it."
+---
+
 # AI Service Design
 
 The AI service hosts TrailSnap AI capabilities (e.g. OCR, face recognition, scene classification, image analysis). The backend task system calls it when needed.

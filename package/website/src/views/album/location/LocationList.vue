@@ -4,14 +4,14 @@
     <div class="ts-browse-header location-toolbar mx-auto w-full max-w-screen-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="location-toolbar-heading flex w-full shrink-0 items-center justify-between gap-3 md:w-auto">
         <div class="location-title-group flex shrink-0 items-center gap-2">
-          <h1 class="ts-page-title whitespace-nowrap text-xl font-bold text-gray-800 dark:text-white md:text-2xl">位置</h1>
+          <h1 class="journal-page-title whitespace-nowrap">位置</h1>
         </div>
         <RouterLink to="/footprint" class="location-footprint-link flex shrink-0 items-center gap-1.5 rounded-full bg-primary-500 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:hidden" title="3D 足迹地图 · 全屏沉浸查看">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
         </RouterLink>
       </div>
 
-      <div :class="['ts-liquid-glass ts-glass-toolbar location-toolbar-actions flex w-full min-w-0 items-center md:w-auto', { 'is-dark': isDarkMode }]">
+      <div v-glass-refraction :class="['ts-liquid-glass ts-glass-toolbar location-toolbar-actions flex w-full min-w-0 items-center md:w-auto', { 'is-dark': isDarkMode }]">
         <RouterLink to="/footprint" class="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:flex" title="3D 足迹地图 · 全屏沉浸查看">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
         </RouterLink>

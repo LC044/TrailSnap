@@ -1,5 +1,6 @@
 ---
 title: Docker 部署（通用）
+description: "Docker 通用部署指南：用 Compose 一次启动前端、后端、数据库与 AI 服务，并把照片目录挂载进容器。"
 ---
 
 # Docker 部署（通用）
