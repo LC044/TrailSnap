@@ -238,5 +238,10 @@
         "version": "0.21.0",
         "update_info": "- 新增智能 CLIP 照片分类：内置 166 类校准目录，支持自定义文字与参考图规则<br>- 全量照片清理：后台扫描无上限，断点续扫、快速/完整相似模式<br>- 人物查找更多照片支持自定义阈值，相似人脸高级筛选<br>- 支持从 Docker 迁移到飞牛 fnOS 安装包<br>- 修复删除照片后人物数量不更新等问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.21.0"
+    },
+    {
+        "version": "0.21.1",
+        "update_info": "- 桌面端新增按需 AI 加速包：Windows x64 可下载 NVIDIA CUDA 或 Intel OpenVINO 运行时，识别任务用上显卡或 NPU<br>- 新增模型 Token 用量统计，照片可批量分析<br>- 全站手账风与液态玻璃界面改版，筛选面板与分类胶囊重构<br>- 官网首页、下载页与 CLI 页全新设计<br>- 修复已删除标签被重新匹配、筛选选项查询报错等问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.21.1"
     }
 ]

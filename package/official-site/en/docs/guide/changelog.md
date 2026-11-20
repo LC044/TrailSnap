@@ -4,6 +4,33 @@ description: "TrailSnap changelog: new features, refinements and fixes listed by
 
 # Changelog
 
+## 2026-11-20 (0.21.1)
+
+### New
+
+- Desktop AI acceleration packs (Windows x64): the installer still bundles CPU, and NVIDIA CUDA or Intel OpenVINO runtimes can be downloaded from settings so face recognition, OCR, classification and image embeddings use the GPU or NPU. Downloads show progress with signature checks, validate the device before switching, and fall back to CPU with a reason on failure.
+- Token usage statistics: a usage panel in settings reports requests, input/output tokens and cache hits per model and purpose over the last 7, 30 or 90 days.
+- Batch photo analysis: visual description tasks run in batches with configurable concurrency and images per request.
+- Journal-style redesign: the home page becomes "Photo Journal", and photos, albums, memories, footprints and the toolbox share journal typography and liquid-glass surfaces.
+- Scroll-reactive glass headers on settings, phone backup and declutter pages.
+
+### Improvements
+
+- Rebuilt category pills and a new filter panel with a status summary, segmented controls and selected chips, plus reset/finish actions at the bottom on mobile.
+- One picker for model and reasoning effort that shows the levels each model supports.
+- Filter options sort cities and categories by usage frequency, with stable people ordering.
+- Simplified toolbox flows with centralized templates and collapsed history.
+- Footprints page merges the city card list, reducing page hops.
+- Rebuilt official site home page, download page and CLI page; the download page adds a version card and desktop/NAS install switch.
+- Clearer server switching on the login page: the connection must be checked before signing in.
+
+### Bug Fixes
+
+- Fix deleted tags still being matched by name and reattached to photos.
+- Fix filter option queries failing in some scenarios.
+- Fix desktop token usage tables with mismatched migration versions.
+- Fix mobile scrolling flicker, duplicate back-to-top button and broken swipe on the official site demo.
+
 ## 2026-11-16 (0.21.0)
 
 ### New

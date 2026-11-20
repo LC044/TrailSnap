@@ -1,6 +1,6 @@
 [project]
 name = "project"
-version = "0.21.0"
+version = "0.21.1"
 requires-python = ">=3.12"
 dependencies = [
   "onnx>=1.17.0",
