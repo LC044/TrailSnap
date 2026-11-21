@@ -55,7 +55,7 @@
         </button>
       </nav>
 
-      <div v-if="loading" class="grid grid-cols-2 gap-3 py-10 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6">
+      <div v-if="loading && !photos.length" class="grid grid-cols-2 gap-3 py-10 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6">
         <div v-for="index in 12" :key="index" class="aspect-square animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-800"></div>
       </div>
 
@@ -133,7 +133,7 @@
 
             <div v-if="filteredObservations.length" class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               <button
-                v-for="observation in filteredObservations"
+                v-for="observation in visiblePhaseObservations"
                 :key="observation.photo.id"
                 type="button"
                 class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-200 text-left shadow-sm transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-800"
@@ -150,7 +150,10 @@
                 </span>
               </button>
             </div>
-            <div v-else class="rounded-2xl border border-dashed border-gray-300 bg-white py-14 text-center dark:border-gray-700 dark:bg-gray-800">
+            <div v-if="phaseHasMore" ref="phaseSentinel" class="flex items-center justify-center py-6 text-sm text-gray-500 dark:text-gray-400" role="status">
+              正在载入更多照片（{{ visiblePhaseObservations.length }} / {{ filteredObservations.length }}）
+            </div>
+            <div v-if="!filteredObservations.length" class="rounded-2xl border border-dashed border-gray-300 bg-white py-14 text-center dark:border-gray-700 dark:bg-gray-800">
               <MoonPhaseIcon :phase="emptyPhase" class="mx-auto h-16 w-16 rounded-full bg-gray-950 p-1" />
               <p class="mt-4 font-medium">还没有记录过{{ activeFilterLabel }}</p>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">下一次拍到时，这里就会被点亮。</p>
@@ -218,12 +221,15 @@
               </div>
             </div>
             <div v-if="selectedLunarDayObservations.length" class="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                <button v-for="observation in selectedLunarDayObservations" :key="observation.photo.id" type="button" class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-200 shadow-sm transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-700" @click="openLightbox(observation.photo, selectedLunarDayPhotos)">
-                  <img :src="observation.photo.thumbnail" :alt="observation.photo.filename || '月亮照片'" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                <button v-for="observation in visibleCalendarObservations" :key="observation.photo.id" type="button" class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-200 shadow-sm transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-700" @click="openLightbox(observation.photo, selectedLunarDayPhotos)">
+                  <img :src="observation.photo.thumbnail" :alt="observation.photo.filename || '月亮照片'" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
                   <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 text-xs text-white">{{ formatDate(observation.takenAt) }}</span>
                 </button>
             </div>
-            <div v-else class="mt-5 flex flex-col items-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center dark:border-gray-600 dark:bg-gray-900">
+            <div v-if="calendarHasMore" ref="calendarSentinel" class="mt-4 flex items-center justify-center py-6 text-sm text-gray-500 dark:text-gray-400" role="status">
+              正在载入更多照片（{{ visibleCalendarObservations.length }} / {{ selectedLunarDayObservations.length }}）
+            </div>
+            <div v-else-if="!selectedLunarDayObservations.length" class="mt-5 flex flex-col items-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center dark:border-gray-600 dark:bg-gray-900">
               <span class="flex h-12 w-12 items-center justify-center rounded-full bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
                 <CalendarDays class="h-6 w-6" />
               </span>
@@ -299,6 +305,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { CalendarDays, ImageMinus } from 'lucide-vue-next'
+import { useIntersectionObserver } from '@vueuse/core'
 import { ElMessage } from 'element-plus'
 
 import { classificationService } from '@/api/classification'
@@ -395,7 +402,9 @@ const timeline = computed(() => {
 const observationsByLunarDay = computed(() => {
   const map = new Map<number, MoonObservation[]>()
   observations.value.forEach((item) => {
-    map.set(item.lunarDay, [...(map.get(item.lunarDay) ?? []), item])
+    const existing = map.get(item.lunarDay)
+    if (existing) existing.push(item)
+    else map.set(item.lunarDay, [item])
   })
   return map
 })
@@ -427,6 +436,28 @@ const nextCaptureDateLabel = computed(() => nextCaptureDate.value
 const lightboxPhoto = computed(() => lightboxIndex.value >= 0 ? lightboxPhotos.value[lightboxIndex.value] ?? null : null)
 const lightboxObservation = computed(() => lightboxPhoto.value ? createMoonObservation(lightboxPhoto.value) : null)
 
+// 相册网格一次只挂载前 N 张，滚动到底部再增量补齐，避免上千张照片同帧渲染。
+const RENDER_BATCH = 60
+const phaseRenderLimit = ref(RENDER_BATCH)
+const calendarRenderLimit = ref(RENDER_BATCH)
+const phaseHasMore = computed(() => filteredObservations.value.length > phaseRenderLimit.value)
+const visiblePhaseObservations = computed(() => filteredObservations.value.slice(0, phaseRenderLimit.value))
+const calendarHasMore = computed(() => selectedLunarDayObservations.value.length > calendarRenderLimit.value)
+const visibleCalendarObservations = computed(() => selectedLunarDayObservations.value.slice(0, calendarRenderLimit.value))
+
+const phaseSentinel = ref<HTMLElement | null>(null)
+const calendarSentinel = ref<HTMLElement | null>(null)
+useIntersectionObserver(phaseSentinel, ([entry]) => {
+  if (entry?.isIntersecting) phaseRenderLimit.value += RENDER_BATCH
+}, { rootMargin: '600px 0px' })
+useIntersectionObserver(calendarSentinel, ([entry]) => {
+  if (entry?.isIntersecting) calendarRenderLimit.value += RENDER_BATCH
+}, { rootMargin: '600px 0px' })
+
+// 切换筛选时重置已渲染数量；后台分页补齐数据不重置，避免正在浏览的网格突然收缩。
+watch([selectedPhase, selectedGroup], () => { phaseRenderLimit.value = RENDER_BATCH })
+watch(selectedLunarDay, () => { calendarRenderLimit.value = RENDER_BATCH })
+
 function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -443,6 +474,13 @@ const loadPhotos = async () => {
     while (true) {
       const page = await classificationService.getTagPhotos(MOON_TAG_NAME, skip, limit)
       result.push(...page.map(mapPhotoToImage))
+      // 首页数据到达后立即上屏，后续分页在后台补齐，避免整页等全部请求。
+      if (skip === 0) {
+        photos.value = [...result].sort((a, b) => b.timestamp - a.timestamp)
+        if (!route.query.day && observations.value[0]) {
+          selectedLunarDay.value = observations.value[0].lunarDay
+        }
+      }
       if (page.length < limit) break
       skip += limit
     }
@@ -453,6 +491,7 @@ const loadPhotos = async () => {
   } catch (cause) {
     console.error('Failed to load moon photos:', cause)
     error.value = '月亮照片加载失败，请稍后重试。'
+    photos.value = []
   } finally {
     loading.value = false
   }
