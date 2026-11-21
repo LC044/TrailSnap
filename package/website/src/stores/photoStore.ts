@@ -442,7 +442,76 @@ const createPhotoStore = (persistFilters = true) => {
       return request
   }
 
+  const photoChunks = reactive(new Map<string, AlbumImage[]>())
+  const pendingChunks = new Map<string, Promise<boolean>>()
+  const partialMonths = new Set<string>()
+  const chunkPhotoMonths = new Map<string, string>()
+
+  const clearPartialMonths = () => {
+      partialMonths.clear()
+      chunkPhotoMonths.clear()
+  }
+
+  const resetPhotoChunks = () => {
+      pendingChunks.clear()
+      photoChunks.clear()
+  }
+
+  watch(timelineStats, resetPhotoChunks, { flush: 'sync' })
+
+  const isPartialPhotoMonth = (year: number, month: number) => {
+      const key = `${year}-${String(month).padStart(2, '0')}`
+      return partialMonths.has(key) && !loadedDates.has(key)
+  }
+
+  const loadPhotoChunk = (year: number, month: number, skip: number, count: number): Promise<boolean> => {
+      const key = `${year}-${month}:${skip}`
+      if (photoChunks.has(key)) return Promise.resolve(true)
+      const pending = pendingChunks.get(key)
+      if (pending) return pending
+
+      const contextKey = getContextKey()
+      const baseFilters = cleanFilters()
+      const filterKey = JSON.stringify(baseFilters)
+      const albumId = currentContext.value.type === 'album' ? currentContext.value.id : undefined
+      const filters = {
+          ...baseFilters,
+          album_id: albumId,
+          order_by: browseEnabled.value ? timeField.value : 'photo_time',
+          browse_year: year,
+          ...(year ? { browse_month: month } : {}),
+      }
+      const isCurrent = () => pendingChunks.get(key) === request
+          && contextKey === getContextKey() && filterKey === JSON.stringify(cleanFilters())
+      const request: Promise<boolean> = Promise.resolve().then(async () => {
+          try {
+              if (!isCurrent()) return false
+              const photos = await albumService.getAllPhotos(skip, count, filters)
+              if (!isCurrent() || !photos.length) return false
+              const chunk = photos.map(mapTimelinePhoto)
+              const monthKey = `${year}-${String(month).padStart(2, '0')}`
+              partialMonths.add(monthKey)
+              const merged = new Map(images.value.map(image => [image.id, image]))
+              for (const image of chunk) {
+                  chunkPhotoMonths.set(image.id, monthKey)
+                  merged.set(image.id, image)
+              }
+              images.value = [...merged.values()].sort(compareImages)
+              photoChunks.set(key, chunk)
+              return true
+          } catch (err) {
+              if (isCurrent()) console.error('分块加载照片失败', err)
+              return false
+          } finally {
+              if (pendingChunks.get(key) === request) pendingChunks.delete(key)
+          }
+      })
+      pendingChunks.set(key, request)
+      return request
+  }
+
   const cancelAllPendingLoads = () => {
+      resetPhotoChunks();
       activeRequests.forEach(controller => controller.abort());
       activeRequestDates.forEach(dateKey => loadedDates.delete(dateKey));
       activeRequestDates.clear();
@@ -459,6 +528,7 @@ const createPhotoStore = (persistFilters = true) => {
           images.value = [];
           photoOffsetMap.clear();
           loadedDates.clear();
+          clearPartialMonths();
           currentContext.value = { type: 'all' };
       }
       const contextKey = getContextKey();
@@ -473,6 +543,7 @@ const createPhotoStore = (persistFilters = true) => {
           images.value = [];
           photoOffsetMap.clear();
           loadedDates.clear();
+          clearPartialMonths();
       }
       currentContext.value = { type: 'album', id: albumId };
       const contextKey = getContextKey();
@@ -482,9 +553,11 @@ const createPhotoStore = (persistFilters = true) => {
 
   const loadFolderPhotos = async (folder: string, reset: boolean = false, direct: boolean = false) => {
       if (reset) {
+          cancelAllPendingLoads();
           images.value = [];
           photoOffsetMap.clear();
           loadedDates.clear();
+          clearPartialMonths();
       }
       folderPath.value = folder;
       folderDirect.value = direct;
@@ -531,8 +604,11 @@ const createPhotoStore = (persistFilters = true) => {
       const replacements = new Map(refreshed.map(month => [month.dateKey, month.images]));
       const retained = images.value.filter(image => {
           const date = new Date(image.timestamp);
-          return !replacements.has(Number.isFinite(image.timestamp) ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` : '0-00');
+          const dateKey = Number.isFinite(image.timestamp) ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` : '0-00';
+          const chunkMonth = chunkPhotoMonths.get(image.id);
+          return !replacements.has(dateKey) && (!chunkMonth || loadedDates.has(chunkMonth));
       });
+      clearPartialMonths();
       const merged = [...retained, ...refreshed.flatMap(month => month.images)];
       images.value = [...new Map(merged.map(image => [image.id, image])).values()].sort(compareImages);
       timelineStats.value = stats;
@@ -592,6 +668,7 @@ const createPhotoStore = (persistFilters = true) => {
       ++timelineRequestId
       cancelAllPendingLoads()
       loadedDates.clear()
+      clearPartialMonths()
       timeField.value = field
       images.value = photos.map(mapTimelinePhoto).sort(compareImages)
       timelineStats.value = stats
@@ -673,6 +750,7 @@ const createPhotoStore = (persistFilters = true) => {
       images.value = [];
       photoOffsetMap.clear();
       loadedDates.clear();
+      clearPartialMonths();
       currentContext.value = { type: 'all' };
       folderPath.value = null;
       folderDirect.value = false;
@@ -717,6 +795,9 @@ const createPhotoStore = (persistFilters = true) => {
     hasCurrentContextPhotoCountChanged,
     markDataStale,
     loadPhotosByMonth,
+    loadPhotoChunk,
+    photoChunks,
+    isPartialPhotoMonth,
     removeLocalPhoto,
     removeLocalPhotos,
     deletePhoto,

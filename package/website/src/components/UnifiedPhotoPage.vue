@@ -207,6 +207,46 @@
         <template #empty><slot name="empty" /></template>
       </PhotoDiary>
 
+      <PhotoFlow
+        v-else-if="layoutMode === 'waterfall'"
+        ref="galleryRef"
+        v-show="granularity === 'day'"
+        :active="granularity === 'day'"
+        :photos="photos"
+        :loading="loading"
+        :has-more="hasMore"
+        :error="error"
+        :view-size="viewSize"
+        :store="store"
+        v-model:active-date="activeDate"
+        :timeline-stats="timelineStats"
+        :delete-label="batchDeleteLabel"
+        :remove-label="removeLabel"
+        :pending-remove-ids="pendingRemoveIds"
+        @click-photo="openLightbox"
+        @load-more="$emit('load-more')"
+        @batch-delete="handleBatchDelete"
+        @remove-association="handleBatchRemoveAssociation"
+        @remove-from-album="handleBatchRemoveFromAlbum"
+        @add-to-album="handleBatchAddToAlbum"
+        @set-album-cover="(ids) => $emit('set-cover', ids)"
+        @retry="$emit('retry')"
+        @transfer="handleBatchTransfer"
+        @batch-edit-location="handleBatchEditLocation"
+        @batch-edit-time="handleBatchEditTime"
+      >
+        <template #batch-actions="{ selectedIds, clearSelection }">
+            <slot name="batch-actions" :selected-ids="selectedIds" :clear-selection="clearSelection"></slot>
+            <button v-if="selectedIds.size" type="button" class="ts-action-row" aria-label="整理所选影像" @click="openSelectedTool(Array.from(selectedIds), 'organize')">
+              <FolderTree class="h-[18px] w-[18px]" /><span>整理所选影像</span>
+            </button>
+            <button v-if="selectedIds.size" type="button" class="ts-action-row" aria-label="重命名所选影像" @click="openSelectedTool(Array.from(selectedIds), 'rename')">
+              <Tag class="h-[18px] w-[18px]" /><span>重命名所选影像</span>
+            </button>
+        </template>
+        <template #empty><slot name="empty"></slot></template>
+      </PhotoFlow>
+
       <PhotoGallery
         v-else
         ref="galleryRef"
@@ -363,6 +403,7 @@ import {
 import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 
 import PhotoGallery from '@/components/PhotoGallery.vue'
+import PhotoFlow from '@/components/PhotoFlow.vue'
 import PhotoDiary from '@/components/PhotoDiary.vue'
 import FolderBrowser from '@/views/album/folder/FolderBrowser.vue'
 import AlbumTimeline from '@/components/AlbumTimeline.vue'
@@ -490,11 +531,56 @@ const photoLayoutOptions = computed(() => [
 ] as const)
 watch([isDarkMode, layoutMode], () => updateStatusBar(Boolean(slots.hero) && !['folder', 'diary'].includes(layoutMode.value)), { immediate: true })
 const activeDate = ref('')
-const { currentPhoto: lightboxImage, currentIndex: lightboxIndex, hasPrev, hasNext, open: openLightbox, close: closeLightbox, prev: handlePrev, next: handleNext } = usePhotoViewer(() => props.photos)
+const viewer = usePhotoViewer(() => props.photos)
+const { currentPhoto: lightboxImage, currentIndex: lightboxIndex } = viewer
 const mobileMenu = useMediaQuery('(max-width: 639px)')
 const showViewOptions = ref(false)
-const galleryRef = ref<InstanceType<typeof PhotoGallery> | null>(null)
+const galleryRef = ref<InstanceType<typeof PhotoGallery> | InstanceType<typeof PhotoFlow> | null>(null)
 const diaryRef = ref<InstanceType<typeof PhotoDiary> | null>(null)
+
+const flowGallery = computed(() => {
+  const gallery = galleryRef.value
+  return layoutMode.value === 'waterfall' && gallery && 'hasAdjacentPhoto' in gallery ? gallery : null
+})
+const canMoveLightbox = (direction: -1 | 1) =>
+  (lightboxImage.value && flowGallery.value?.hasAdjacentPhoto(lightboxImage.value.id, direction))
+  ?? (direction === -1 ? viewer.hasPrev.value : viewer.hasNext.value)
+const hasPrev = computed(() => canMoveLightbox(-1))
+const hasNext = computed(() => canMoveLightbox(1))
+
+let pendingLightboxMove: symbol | null = null
+const openLightbox = (photo: AlbumImage | number) => {
+  pendingLightboxMove = null
+  viewer.open(photo)
+}
+const closeLightbox = () => {
+  pendingLightboxMove = null
+  viewer.close()
+}
+const moveLightbox = async (direction: -1 | 1) => {
+  const current = lightboxImage.value
+  const gallery = flowGallery.value
+  const adjacent = current && gallery?.hasAdjacentPhoto(current.id, direction)
+  if (adjacent == null) {
+    if (direction === -1) viewer.prev()
+    else viewer.next()
+    return
+  }
+  if (!adjacent || !gallery || !current || pendingLightboxMove) return
+
+  const request = Symbol()
+  pendingLightboxMove = request
+  try {
+    const photo = await gallery.loadAdjacentPhoto(current.id, direction)
+    if (pendingLightboxMove !== request || lightboxImage.value?.id !== current.id || flowGallery.value !== gallery) return
+    if (photo) viewer.open(photo)
+    else ElMessage.error('加载相邻照片失败，请重试')
+  } finally {
+    if (pendingLightboxMove === request) pendingLightboxMove = null
+  }
+}
+const handlePrev = () => moveLightbox(-1)
+const handleNext = () => moveLightbox(1)
 const refreshingData = ref(false)
 const isMobile = ref(typeof window !== 'undefined' && window.innerWidth < 768)
 const scrolling = ref(false)
@@ -521,9 +607,10 @@ const isPhotoInteractionActive = computed(() =>
 )
 watch(layoutMode, async (mode, previous) => {
   showViewOptions.value = false
-  if (previous === 'diary' && mode !== 'folder') {
+  if (mode !== 'folder' && (previous === 'diary' || previous === 'waterfall' || mode === 'waterfall')) {
+    const date = activeDate.value
     await nextTick()
-    galleryRef.value?.scrollToDate(activeDate.value, 'auto')
+    galleryRef.value?.scrollToDate(date, 'auto')
   }
 })
 
@@ -960,7 +1047,7 @@ const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
     return
   }
   if (layoutMode.value === 'diary') diaryRef.value?.scrollToDate(date)
-  else galleryRef.value?.scrollToDate(date, behavior)
+  else if (galleryRef.value?.scrollToDate(date, behavior) === false) return
   activeDate.value = date
 }
 
@@ -982,7 +1069,7 @@ const closeAlbumSelectModal = () => {
 // Lightbox
 const handleLightboxSelect = (index: number) => {
   const target = props.photos[index]
-  if (target) lightboxImage.value = target
+  if (target) openLightbox(target)
 }
 
 // Delete Logic

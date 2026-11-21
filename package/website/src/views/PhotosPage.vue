@@ -311,11 +311,6 @@ onActivated(() => {
   if (!initialized || currentQueryStr !== lastQueryStr) {
     initData()
   } else {
-    // keep-alive 保留列表，主滚动容器却可能被其他页面压回顶部。
-    void nextTick(() => {
-      const container = getScrollContainer()
-      if (container && savedScrollTop > 0) container.scrollTop = savedScrollTop
-    })
     if (photoStore.dataStale) {
       scheduleAutoRefresh()
     } else {
@@ -323,6 +318,17 @@ onActivated(() => {
       store.fetchAlbums()
     }
   }
+
+  // 重新进入缓存页时，主滚动容器由前一个页面共用。恢复位置后主动同步可见范围，
+  // 因为滚动位置没变时浏览器不会派发 scroll。
+  void nextTick(() => {
+    if (!pageActive.value) return
+    const container = getScrollContainer()
+    if (container) container.scrollTop = savedScrollTop
+    const gallery = unifiedPhotoPageRef.value?.galleryRef
+    gallery?.updateVisibleBlocks()
+    gallery?.checkAndLoadVisibleMonths()
+  })
 })
 
 watch(() => userStore.userInfo?.id, () => {
