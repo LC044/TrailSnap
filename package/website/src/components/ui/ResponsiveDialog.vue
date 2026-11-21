@@ -161,13 +161,19 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKeydown); window
 .responsive-dialog-panel { max-width: 100%; }
 .responsive-dialog-body { overscroll-behavior: contain; }
 .responsive-dialog-enter-active,
-.responsive-dialog-leave-active { transition: opacity var(--ts-motion-normal) ease; }
-.responsive-dialog-enter-active section,
-.responsive-dialog-leave-active section { transition: transform var(--ts-motion-normal) var(--ts-ease), opacity var(--ts-motion-normal) ease; }
+.responsive-dialog-leave-active { transition: opacity 260ms ease; }
+/* The panel lands with a little weight: overshoot on the way in, quick retreat
+   on the way out. Sheets and centred dialogs share the same physics. */
+.responsive-dialog-enter-active section {
+  transition: transform 520ms var(--ts-ease-spring), opacity 220ms ease;
+}
+.responsive-dialog-leave-active section {
+  transition: transform 200ms var(--ts-ease-exit), opacity 180ms ease;
+}
 .responsive-dialog-enter-from,
 .responsive-dialog-leave-to { opacity: 0; }
 .responsive-dialog-enter-from section,
-.responsive-dialog-leave-to section { transform: translateY(1.5rem); opacity: 0; }
+.responsive-dialog-leave-to section { transform: translate3d(0, 2rem, 0) scale(.985); opacity: 0; }
 @media (max-width: 767px) {
   .mobile-fullscreen { height: var(--dialog-viewport-height, 100dvh); }
   .sheet-drag-zone { touch-action: none; user-select: none; cursor: grab; }
