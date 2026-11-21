@@ -1,15 +1,17 @@
 <template>
-  <RouterLink :to="link" class="journal-feature journal-feature--frame">
-    <span class="journal-film-art" aria-hidden="true">
+  <RouterLink :to="link" class="lm-tile lm-tile--frame">
+    <span class="lm-tile-art" aria-hidden="true">
       <img v-if="framePhoto" :src="thumbnailUrl(framePhoto)" alt="" loading="lazy" @error="failedPhoto = framePhoto" />
       <i v-else></i><i></i><i></i>
     </span>
-    <Film class="journal-feature-icon" aria-hidden="true" />
-    <span class="journal-feature-copy">
-      <strong>一日一帧</strong>
-      <span>{{ frameReady ? '今天已留下一帧' : '留下今天的一帧' }}</span>
+    <span class="lm-tile-body">
+      <span class="lm-tile-icon"><Film class="h-4 w-4" /></span>
+      <span class="lm-tile-text">
+        <strong>一日一帧</strong>
+        <span>{{ frameReady ? '今天已留下一帧' : '留下今天的一帧' }}</span>
+      </span>
+      <ArrowUpRight class="lm-tile-arrow" aria-hidden="true" />
     </span>
-    <ArrowUpRight class="journal-feature-arrow" aria-hidden="true" />
   </RouterLink>
 </template>
 

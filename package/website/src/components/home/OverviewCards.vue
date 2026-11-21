@@ -83,6 +83,7 @@ import { computed, PropType } from 'vue';
 import { useRouter } from 'vue-router';
 import { DashboardCard, DashboardContentStats } from '@/api/dashboard';
 import { ChevronRight, HardDrive, ImagePlus, Images } from 'lucide-vue-next';
+import { useCountUp } from '@/composables/useCountUp';
 
 const props = defineProps({
   data: {
@@ -99,7 +100,8 @@ const props = defineProps({
 const emit = defineEmits(['showStorage']);
 const router = useRouter();
 const numberFormatter = new Intl.NumberFormat('zh-CN');
-const formattedTotal = computed(() => numberFormatter.format(props.data.total_media));
+const animatedTotal = useCountUp(computed(() => props.data.total_media));
+const formattedTotal = computed(() => numberFormatter.format(animatedTotal.value));
 const formattedPhotoCount = computed(() => numberFormatter.format(props.content.photos.total));
 const formattedVideoCount = computed(() => numberFormatter.format(props.content.videos.total));
 const formattedStorage = computed(() => props.data.storage_used.replace(/([0-9])([A-Za-z])/, '$1 $2'));
