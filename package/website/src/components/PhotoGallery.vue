@@ -1551,8 +1551,8 @@ defineExpose({
   .lm-day-chapter-link:hover { background: var(--ts-color-surface-muted); }
 
   /* ——— 画框 ——— */
+  /* 圆角由模板的 rounded-lg / rounded-none（高密度方形模式）控制，这里不再覆写。 */
   .lm-photo {
-    border-radius: var(--ts-radius-photo) !important;
     background: var(--ts-color-surface-muted);
     box-shadow: var(--ts-shadow-photo);
     transition: transform 320ms var(--ts-ease-paper), box-shadow 320ms var(--ts-ease-paper);

@@ -209,7 +209,7 @@
       <div class="lm-rail-foot">
         <button
           type="button"
-          class="lm-rail-ai"
+          class="lm-rail-ai ai-assistant-button"
           :aria-label="proactiveUnread > 0 ? `AI 助手，${proactiveUnread} 条新消息` : 'AI 助手'"
           :title="pinned ? undefined : 'AI 助手'"
           @click="uiStore.openAgent()"

@@ -52,17 +52,18 @@ const trainTicket = {
   comments: '',
 }
 
-test('登录页渲染 LoginCharacters 角色组 @views-coverage', async ({ page }) => {
+test('登录页渲染舞台式品牌封面与登录面板 @views-coverage', async ({ page }) => {
   // The dev project injects an authenticated storageState globally; this case
   // specifically exercises the public login page, so start without that token.
   await page.addInitScript(() => localStorage.removeItem('user_token'))
   await page.goto('/login')
   await expect(page.locator('h1', { hasText: '欢迎回来' })).toBeVisible({ timeout: 10_000 })
-  const characterCanvas = page.locator('div.relative.w-\\[400px\\].h-\\[400px\\]')
-  await expect(characterCanvas).toBeVisible()
-  await expect(characterCanvas.locator('div.bg-\\[\\#6366F1\\]')).toBeVisible()
-  await expect(characterCanvas.locator('div.bg-\\[\\#F97316\\]')).toBeVisible()
-  await expect(characterCanvas.locator('div.bg-\\[\\#FACC15\\]')).toBeVisible()
+  // 改版后登录页为双栏舞台：左侧品牌叙事封面（auth-story）+ 右侧登录面板。
+  const stageCover = page.locator('.auth-story')
+  await expect(stageCover).toBeVisible()
+  await expect(stageCover.locator('.auth-story-brand')).toBeVisible()
+  await expect(stageCover.locator('.auth-story-title')).toBeVisible()
+  await expect(page.locator('.auth-panel--login')).toBeVisible()
 })
 
 test.describe('LocationTrajectoryView 轨迹视图 @views-coverage', () => {

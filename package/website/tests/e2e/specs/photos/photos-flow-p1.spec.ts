@@ -58,13 +58,17 @@ test.describe('P1 - 照片流核心功能', () => {
     await page.goto('/photos')
 
     // PhotoGallery 在月块内为每个 day-block 渲染一个日头
-    // 模板：YYYY-MM-DD 格式（src/components/PhotoGallery.vue）
+    // 模板：杂志式日期标尺（src/components/PhotoGallery.vue）
+    // —— 日号两位数字 + 「YYYY 年 M 月」标签
     const dayHeader = page.locator('.day-block').first()
     await expect(dayHeader).toBeVisible({ timeout: 15_000 })
 
-    // 验证日头内至少出现一个 YYYY-MM-DD 格式
-    const dayText = await dayHeader.locator('span').first().textContent({ timeout: 5_000 })
-    expect(dayText ?? '').toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    // 日号：两位数字
+    const dayText = await dayHeader.locator('[data-testid="photo-date-header"] .lm-day-num, .lm-day-num').first().textContent({ timeout: 5_000 })
+    expect(dayText ?? '').toMatch(/^\d{1,2}$/)
+    // 年月标签：完整年月信息仍可读
+    const monthText = await dayHeader.locator('.lm-day-month').first().textContent({ timeout: 5_000 })
+    expect(monthText ?? '').toMatch(/\d{4} 年 \d{1,2} 月/)
   })
 
   test('2.1.3 原图加载 - 在 PhotoLightbox 中可请求高分辨率原图', async ({ page, request }, testInfo) => {
