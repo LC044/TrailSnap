@@ -1,0 +1,331 @@
+/* ============================================================================
+ * Lumen — TrailSnap 视觉改版层 (2026-11)
+ *
+ * 方向：把「照片」放回舞台中央。
+ *   · 光：暖白纸面 / 墨色夜窗，页面自带一层极淡的环境光，让照片像被灯照亮。
+ *   · 字：大标题用宋体骨架压缩字距，小字用等宽数字；标签层用宽字距的英文小字。
+ *   · 形：所有容器共用一套圆角与发丝描边；只有照片拥有更大圆角与投影。
+ *   · 动：显影式入场、柔和扫光、指针跟随的高光；一切遵从 reduced-motion。
+ *
+ * 这一层只覆写 token 与提供少量新类，不改任何业务组件的行为。
+ * ========================================================================= */
+
+:root {
+  /* —— 纸面 —— */
+  --ts-color-page: #f4f1ec;
+  --ts-color-surface: #fffefc;
+  --ts-color-surface-muted: #efebe4;
+  --ts-color-surface-raised: #ffffff;
+  --ts-color-text: #17161a;
+  --ts-color-text-secondary: #6a666f;
+  --ts-color-text-tertiary: #9a959e;
+  --ts-color-border: #e4ddd2;
+  --ts-color-divider: #ece6dc;
+  --ts-color-overlay: rgb(23 22 26 / 56%);
+  --ts-color-danger: #d94b46;
+
+  /* —— 尺度 —— */
+  --ts-radius-control: 14px;
+  --ts-radius-card: 22px;
+  --ts-radius-dialog: 28px;
+  --ts-radius-photo: 16px;
+  --ts-section-gap: 28px;
+
+  /* —— 光 —— */
+  --lm-light-warm: rgb(255 233 199 / 55%);
+  --lm-light-cool: rgb(206 224 255 / 46%);
+  --lm-ink: #17161a;
+  --lm-hairline: rgb(23 22 26 / 8%);
+  --ts-shadow-card: 0 1px 1px rgb(38 32 24 / 4%), 0 14px 34px -22px rgb(38 32 24 / 22%);
+  --ts-shadow-floating: 0 24px 60px -24px rgb(32 27 20 / 30%), 0 2px 8px rgb(32 27 20 / 8%);
+  --ts-shadow-photo: 0 1px 2px rgb(30 25 18 / 6%), 0 18px 38px -26px rgb(30 25 18 / 34%);
+
+  /* —— 玻璃：更薄、更亮，只做导航与浮动层 —— */
+  --ts-glass-clear: rgb(255 255 255 / 30%);
+  --ts-glass-bg: rgb(255 253 250 / 78%);
+  --ts-glass-panel: rgb(255 253 250 / 92%);
+  --ts-glass-control: rgb(255 255 255 / 43%);
+  --ts-glass-border: rgb(255 255 255 / 62%);
+  --ts-glass-highlight: rgb(255 255 255 / 82%);
+  --ts-menu-card: rgb(255 253 250 / 46%);
+  --ts-glass-sheen: linear-gradient(158deg, rgb(255 255 255 / 46%), transparent 30%, transparent 78%, rgb(255 255 255 / 18%));
+  --ts-shadow-glass: 0 10px 30px -14px rgb(40 33 24 / 26%), 0 1px 3px rgb(40 33 24 / 8%);
+  --ts-glass-blur: 22px;
+  --ts-glass-saturation: 150%;
+  --ts-glass-label-shadow: 0 0 3px rgb(255 255 255 / 85%);
+
+  /* —— 排版 —— */
+  --lm-font-display: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", Georgia, serif;
+  --lm-tracking-eyebrow: .22em;
+  --ts-journal-rail: var(--ts-color-surface);
+  --ts-journal-active: rgba(var(--theme-rgb, 30, 136, 229), .11);
+  --ts-journal-focus: var(--theme-primary, #1e88e5);
+  --ts-journal-accent-text: color-mix(in srgb, var(--ts-journal-focus) 46%, var(--ts-color-text));
+  /* 主操作：主题色压暗，任何主题下白字都可读 */
+  --ts-journal-action: color-mix(in srgb, var(--theme-primary) 58%, #15141a);
+  --ts-journal-action-hover: color-mix(in srgb, var(--theme-primary) 46%, #15141a);
+  --ts-journal-on-image: color-mix(in srgb, var(--ts-journal-focus) 34%, white);
+
+  /* —— 动 —— */
+  --lm-ease: cubic-bezier(.22, 1, .36, 1);
+  --lm-ease-soft: cubic-bezier(.4, 0, .2, 1);
+  --lm-dur: 260ms;
+
+  --el-color-primary: var(--theme-primary, #1e88e5);
+  --el-bg-color: var(--ts-color-surface);
+  --el-bg-color-page: var(--ts-color-page);
+  --el-fill-color-blank: var(--ts-color-surface);
+  --el-border-color: var(--ts-color-border);
+  --el-border-radius-base: var(--ts-radius-control);
+  --el-bg-color-overlay: var(--ts-glass-panel);
+}
+
+html.dark {
+  color-scheme: dark;
+  --ts-color-page: #0c0e12;
+  --ts-color-surface: #15181d;
+  --ts-color-surface-muted: #1d2127;
+  --ts-color-surface-raised: #1a1e24;
+  --ts-color-text: #f4f2ee;
+  --ts-color-text-secondary: #a6a3ab;
+  --ts-color-text-tertiary: #7c7a83;
+  --ts-color-border: #272c34;
+  --ts-color-divider: #1f242b;
+  --ts-color-overlay: rgb(3 5 8 / 72%);
+  --ts-color-danger: #ff6b60;
+
+  --lm-light-warm: rgb(120 92 52 / 18%);
+  --lm-light-cool: rgb(52 86 140 / 26%);
+  --lm-ink: #f4f2ee;
+  --lm-hairline: rgb(255 255 255 / 9%);
+  --ts-shadow-card: 0 1px 1px rgb(0 0 0 / 32%), 0 18px 40px -26px rgb(0 0 0 / 55%);
+  --ts-shadow-floating: 0 28px 64px -24px rgb(0 0 0 / 70%), 0 2px 10px rgb(0 0 0 / 40%);
+  --ts-shadow-photo: 0 1px 2px rgb(0 0 0 / 40%), 0 20px 44px -28px rgb(0 0 0 / 80%);
+
+  --ts-glass-clear: rgb(18 21 26 / 40%);
+  --ts-glass-bg: rgb(19 22 27 / 78%);
+  --ts-glass-panel: rgb(21 24 29 / 92%);
+  --ts-glass-control: rgb(24 27 33 / 52%);
+  --ts-glass-border: rgb(255 255 255 / 14%);
+  --ts-glass-highlight: rgb(255 255 255 / 20%);
+  --ts-menu-card: rgb(29 33 39 / 42%);
+  --ts-glass-sheen: linear-gradient(158deg, rgb(255 255 255 / 16%), transparent 26%, transparent 80%, rgb(255 255 255 / 7%));
+  --ts-shadow-glass: 0 10px 30px -12px rgb(0 0 0 / 60%), 0 1px 3px rgb(0 0 0 / 40%);
+  --ts-glass-label-shadow: 0 0 4px rgb(0 0 0 / 90%);
+
+  --ts-journal-rail: var(--ts-color-surface);
+  --ts-journal-active: rgba(var(--theme-rgb, 30, 136, 229), .16);
+  --ts-journal-accent-text: color-mix(in srgb, var(--ts-journal-focus) 30%, var(--ts-color-text));
+  --ts-journal-action: color-mix(in srgb, var(--theme-primary) 42%, #111318);
+  --ts-journal-action-hover: color-mix(in srgb, var(--theme-primary) 34%, #111318);
+
+  --el-color-primary: var(--theme-primary, #1e88e5);
+  --el-bg-color: var(--ts-color-surface);
+  --el-bg-color-page: var(--ts-color-page);
+  --el-fill-color-blank: var(--ts-color-surface);
+  --el-border-color: var(--ts-color-border);
+}
+
+/* ---------------------------------------------------------------------------
+ * 环境光：页面本身像被一束柔和的光照着。
+ * ------------------------------------------------------------------------- */
+html,
+body,
+#app {
+  background-color: var(--ts-color-page);
+}
+
+.ts-page-background,
+.ts-main-scroll,
+.ts-blank-layout {
+  background-color: var(--ts-color-page);
+  background-image:
+    radial-gradient(1100px 620px at 12% -8%, var(--lm-light-warm), transparent 62%),
+    radial-gradient(900px 540px at 96% 4%, var(--lm-light-cool), transparent 58%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* ---------------------------------------------------------------------------
+ * 主操作按钮：主题色压暗后端（保证白字可读），与 Element Plus 的主色同一族。
+ * 真正「墨色」的按钮只出现在照片与封面上（首页导入、登录提交）。
+ * ------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------
+ * 排版原子
+ * ------------------------------------------------------------------------- */
+.lm-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ts-color-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: var(--lm-tracking-eyebrow);
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.lm-display {
+  font-family: var(--lm-font-display);
+  font-weight: 700;
+  letter-spacing: -.045em;
+  line-height: 1.04;
+  text-wrap: balance;
+  color: var(--ts-color-text);
+}
+
+.lm-title {
+  font-family: var(--lm-font-display);
+  font-size: clamp(26px, 2.4vw, 38px);
+  font-weight: 700;
+  letter-spacing: -.04em;
+  line-height: 1.12;
+  color: var(--ts-color-text);
+  text-wrap: balance;
+}
+
+.lm-subtitle {
+  color: var(--ts-color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .01em;
+}
+
+.lm-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -.01em;
+}
+
+/* 发丝分隔：不用整条边框，用一条能呼吸的线。 */
+.lm-rule {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(to right, var(--ts-color-border), transparent 92%);
+}
+
+/* ---------------------------------------------------------------------------
+ * 照片画框
+ * ------------------------------------------------------------------------- */
+.lm-frame {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--ts-radius-photo);
+  background: var(--ts-color-surface-muted);
+  box-shadow: var(--ts-shadow-photo);
+  isolation: isolate;
+}
+
+.lm-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+.lm-frame img,
+.lm-frame > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 900ms var(--lm-ease), filter 600ms var(--lm-ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lm-frame:hover img { transform: scale(1.045); }
+}
+
+/* 已显影的照片带一层极轻的暖调，让缩略图更像相纸。 */
+.lm-paper-warm img { filter: saturate(1.03) contrast(1.01); }
+
+/* ---------------------------------------------------------------------------
+ * 胶囊 / 徽标
+ * ------------------------------------------------------------------------- */
+.lm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--ts-color-border);
+  border-radius: var(--ts-radius-pill);
+  background: var(--ts-glass-bg);
+  color: var(--ts-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+  backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+}
+
+.lm-chip--solid {
+  border-color: transparent;
+  background-color: var(--ts-journal-action);
+  color: #fff;
+}
+
+/* 英文小标签，用于「section / index」这类结构性信息 */
+.lm-index {
+  color: var(--ts-color-text-tertiary);
+  font-family: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+}
+
+/* ---------------------------------------------------------------------------
+ * 动效：显影、柔光扫过
+ * ------------------------------------------------------------------------- */
+@keyframes lm-develop {
+  0% { opacity: 0; filter: blur(14px) saturate(.7) brightness(1.12); transform: scale(1.02); }
+  60% { opacity: 1; }
+  100% { opacity: 1; filter: blur(0) saturate(1) brightness(1); transform: scale(1); }
+}
+
+@keyframes lm-rise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes lm-sweep {
+  from { transform: translate3d(-140%, 0, 0) skewX(-12deg); }
+  to { transform: translate3d(160%, 0, 0) skewX(-12deg); }
+}
+
+.lm-develop { animation: lm-develop 760ms var(--lm-ease) backwards; }
+.lm-rise { animation: lm-rise 620ms var(--lm-ease) backwards; }
+
+/* 主按钮上的扫光：只在指针进入时出现一次，像镜头捕捉到光。 */
+.lm-sheen { position: relative; overflow: hidden; }
+.lm-sheen::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 34%), transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+.lm-sheen:hover::after { opacity: 1; animation: lm-sweep 780ms var(--lm-ease) forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lm-develop, .lm-rise, .lm-sheen:hover::after { animation: none !important; }
+}
+
+/* ---------------------------------------------------------------------------
+ * 滚动条：更细，更像纸面上的铅笔灰
+ * ------------------------------------------------------------------------- */
+*::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--ts-color-text-tertiary) 42%, transparent) !important;
+  border-radius: 999px !important;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: var(--ts-color-text-tertiary) !important; }
+html.dark *::-webkit-scrollbar-thumb { background-color: rgb(255 255 255 / 16%) !important; }
