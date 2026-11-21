@@ -1,0 +1,267 @@
+/*
+ * TrailSnap motion language — 「一本会呼吸的影像手记」.
+ *
+ * The product is a photo journal, not a dashboard. Motion therefore rehearses
+ * three physical behaviours instead of generic UI easing:
+ *
+ *   显影 develop — a picture arrives the way a print surfaces in a tray:
+ *                  soft, colourless and slightly too large, then crisp.
+ *   落定 settle  — controls and surfaces land with weight; nothing snaps.
+ *   翻页 turn    — pages hand over to each other instead of swapping.
+ *
+ * Everything stays inside a 120–760ms budget: slower reads as lag on a phone,
+ * faster loses the physical feeling. Every primitive collapses to an instant
+ * state change under prefers-reduced-motion.
+ */
+
+:root {
+  /* Decelerating curve for things that enter, accelerating for things leaving. */
+  --ts-ease-enter: cubic-bezier(.16, .84, .24, 1);
+  --ts-ease-exit: cubic-bezier(.32, 0, .67, 0);
+  /* A slight overshoot: indicators, sheets and pressable controls land on it. */
+  --ts-ease-spring: cubic-bezier(.34, 1.46, .64, 1);
+  --ts-ease-paper: cubic-bezier(.22, 1, .36, 1);
+  --ts-ease-breathe: cubic-bezier(.45, 0, .55, 1);
+}
+
+/* ---------------------------------------------------------------- keyframes */
+
+/* A print surfacing. Transform is deliberately excluded so a hover-zoom on the
+   same element keeps working once the animation has finished. */
+@keyframes ts-develop {
+  0% { opacity: 0; filter: blur(18px) saturate(.35) brightness(1.16); }
+  55% { opacity: 1; }
+  100% { opacity: 1; filter: blur(0) saturate(1) brightness(1); }
+}
+
+/* Lighter variant for dense grids: same idea, far less filter work per tile. */
+@keyframes ts-develop-soft {
+  0% { opacity: 0; filter: blur(9px) saturate(.45) brightness(1.1); }
+  60% { opacity: 1; }
+  100% { opacity: 1; filter: blur(0) saturate(1) brightness(1); }
+}
+
+/* Editorial entrance: content lifts into place. */
+@keyframes ts-rise {
+  from { opacity: 0; transform: translate3d(0, var(--ts-rise-y, 18px), 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* A line of type rising out from behind a mask, the way set type meets paper. */
+@keyframes ts-line-rise {
+  from { transform: translate3d(0, 112%, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+/* The "today" dot: one slow heartbeat, then rest. */
+@keyframes ts-breathe {
+  0% { box-shadow: 0 0 0 0 rgba(var(--theme-rgb), .45); }
+  70% { box-shadow: 0 0 0 7px rgba(var(--theme-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--theme-rgb), 0); }
+}
+
+/* Slow drift for decorative artwork so a page is never perfectly still. */
+@keyframes ts-drift {
+  0% { transform: rotate(-39deg) scale(1); }
+  50% { transform: rotate(-36deg) scale(1.045); }
+  100% { transform: rotate(-39deg) scale(1); }
+}
+
+/* Ken Burns for the featured frame: alive, but slower than the eye. */
+@keyframes ts-ken-burns {
+  0% { transform: scale(1.035) translate3d(0, 0, 0); }
+  100% { transform: scale(1.115) translate3d(-1.2%, -1.6%, 0); }
+}
+
+/* New content inside an open accordion. */
+@keyframes ts-panel-open {
+  from { opacity: 0; transform: translate3d(0, -6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes ts-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* A single sparkle, then stillness — for accent icons that must stay quiet. */
+@keyframes ts-twinkle {
+  0%, 84%, 100% { opacity: .5; transform: scale(1) rotate(0deg); }
+  90% { opacity: 1; transform: scale(1.16) rotate(-8deg); }
+  95% { opacity: .85; transform: scale(1.02) rotate(4deg); }
+}
+
+/* A newly active dock tab pushes in like a button being seated. */
+@keyframes ts-tab-bloom {
+  0% { transform: translate3d(0, 3px, 0) scale(.84); }
+  55% { transform: translate3d(0, -2px, 0) scale(1.14); }
+  100% { transform: translate3d(0, 0, 0) scale(1.04); }
+}
+
+/* ------------------------------------------------------------------ reveal */
+
+/* Added by the `v-reveal` directive; `is-revealed` is toggled by an
+   IntersectionObserver the first time the element scrolls into view. */
+.ts-reveal {
+  opacity: 0;
+  transform: translate3d(0, var(--ts-reveal-y, 18px), 0);
+  transition:
+    opacity var(--ts-reveal-duration, 640ms) var(--ts-ease-enter) var(--ts-reveal-delay, 0ms),
+    transform var(--ts-reveal-duration, 760ms) var(--ts-ease-enter) var(--ts-reveal-delay, 0ms);
+}
+
+.ts-reveal.is-revealed {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Masked line reveal for display type: the inner span slides out of the mask. */
+.ts-mask {
+  display: block;
+  overflow: hidden;
+  /* Room for ascenders and descenders so the mask never crops 影/集/记. */
+  padding-block: .06em .12em;
+  margin-block: -.06em -.12em;
+}
+
+.ts-mask > * {
+  display: block;
+  transform: translate3d(0, 112%, 0);
+  animation: ts-line-rise 900ms var(--ts-ease-enter) var(--ts-mask-delay, 0ms) both;
+}
+
+/* ----------------------------------------------------------------- develop */
+
+.ts-develop { animation: ts-develop 900ms var(--ts-ease-enter) backwards; }
+.photo-gallery img.is-developed { animation: ts-develop-soft 560ms var(--ts-ease-enter) backwards; }
+
+/* --------------------------------------------------------------- page turn */
+
+/* Photo galleries fade without translating so viewport measurements stay stable. */
+.ts-page-enter-active {
+  transition:
+    opacity 150ms var(--ts-ease-enter),
+    transform 160ms var(--ts-ease-enter);
+}
+.ts-page-leave-active {
+  transition:
+    opacity 70ms var(--ts-ease-exit);
+}
+.ts-page-enter-from { opacity: 0; }
+.ts-page-enter-from:not(.unified-photo-page) { transform: translate3d(0, 4px, 0); }
+.ts-page-leave-to { opacity: 0; }
+
+/* Going back reverses the journey: the page you left comes down from above,
+   so the reader keeps a sense of where they are in the stack. */
+.ts-page-back-enter-active {
+  transition:
+    opacity 150ms var(--ts-ease-enter),
+    transform 160ms var(--ts-ease-enter);
+}
+.ts-page-back-leave-active {
+  transition:
+    opacity 70ms var(--ts-ease-exit);
+}
+.ts-page-back-enter-from { opacity: 0; }
+.ts-page-back-enter-from:not(.unified-photo-page) { transform: translate3d(0, -4px, 0); }
+.ts-page-back-leave-to { opacity: 0; }
+
+/* --------------------------------------------------------------- photo flight */
+
+/* The print that travels between a frame and the viewer. Laid out at the
+   destination and pulled back with an inverse transform, so the whole journey
+   is a single compositor-only transition. See utils/photoFlight.ts. */
+.ts-fly-ghost {
+  position: fixed;
+  margin: 0;
+  border-radius: 10px;
+  object-fit: cover;
+  pointer-events: none;
+  background: var(--ts-color-surface-muted);
+  /* Kept deliberately soft: the shadow is released the instant the print is
+     replaced by the viewer's own photo, so a heavy one would read as a blink. */
+  box-shadow: 0 16px 36px rgb(2 6 23 / 26%);
+  will-change: transform, opacity;
+  transition:
+    transform 420ms var(--ts-ease-paper),
+    border-radius 420ms var(--ts-ease-paper),
+    opacity 150ms ease;
+}
+
+/* While a print is in the air the viewer shows its chrome but not its photo:
+   the flying print is the photo. */
+html[data-ts-photo-flying] [data-testid="photo-lightbox-current-image"],
+html[data-ts-photo-flying] [data-testid="photo-lightbox-preview"] { opacity: 0 !important; }
+
+/* The viewer dissolves rather than blinking out, so the return flight has room
+   to be read. */
+.photo-lightbox-shell.fade-leave-active { transition: opacity 300ms ease !important; }
+
+/* The frame that receives a returning print acknowledges it with one ring. */
+.ts-print-landed { position: relative; }
+.ts-print-landed::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 92%);
+  animation: ts-print-land 640ms var(--ts-ease-exit) both;
+}
+@keyframes ts-print-land {
+  0% { box-shadow: inset 0 0 0 3px rgb(255 255 255 / 95%); opacity: 1; }
+  100% { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0%); opacity: 0; }
+}
+
+/* A sharp photo surfaces out of the blurred preview the viewer already had is
+   intentionally *not* animated here: the viewer swaps its <img> on every photo
+   change, so any entrance animation would replay on each swipe and read as a
+   flicker. The preview underneath already covers the swap. */
+
+/* --------------------------------------------------------- shared surfaces */
+
+/* Album, place and person covers lift under the pointer, consistently with the
+   journal's own feature cards. Pointer-only so touch never sticks mid-hover. */
+@media (hover: hover) and (pointer: fine) {
+  .ts-album-grid > * {
+    transition: transform 320ms var(--ts-ease-paper), box-shadow 320ms var(--ts-ease-paper);
+  }
+  .ts-album-grid > *:hover { transform: translate3d(0, -4px, 0); }
+  .ts-album-grid > *:active { transform: translate3d(0, -1px, 0) scale(.99); }
+}
+
+/* --------------------------------------------------------------- review mode */
+
+/* `?motion=slow` (added by main.ts) stretches every transition so motion can be
+   reviewed frame by frame. Never active for regular visitors. */
+html.ts-motion-slow *,
+html.ts-motion-slow *::before,
+html.ts-motion-slow *::after {
+  animation-duration: 3.2s !important;
+  transition-duration: 1.1s !important;
+}
+
+/* ------------------------------------------------------- reduced motion gate */
+
+@media (prefers-reduced-motion: reduce) {
+  .ts-reveal,
+  .ts-reveal.is-revealed {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .ts-mask > *,
+  .ts-develop { animation: none !important; transform: none !important; opacity: 1 !important; }
+  .photo-gallery img.is-developed { animation: none !important; opacity: 1 !important; filter: none !important; }
+  .ts-page-enter-active,
+  .ts-page-leave-active,
+  .ts-page-back-enter-active,
+  .ts-page-back-leave-active { transition: none !important; }
+  .ts-page-enter-from,
+  .ts-page-leave-to,
+  .ts-page-back-enter-from,
+  .ts-page-back-leave-to { opacity: 1; transform: none; }
+  .ts-album-grid > *:hover,
+  .ts-album-grid > *:active { transform: none; }
+}

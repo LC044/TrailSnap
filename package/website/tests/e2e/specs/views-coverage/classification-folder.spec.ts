@@ -140,7 +140,8 @@ test.describe('P1 - 智能分类 + 文件夹树 @classification-folder', () => {
     await page.getByTestId('classification-group-人物').click()
     await expect(page).toHaveURL(/\/album\/classification\/group\//, { timeout: 5_000 })
     // 分组详情页：标题等于分组名，类别网格显示该组的类别
-    await expect(page.getByText('人物').first()).toBeVisible({ timeout: 5_000 })
+    // 侧边栏搜索建议里也有「人物」文案，用页面标题容器锚定，避免误匹配隐藏元素。
+    await expect(page.getByTestId('album-detail-title')).toContainText('人物', { timeout: 5_000 })
     const strip = page.getByTestId('classification-category-strip')
     await expect(strip).toBeVisible()
     // 计数为 0 的「多人合照」不显示

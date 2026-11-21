@@ -5,11 +5,11 @@ const path = require('node:path');
 const ts = require('typescript');
 const vm = require('node:vm');
 const vueRouter = require('vue-router');
-function load(file, overrides = {}) {
+function load(file, overrides = {}, globals = {}) {
   const source = fs.readFileSync(path.resolve(__dirname, '../../src', file), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   const mod = { exports: {} };
-  vm.runInNewContext(`(function(require,module,exports){${code}\n})`, { URL, document: { title: '' } })(name => overrides[name] || require(name), mod, mod.exports);
+  vm.runInNewContext(`(function(require,module,exports){${code}\n})`, { URL, document: { title: '' }, ...globals })(name => overrides[name] || require(name), mod, mod.exports);
   return mod.exports;
 }
 function fixture({ token = null, demo = true, fails = false } = {}) {
@@ -23,6 +23,7 @@ function fixture({ token = null, demo = true, fails = false } = {}) {
     } },
     '@/config/server': { isNativeApp: () => false },
     './navigationFeedback': { installNavigationFeedback() {} },
+    '@/composables/usePageDirection': { installPageDirection() {} },
     './commonPages': { HomePage: page, PhotosPage: page, AlbumList: page, TicketPage: page },
     './authRedirect': load('router/authRedirect.ts'),
     '@/composables/demoEntry': load('composables/demoEntry.ts'),
@@ -39,6 +40,25 @@ test('explicit demo entry authenticates directly into footprint without visiting
   assert.equal(router.currentRoute.value.fullPath, '/footprint?demo=1&year=2025#shanghai');
   assert.deepEqual(visited, ['/footprint']);
   assert.deepEqual(calls, ['status', 'login']);
+});
+
+test('page direction follows committed history, ignoring cancelled navigation', () => {
+  const history = { state: { position: 3 } };
+  const { pageDirection, installPageDirection } = load('composables/usePageDirection.ts', {}, { window: { history } });
+  let afterEach;
+  installPageDirection({ afterEach: callback => { afterEach = callback; } });
+  const commit = (position, failure) => {
+    history.state.position = position;
+    afterEach({}, {}, failure);
+  };
+  commit(4);
+  assert.equal(pageDirection.value, 'forward');
+  commit(2, Error('aborted'));
+  assert.equal(pageDirection.value, 'forward');
+  commit(3);
+  assert.equal(pageDirection.value, 'back');
+  commit(4);
+  assert.equal(pageDirection.value, 'forward');
 });
 test('normal instances and ordinary protected navigation never auto-login', async () => {
   const normal = fixture({ demo: false });
