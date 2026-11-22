@@ -21,7 +21,7 @@
         class="stats-place-feature"
         role="button"
         tabindex="0"
-        :aria-label="`${feature.name}，${feature.photo_count} 张照片，查看这个地点`"
+        :aria-label="`${feature.name}，${feature.photo_count} 张照片，查看照片`"
         @click="$emit('go-location', feature.name)"
         @keydown.enter.prevent="$emit('go-location', feature.name)"
         @keydown.space.prevent="$emit('go-location', feature.name)"
