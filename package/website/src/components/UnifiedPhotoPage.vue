@@ -311,6 +311,7 @@
     <!-- Lightbox -->
     <PhotoLightbox
       :visible="!!lightboxImage"
+      :initial-details="lightboxInitialDetails"
       :image="lightboxImage"
       :images="photos"
       :current-index="lightboxIndex"
@@ -549,8 +550,10 @@ const hasPrev = computed(() => canMoveLightbox(-1))
 const hasNext = computed(() => canMoveLightbox(1))
 
 let pendingLightboxMove: symbol | null = null
-const openLightbox = (photo: AlbumImage | number) => {
+const lightboxInitialDetails = ref(false)
+const openLightbox = (photo: AlbumImage | number, details = false) => {
   pendingLightboxMove = null
+  lightboxInitialDetails.value = details
   viewer.open(photo)
 }
 const closeLightbox = () => {
@@ -1063,7 +1066,8 @@ const enterBatchMode = async () => {
 const closeAlbumSelectModal = () => {
   showAlbumSelectModal.value = false
   tempSelectedIds.value = []
-  galleryRef.value?.exitSelectionMode()
+  if (!preserveAlbumSelection.value) galleryRef.value?.exitSelectionMode()
+  preserveAlbumSelection.value = false
 }
 
 // Lightbox
@@ -1073,8 +1077,11 @@ const handleLightboxSelect = (index: number) => {
 }
 
 // Delete Logic
-const handleBatchDelete = (ids: string[]) => {
+const preserveAlbumSelection = ref(false)
+const preserveDeleteSelection = ref(false)
+const handleBatchDelete = (ids: string[], preserveSelection = false) => {
   if (ids.length === 0) return
+  preserveDeleteSelection.value = preserveSelection
   lightboxDeleteId.value = null
   idsToDelete.value = ids
   showDeleteConfirm.value = true
@@ -1101,7 +1108,7 @@ const handleBatchRemoveFromAlbum = (ids: string[]) => {
 }
 
 // 「更多」里的解除关联：只影响当前相册/人物，照片本体保留
-const handleBatchRemoveAssociation = (ids: string[]) => {
+const handleBatchRemoveAssociation = (ids: string[], preserveSelection = false) => {
     if (ids.length === 0) return
     ElMessageBox.confirm(
         `确定要将选中的 ${ids.length} 张照片${props.removeLabel}吗？仅解除关联，照片本身不会被删除。`,
@@ -1109,7 +1116,7 @@ const handleBatchRemoveAssociation = (ids: string[]) => {
         { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
     ).then(() => {
         emit('confirm-remove-association', ids, (success: boolean) => {
-            if (success) galleryRef.value?.exitSelectionMode()
+            if (success && !preserveSelection) galleryRef.value?.exitSelectionMode()
         })
     }).catch(() => {
         // 用户点击取消
@@ -1117,6 +1124,7 @@ const handleBatchRemoveAssociation = (ids: string[]) => {
 }
 
 const handlePhotoDelete = (id: string) => {
+    preserveDeleteSelection.value = false
     lightboxDeleteId.value = id
     idsToDelete.value = [id]
     showDeleteConfirm.value = true
@@ -1135,13 +1143,14 @@ const confirmDelete = () => {
     const source: 'batch' | 'lightbox' = lightboxDeleteId.value ? 'lightbox' : 'batch'
     const realDelete = props.deleteLabel === '删除' || (source === 'batch' && !!props.removeLabel)
     const scrollAnchor = captureVisiblePhoto(idsToDelete.value)
+    const preserveSelection = preserveDeleteSelection.value
     emit('confirm-delete', idsToDelete.value, (success: boolean) => {
         if (success) {
             // Show particle if needed (usually for permanent delete)
             if (realDelete) {
                 showParticle.value = true
             }
-            galleryRef.value?.exitSelectionMode()
+            if (!preserveSelection) galleryRef.value?.exitSelectionMode()
             if (lightboxDeleteId.value) closeLightbox()
             nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
                 restoreVisiblePhoto(scrollAnchor)
@@ -1152,12 +1161,14 @@ const confirmDelete = () => {
 }
 
 const handleAddToAlbumFromLightbox = (img: AlbumImage) => {
+    preserveAlbumSelection.value = false
     tempSelectedIds.value = [img.id]
     showAlbumSelectModal.value = true
 }
 
-const handleBatchAddToAlbum = (ids: string[]) => {
+const handleBatchAddToAlbum = (ids: string[], preserveSelection = false) => {
   if (ids.length === 0) return
+  preserveAlbumSelection.value = preserveSelection
   tempSelectedIds.value = ids
   showAlbumSelectModal.value = true
   albumStore.fetchAlbums()

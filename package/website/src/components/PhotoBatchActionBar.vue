@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible && showMobileHeader" v-glass-refraction.rim class="ts-liquid-glass ts-selection-glass selection-mobile-header" data-testid="photo-selection-header">
+    <div v-if="visible && showMobileHeader" class="ts-liquid-glass ts-selection-glass selection-mobile-header" data-testid="photo-selection-header">
       <button class="ts-button ts-button-ghost" @click="$emit('select-all')">{{ isAllSelected ? '取消全选' : '全选' }}</button>
       <span class="font-semibold" aria-live="polite">已选 {{ selectionCount }} 项</span>
       <button class="ts-icon-button ts-button-ghost" aria-label="取消选择" @click="$emit('cancel')"><X class="h-5 w-5" /></button>
@@ -14,7 +14,7 @@
       leave-to-class="transform translate-y-6 opacity-0"
     >
       <div v-if="visible" data-testid="photo-selection-bar" class="fixed bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] left-0 right-0 z-40 flex justify-center pointer-events-none px-3">
-        <div v-glass-refraction class="ts-liquid-glass ts-selection-glass selection-toolbar pointer-events-auto">
+        <div class="ts-liquid-glass ts-selection-glass selection-toolbar pointer-events-auto">
           <div class="selection-summary flex items-center gap-2">
             <button @click="$emit('cancel')" class="ts-icon-button ts-button-ghost sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="取消选择" aria-label="取消选择">
               <X class="w-5 h-5 text-gray-600 dark:text-gray-300" />

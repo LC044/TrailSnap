@@ -25,6 +25,7 @@
           :loading="loading"
           :scroll-container="scrollContainer"
           delete-label="删除截图"
+          :context-viewing="false"
           @batch-delete="handleBatchDelete"
           @click-photo="handlePhotoClick"
         >

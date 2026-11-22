@@ -170,6 +170,7 @@
               :view-size="props.viewSize"
               :scroll-container="scrollArea"
               :show-action-bar="true"
+              context-add-to-album
               @click-photo="handleGalleryClick"
               @batch-delete="handleBatchDelete"
               @add-to-album="handleAddToAlbum"
@@ -261,7 +262,7 @@
       leave-to-class="transform -translate-y-full opacity-0"
     >
       <div v-if="viewMode === 'list' && isSelectionMode" class="fixed bottom-[20px] left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
-        <div v-glass-refraction class="ts-liquid-glass ts-selection-glass rounded-full px-3 py-1 flex items-center gap-2 sm:gap-6 pointer-events-auto min-w-0 max-w-full overflow-x-auto scrollbar-hide">
+        <div class="ts-liquid-glass ts-selection-glass rounded-full px-3 py-1 flex items-center gap-2 sm:gap-6 pointer-events-auto min-w-0 max-w-full overflow-x-auto scrollbar-hide">
           <div class="flex items-center gap-1 md:gap-3 flex-shrink-0">
             <button @click="exitSelectionMode" class="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-600 dark:text-gray-300" title="取消选择">
               <X class="w-5 h-5" />
@@ -333,6 +334,7 @@
     <!-- 查看器 -->
     <PhotoLightbox
       :visible="lightboxIndex >= 0"
+      :initial-details="lightboxInitialDetails"
       :image="lightboxImage"
       :images="photos"
       :current-index="lightboxIndex"
@@ -596,12 +598,17 @@ const toggleSelectAllList = () => {
 // 查看器
 const lightboxIndex = ref(-1)
 const lightboxImage = computed(() => (lightboxIndex.value >= 0 ? photos.value[lightboxIndex.value] : null))
-const openLightbox = (idx: number) => { lightboxIndex.value = idx }
+const lightboxInitialDetails = ref(false)
+const openLightbox = (idx: number, details = false) => {
+  lightboxInitialDetails.value = details
+  lightboxIndex.value = idx
+}
 const closeLightbox = () => { lightboxIndex.value = -1 }
 
 // 弹窗
 const showAlbumSelectModal = ref(false)
 const tempSelectedIds = ref<string[]>([])
+const preserveAlbumSelection = ref(false)
 const showPersonSelector = ref(false)
 const isAddingPerson = ref(false)
 const isDownloading = ref(false)
@@ -691,13 +698,13 @@ const goBack = () => {
 }
 
 // 点击照片 → 打开查看器
-const handleGalleryClick = (photo: AlbumImage) => {
+const handleGalleryClick = (photo: AlbumImage, details = false) => {
   const idx = photos.value.findIndex(p => p.id === photo.id)
-  if (idx !== -1) openLightbox(idx)
+  if (idx !== -1) openLightbox(idx, details)
 }
 
 // 批量删除（网格 / 列表共用）
-const handleBatchDelete = async (ids: string[]) => {
+const handleBatchDelete = async (ids: string[], preserveSelection = false) => {
   if (!ids.length) return
   try {
     await ElMessageBox.confirm(`确定要删除选中的 ${ids.length} 张照片吗？`, '批量删除', {
@@ -708,8 +715,10 @@ const handleBatchDelete = async (ids: string[]) => {
     await albumService.batchUpdatePhotos({ photo_ids: ids, action: 'delete' })
     photos.value = photos.value.filter(p => !ids.includes(p.id))
     ownCount.value = Math.max(0, ownCount.value - ids.length)
-    galleryRef.value?.exitSelectionMode()
-    exitSelectionMode()
+    if (!preserveSelection) {
+      galleryRef.value?.exitSelectionMode()
+      exitSelectionMode()
+    }
     ElMessage.success('批量删除成功')
   } catch (e) {
     if (e !== 'cancel') {
@@ -721,8 +730,9 @@ const handleBatchDelete = async (ids: string[]) => {
 const handleListDelete = () => handleBatchDelete(Array.from(selectedIds))
 
 // 添加到相册（网格 / 列表共用）
-const handleAddToAlbum = (ids: string[]) => {
+const handleAddToAlbum = (ids: string[], preserveSelection = false) => {
   if (!ids.length) return
+  preserveAlbumSelection.value = preserveSelection
   tempSelectedIds.value = ids
   showAlbumSelectModal.value = true
 }
@@ -731,8 +741,11 @@ const handleListAddToAlbum = () => handleAddToAlbum(Array.from(selectedIds))
 const closeAlbumSelectModal = () => {
   showAlbumSelectModal.value = false
   tempSelectedIds.value = []
-  galleryRef.value?.exitSelectionMode()
-  exitSelectionMode()
+  if (!preserveAlbumSelection.value) {
+    galleryRef.value?.exitSelectionMode()
+    exitSelectionMode()
+  }
+  preserveAlbumSelection.value = false
 }
 
 // 列表视图下载

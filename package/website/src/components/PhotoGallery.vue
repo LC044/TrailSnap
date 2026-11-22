@@ -1,13 +1,26 @@
 <template>
   <div
     class="photo-gallery min-h-screen relative"
-    :class="{ 'photo-gallery--pinching': isGridPinching }"
+    :class="{ 'photo-gallery--pinching': isGridPinching, 'ts-photo-selecting': isSelectionMode }"
     ref="galleryEl"
     @touchstart="handleGridTouchStart"
     @click.capture="handleGridClickCapture"
   >
     <!-- Skeleton Loader (Initial Load) -->
     <GalleryChrome :loading="loading" :error="error" :photos="photos" @retry="$emit('retry')" />
+
+    <PhotoContextMenu
+      ref="contextMenu" :selected-ids="localSelectedIds" :is-downloading="isDownloading"
+      allow-add-to-album :album-context="!!removeLabel && store?.currentContext?.type === 'album'"
+      :remove-label="removeLabel"
+      :delete-label="deleteLabel === '删除' ? '移到回收站' : deleteLabel"
+      @view="(photo, details) => emit('click-photo', photo, details)"
+      @download="downloadPhotos"
+      @add-to-album="(ids, preserve) => emit('add-to-album', ids, preserve)"
+      @set-cover="ids => emit('set-album-cover', ids)"
+      @remove="(ids, preserve) => emit('remove-association', ids, preserve)"
+      @delete="(ids, preserve) => emit('batch-delete', ids, preserve)"
+    />
 
     <PhotoBatchActionBar
       :visible="isSelectionMode && showActionBar" :selected-ids="localSelectedIds"
@@ -74,7 +87,7 @@
                       :class="dateHeaderContainerClass"
                     >
                         <div
-                          v-glass-refraction.rim
+                          v-glass-refraction.rim="!isSelectionMode"
                           class="lm-day-date ts-liquid-glass ts-photo-date pointer-events-auto"
                           :class="[dateHeaderContentClass, { 'is-selectable': mobileDateHeaderMode === 'day' && isSelectionMode }]"
                           @click="mobileDateHeaderMode === 'day' && isSelectionMode && toggleDaySelection(day)"
@@ -236,7 +249,7 @@
                                          }"
                                          :style="(expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1 ? singlePhotoBoxStyle(img) : {}"
                                          @click="handlePhotoClick(img, $event)"
-                                         @contextmenu.prevent
+                                         @contextmenu="openContextMenu(img, $event)"
                                          @vue:mounted="loadImage(img)"
                                          @vue:unmounted="cancelImageLoad(img.id)"
                                      >
@@ -266,7 +279,7 @@
                                                @click.stop="toggleSelection(img)"
                                            >
                                                <div
-                                               class="w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
+                                               class="ts-photo-selection-indicator w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
                                                :class="localSelectedIds.has(img.id) ? 'bg-primary-500 border-primary-500' : 'bg-black/10 border-white/70 hover:bg-black/40'"
                                                >
                                                <Check v-if="localSelectedIds.has(img.id)" class="w-3 h-3 text-white" />
@@ -351,7 +364,7 @@
                                     minWidth: '50px',maxWidth: '400px'
                                 } : {}"
                                 @click="handlePhotoClick(img, $event)"
-                                @contextmenu.prevent
+                                @contextmenu="openContextMenu(img, $event)"
                                 @vue:mounted="loadImage(img)"
                                 @vue:unmounted="cancelImageLoad(img.id)"
                             >
@@ -369,7 +382,7 @@
                                     @click.stop="toggleSelection(img)"
                                 >
                                     <div
-                                    class="lm-photo-check-dot"
+                                    class="lm-photo-check-dot ts-photo-selection-indicator"
                                     :class="localSelectedIds.has(img.id) ? 'is-checked' : ''"
                                     >
                                     <Check v-if="localSelectedIds.has(img.id)" class="w-3.5 h-3.5 text-white" />
@@ -450,9 +463,11 @@ import type { TimelineStats, AlbumImage } from '@/types/album'
 import { useVirtualLayout, type MonthBlock, type DayBlock } from '@/composables/useVirtualLayout'
 import { getMomentPhotos as selectMomentPhotos, getMomentSinglePhotoSize } from '@/utils/momentLayout'
 import { useSelection } from '@/composables/useSelection'
-import { useWindowScroll, useScroll, useDebounceFn } from '@vueuse/core'
+import { useSwipeSelect } from '@/composables/useSwipeSelect'
+import { useScroll } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
 import PhotoBatchActionBar from './PhotoBatchActionBar.vue'
+import PhotoContextMenu from './PhotoContextMenu.vue'
 import { usePhotoBatchActions } from '@/composables/usePhotoBatchActions'
 import GalleryChrome from './GalleryChrome.vue'
 import { chapterApi } from '@/api/chapter'
@@ -518,14 +533,16 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'remove-association', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-time', 'batch-edit-location', 'generate-caption', 'save-caption', 'clear-caption', 'visible-months-change'])
 
-    // --- Selection State ---
-const { 
-  isSelectionMode, 
-  selectedIds: localSelectedIds, 
-  enterSelectionMode, 
-  exitSelectionMode, 
+// --- Selection State ---
+const {
+  isSelectionMode,
+  selectedIds: localSelectedIds,
+  selectionAnchorId,
+  enterSelectionMode,
+  exitSelectionMode,
   toggleSelect: toggleSelectionId,
   selectAll: selectAllIds,
+  selectRange: selectRangeIds,
   isSelected
 } = useSelection()
 
@@ -563,8 +580,9 @@ watch(() => props.photos, photos => {
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     if (resizeObserver) resizeObserver.disconnect()
+    if (scrollFrame) cancelAnimationFrame(scrollFrame)
     stopGridPinch()
-    clearLongPress()
+    cancelSwipeSelect()
     if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
 })
 // --- End Image Loading Logic ---
@@ -674,8 +692,6 @@ const mobileGridColumns = ref<number | null>(
 )
 const isGridPinching = ref(false)
 const suppressGridClick = ref(false)
-const LONG_PRESS_DELAY = 450
-const LONG_PRESS_MOVE_TOLERANCE = 10
 let pinchStartDistance = 0
 let pinchStartColumns = 3
 let pinchAnchorId = ''
@@ -685,27 +701,6 @@ let pinchAnchorIndex = 0
 let pinchAnchorCenterY = 0
 let pinchFrame = 0
 let suppressGridClickTimer: ReturnType<typeof setTimeout> | null = null
-let longPressTimer: ReturnType<typeof setTimeout> | null = null
-let longPressPhotoId = ''
-let longPressStartX = 0
-let longPressStartY = 0
-let longPressActivated = false
-
-const clearLongPress = () => {
-  if (longPressTimer) clearTimeout(longPressTimer)
-  longPressTimer = null
-  longPressPhotoId = ''
-  longPressActivated = false
-  window.removeEventListener('touchmove', handleLongPressMove)
-  window.removeEventListener('touchend', finishLongPressGesture)
-  window.removeEventListener('touchcancel', finishLongPressGesture)
-}
-
-function finishLongPressGesture() {
-  const shouldSuppressClick = longPressActivated
-  clearLongPress()
-  if (shouldSuppressClick) suppressClickAfterGesture()
-}
 
 const suppressClickAfterGesture = () => {
   suppressGridClick.value = true
@@ -716,44 +711,31 @@ const suppressClickAfterGesture = () => {
   }, 350)
 }
 
-function handleLongPressMove(event: TouchEvent) {
-  if (longPressActivated) return
-  if (event.touches.length !== 1) {
-    clearLongPress()
-    return
-  }
-  const touch = event.touches[0]
-  if (
-    Math.abs(touch.clientX - longPressStartX) > LONG_PRESS_MOVE_TOLERANCE
-    || Math.abs(touch.clientY - longPressStartY) > LONG_PRESS_MOVE_TOLERANCE
-  ) clearLongPress()
+// 移动端滑选：长按进入选择模式（沿用原语义），不松手继续拖动即按视觉顺序
+// 整段选择/取消；选择模式内再次长按已选中照片拖动则整段取消。
+const applySwipeSelection = (photoId: string, shouldSelect: boolean) => {
+  if (shouldSelect) localSelectedIds.add(photoId)
+  else localSelectedIds.delete(photoId)
+  if (localSelectedIds.size > 0 && !isSelectionMode.value) enterSelectionMode()
 }
 
-const startPhotoLongPress = (event: TouchEvent) => {
-  if (containerWidth.value >= 768 || isSelectionMode.value || event.touches.length !== 1) return
-  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-photo-id]')
-  const photoId = target?.dataset.photoId
-  if (!photoId) return
-
-  const touch = event.touches[0]
-  clearLongPress()
-  longPressPhotoId = photoId
-  longPressActivated = false
-  longPressStartX = touch.clientX
-  longPressStartY = touch.clientY
-  longPressTimer = setTimeout(() => {
-    const photo = props.photos.find(item => item.id === longPressPhotoId)
-    if (!photo) return clearLongPress()
-    longPressTimer = null
-    longPressActivated = true
+const {
+  onTouchstart: startSwipeSelect,
+  cancel: cancelSwipeSelect,
+} = useSwipeSelect({
+  // 仅移动端（<768px）启用；PhotoSelector 弹窗内单选场景只保留长按，不滑选。
+  canStart: () => containerWidth.value < 768,
+  canSweep: () => !props.singleSelect,
+  isSelected: (id) => localSelectedIds.has(id),
+  onLongPressActivate: (photoId) => {
+    const photo = props.photos.find(item => item.id === photoId)
+    if (!photo) return
     toggleSelection(photo)
     navigator.vibrate?.(10)
-    window.removeEventListener('touchmove', handleLongPressMove)
-  }, LONG_PRESS_DELAY)
-  window.addEventListener('touchmove', handleLongPressMove, { passive: true })
-  window.addEventListener('touchend', finishLongPressGesture)
-  window.addEventListener('touchcancel', finishLongPressGesture)
-}
+  },
+  onSwipePhoto: (photoId, shouldSelect) => applySwipeSelection(photoId, shouldSelect),
+  onSuppressClick: suppressClickAfterGesture,
+})
 
 const effectiveGridColumns = computed(() => {
   if (containerWidth.value >= 768 || !['grid', 'masonry'].includes(props.layoutMode)) return null
@@ -922,10 +904,10 @@ const stopGridPinch = () => {
 
 const handleGridTouchStart = (event: TouchEvent) => {
   if (event.touches.length === 1) {
-    startPhotoLongPress(event)
+    startSwipeSelect(event)
     return
   }
-  finishLongPressGesture()
+  cancelSwipeSelect()
   if (event.touches.length !== 2 || containerWidth.value >= 768) return
   if (!['grid', 'masonry'].includes(props.layoutMode) || isSelectionMode.value) return
 
@@ -1058,12 +1040,22 @@ const updateVisibleBlocks = () => {
         })
     })
 
-    visibleBlockKeys.value = newMonthKeys
-    visibleDayRanges.value = newDayRanges
+    if (newMonthKeys.size !== visibleBlockKeys.value.size || visibleMonths.some(month => !visibleBlockKeys.value.has(month.key))) {
+        visibleBlockKeys.value = newMonthKeys
+    }
+    const previousRanges = visibleDayRanges.value
+    if (newDayRanges.size !== previousRanges.size || Array.from(newDayRanges).some(([key, range]) => {
+        const previous = previousRanges.get(key)
+        return !previous || previous.start !== range.start || previous.end !== range.end
+            || previous.topH !== range.topH || previous.bottomH !== range.bottomH
+    })) {
+        visibleDayRanges.value = newDayRanges
+    }
 }
 
-// Throttle scroll updates
-const handleScroll = useDebounceFn(() => {
+let scrollFrame = 0
+const updateScrollViewport = () => {
+    scrollFrame = 0
     if (!props.active) return
     updateVisibleBlocks()
     // Update active date based on first visible block
@@ -1077,9 +1069,12 @@ const handleScroll = useDebounceFn(() => {
             emit('update:activeDate', dateStr)
         }
     }
-}, 50, { maxWait: 100 }) // More aggressive update for row virtualization
+}
 
-watch(scrollTop, handleScroll)
+// Keep the virtual window current during continuous wheel and touch scrolling.
+watch(scrollTop, () => {
+    if (!scrollFrame && props.active) scrollFrame = requestAnimationFrame(updateScrollViewport)
+})
 
 // Watch for layout changes to update visibility immediately
 watch(monthBlocks, updateVisibleBlocks, { flush: 'post' })
@@ -1281,11 +1276,35 @@ const exitSelectionMode = () => {
 const toggleSelection = (photo: AlbumImage) => {
   if (props.singleSelect && !localSelectedIds.has(photo.id)) localSelectedIds.clear()
   toggleSelectionId(photo.id)
+  // 普通点击移动 Shift 范围选择的锚点
+  selectionAnchorId.value = photo.id
   if (localSelectedIds.size > 0) {
       if (!isSelectionMode.value) enterSelectionMode()
   } else {
       // exitSelectionMode() // Don't auto exit usually
   }
+}
+
+// 按各日期实际展示的卡片顺序取范围，包含虚拟滚动视口之外的卡片。
+const orderedPhotoIds = computed(() => monthBlocks.value.flatMap(block =>
+  block.days.flatMap(day => {
+    const photos = props.layoutMode === 'moments' && !expandedDays.value.has(day.key)
+      ? getMomentPhotos(day.key)
+      : getPhotos(day.key)
+    return photos.map(photo => photo.id)
+  }),
+))
+
+// PC 端 Shift 点击范围选择/取消选择：从锚点到点击照片整段置为单一状态。
+// 未进入选择模式时同样可用（整段直接置为选中并进入选择模式）。
+// Shift 点击本身不移动锚点（与 macOS Finder 一致）：连续 Shift 点击同一段
+// 会在「整段选中/整段取消」间切换；普通点击才移动锚点。
+const handleRangeClick = (photo: AlbumImage) => {
+  if (props.singleSelect) return false
+  const targetSelected = localSelectedIds.has(photo.id)
+  if (!isSelectionMode.value && !targetSelected) enterSelectionMode()
+  selectRangeIds(orderedPhotoIds.value, photo.id)
+  return true
 }
 
 const isDaySelected = (day: DayBlock) => {
@@ -1310,7 +1329,13 @@ const toggleDaySelection = (day: DayBlock) => {
     }
 }
 
-const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload } = usePhotoBatchActions({
+const contextMenu = ref<InstanceType<typeof PhotoContextMenu> | null>(null)
+const openContextMenu = (photo: AlbumImage, event: MouseEvent) => {
+  if (props.showActionBar && !props.singleSelect) void contextMenu.value?.open(event, photo)
+  else event.preventDefault()
+}
+
+const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload, downloadPhotos } = usePhotoBatchActions({
   selectedIds: () => localSelectedIds,
   photos: () => props.photos,
   clearSelection: () => exitSelectionMode(),
@@ -1319,9 +1344,13 @@ const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, h
 
 const handlePhotoClick = (photo: AlbumImage, event?: MouseEvent) => {
   if (isSelectionMode.value) {
+    // PC 端 Shift 点击走范围选择（整段置为同一状态），普通点击仍是单张 toggle
+    if (event?.shiftKey && handleRangeClick(photo)) return
     toggleSelection(photo)
     return
   }
+  // Shift 点击快速范围选择：无需先进入选择模式
+  if (event?.shiftKey && handleRangeClick(photo)) return
   // Only still images can be carried across the screen; videos keep their
   // player's own entrance.
   if (photo.file_type && photo.file_type !== 'image' && photo.file_type !== 'live_photo') {
@@ -1576,8 +1605,8 @@ defineExpose({
     border-radius: 999px;
     background: rgb(10 12 16 / 18%);
     box-shadow: 0 1px 4px rgb(0 0 0 / 22%);
-    -webkit-backdrop-filter: blur(6px);
-    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: var(--ts-photo-check-filter, blur(6px));
+    backdrop-filter: var(--ts-photo-check-filter, blur(6px));
     transition: background-color 160ms ease, border-color 160ms ease, transform 160ms var(--ts-ease-spring);
   }
   .lm-photo-check:hover .lm-photo-check-dot { transform: scale(1.08); background: rgb(10 12 16 / 34%); }

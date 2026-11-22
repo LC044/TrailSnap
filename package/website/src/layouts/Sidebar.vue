@@ -12,7 +12,6 @@
         <span class="lm-rail-word">行影集</span>
       </div>
 
-      <!-- 展开 / 收起：固定在顶部，紧贴品牌下方；两种状态位置完全一致 -->
       <div class="lm-rail-handle">
         <button
           type="button"
@@ -23,36 +22,42 @@
           :title="pinned ? '收起导航' : '展开导航'"
           @click="togglePin"
         >
-          <ChevronRight v-if="!pinned" class="h-[18px] w-[18px] shrink-0" />
-          <ChevronLeft v-else class="h-[18px] w-[18px] shrink-0" />
-          <span class="lm-rail-label">{{ pinned ? '收起导航' : '展开导航' }}</span>
-        </button>
+          <ChevronRight class="lm-rail-toggle-icon h-[18px] w-[18px] shrink-0" />
+          <span class="lm-rail-label" aria-hidden="true">收起导航</span>
+          </button>
       </div>
 
       <!-- 搜索：收起时是一枚图标，展开后即为输入框 -->
       <div class="lm-rail-search">
         <button
-          v-show="!panelOpen"
           type="button"
-          class="lm-rail-item lm-rail-item--solo"
+          class="lm-rail-search-icon"
           aria-label="搜索"
-          title="搜索"
+          :title="pinned ? undefined : '搜索'"
+          :disabled="pinned"
+          :aria-hidden="pinned"
           @click="openSearch"
         >
           <Search class="h-[18px] w-[18px] shrink-0" />
         </button>
-        <div v-show="panelOpen" class="relative w-full">
-          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ts-color-text-tertiary)]" />
+        <div
+          ref="searchFieldRef"
+          class="lm-rail-search-field"
+          :inert="!pinned"
+          @focusout="handleSearchFocusOut"
+          @keydown.esc.stop.prevent="closeSearchFromKeyboard"
+        >
           <input
             ref="searchInputRef"
             v-model="searchText"
             @input="onInput"
             @keydown.enter="handleSearch"
-            @blur="handleBlur"
+            @keydown.down.prevent="focusFirstSuggestion"
             @focus="handleFocus"
             type="text"
+            aria-label="搜索或描述画面"
             placeholder="搜索或描述画面…"
-            class="ts-input lm-rail-input w-full !pl-9 !pr-16"
+            class="ts-input lm-rail-input w-full !pl-11 !pr-16"
           />
           <button
             v-if="searchText"
@@ -71,11 +76,29 @@
           >
             <Images class="h-4 w-4" />
           </button>
+        </div>
 
-          <!-- 搜索建议下拉框 -->
+        <el-popover
+          :visible="pinned && showDropdown && searchFieldWidth > 0"
+          :virtual-ref="searchFieldRef ?? undefined"
+          virtual-triggering
+          teleported
+          role="group"
+          :placement="searchPopupAbove ? 'top-start' : 'bottom-start'"
+          :offset="8"
+          :show-arrow="false"
+          width="min(320px, calc(100vw - 24px))"
+          popper-class="lm-rail-search-popper"
+          :popper-style="{ padding: 0, minWidth: 0 }"
+        >
           <div
-            v-if="showDropdown"
-            class="lm-rail-dropdown absolute left-0 top-full z-50 mt-2 max-h-72 w-[280px] overflow-y-auto"
+            ref="searchDropdownRef"
+            class="lm-rail-dropdown"
+            role="region"
+            aria-label="搜索建议"
+            :style="{ maxHeight: searchPopupMaxHeight }"
+            @focusout="handleSearchFocusOut"
+            @keydown.esc.stop.prevent="closeSearchFromKeyboard"
           >
             <div v-if="!searchText && suggestions.length === 0" class="px-4 py-3">
               <div class="mb-2 flex items-center gap-2 text-[var(--ts-journal-focus)]">
@@ -88,7 +111,8 @@
                   v-for="tag in searchHints"
                   :key="tag"
                   type="button"
-                  @mousedown.prevent="quickSearch(tag)"
+                  @mousedown.prevent
+                  @click="quickSearch(tag)"
                   class="lm-rail-hint"
                 >{{ tag }}</button>
               </div>
@@ -112,7 +136,7 @@
               class="lm-rail-suggest"
             >
               <Sparkles class="h-4 w-4 shrink-0 text-[var(--ts-journal-focus)]" />
-              <span class="flex flex-col text-left">
+              <span class="flex min-w-0 flex-col text-left [overflow-wrap:anywhere]">
                 <span class="font-medium text-[var(--ts-color-text)]">画面识别 “{{ searchText }}”</span>
                 <span class="text-xs text-[var(--ts-color-text-secondary)]">按画面语义检索</span>
               </span>
@@ -122,7 +146,8 @@
               v-for="(item, index) in suggestions"
               :key="index"
               type="button"
-              @mousedown.prevent="selectSuggestion(item)"
+              @mousedown.prevent
+              @click="selectSuggestion(item)"
               class="lm-rail-suggest"
             >
               <component :is="getIcon(item.type)" class="h-4 w-4 shrink-0 text-[var(--ts-color-text-tertiary)]" />
@@ -136,14 +161,16 @@
               </span>
             </button>
           </div>
-        </div>
+        </el-popover>
       </div>
 
       <nav class="lm-rail-nav">
         <!-- One tinted pill travels between destinations instead of blinking. -->
         <span ref="activeGlow" class="lm-rail-glow" aria-hidden="true" />
         <section v-for="(section, sectionIndex) in desktopNavSections" :key="section.label" class="lm-rail-group">
-          <div v-if="sectionIndex" class="lm-rail-sep" aria-hidden="true"></div>
+          <div class="lm-rail-group-heading" :class="{ 'has-divider': sectionIndex > 0 }">
+            <h2 class="lm-rail-label" :aria-hidden="!pinned">{{ section.label }}</h2>
+          </div>
           <div class="lm-rail-list">
             <RouterLink
               v-for="item in section.items"
@@ -161,10 +188,11 @@
           </div>
         </section>
 
-        <div class="lm-rail-sep" aria-hidden="true"></div>
-
         <!-- 快捷访问 -->
-        <div class="lm-rail-quick">
+        <section class="lm-rail-quick">
+          <div class="lm-rail-group-heading has-divider">
+            <h2 class="lm-rail-label" :aria-hidden="!pinned">快捷访问</h2>
+          </div>
           <div v-if="navItemsList.length" class="lm-rail-list">
             <button
               v-for="item in navItemsList"
@@ -192,18 +220,19 @@
             </button>
           </div>
           <!-- 快捷访问的添加入口：有入口时贴在列表末尾，没有时单独一行 -->
-          <button
-            v-if="pinned || !navItemsList.length"
-            type="button"
-            class="lm-rail-item lm-rail-item--add"
-            :aria-label="navItemsList.length ? '添加快捷访问' : '添加快捷访问'"
-            :title="pinned ? undefined : '添加快捷访问'"
-            @click="openAddDialog"
-          >
-            <Plus class="h-[18px] w-[18px] shrink-0" />
-            <span class="lm-rail-label">添加快捷访问</span>
-          </button>
-        </div>
+          <div class="lm-rail-add" :class="{ 'is-hidden': !pinned && navItemsList.length > 0 }" :inert="!pinned && navItemsList.length > 0">
+            <button
+              type="button"
+              class="lm-rail-item lm-rail-item--add"
+              aria-label="添加快捷访问"
+              :title="pinned ? undefined : '添加快捷访问'"
+              @click="openAddDialog"
+            >
+              <Plus class="h-[18px] w-[18px] shrink-0" />
+              <span class="lm-rail-label">添加快捷访问</span>
+            </button>
+          </div>
+        </section>
       </nav>
 
       <div class="lm-rail-foot">
@@ -296,7 +325,6 @@ import {
   Plus,
   Calendar,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   UserCircle,
   Settings,
@@ -304,7 +332,7 @@ import {
   Bot,
   Bell,
 } from 'lucide-vue-next'
-import { useDebounceFn, useMediaQuery } from '@vueuse/core'
+import { onClickOutside, useDebounceFn, useElementBounding, useWindowSize } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'
 import searchService, { type SearchSuggestion } from '@/api/search'
 import { injectNavItems, getNavIcon, getThumbnailUrl } from '@/composables/useNavItems'
@@ -382,8 +410,7 @@ const isDesktopNavActive = (item: AppNavItem) => {
  * Sliding active indicator.
  *
  * The pill is one absolutely positioned element; its geometry is measured from
- * the active link after any layout change (route, collapse, section toggle,
- * scroll). Movement is pure transform so it stays on the compositor.
+ * the active link in the scroll container's coordinates.
  */
 const sidebarRef = ref<HTMLElement | null>(null)
 const activeGlow = ref<HTMLElement | null>(null)
@@ -392,17 +419,18 @@ let glowFrame = 0
 function placeActiveGlow() {
   const sidebar = sidebarRef.value
   const glow = activeGlow.value
-  if (!sidebar || !glow) return
+  const nav = glow?.parentElement
+  if (!sidebar || !glow || !nav) return
   const active = sidebar.querySelector<HTMLElement>('nav .sidebar-nav-button.sidebar-nav-active')
   if (!active || !active.getClientRects().length) {
     glow.style.opacity = '0'
     return
   }
-  const base = (glow.offsetParent as HTMLElement | null)?.getBoundingClientRect() ?? sidebar.getBoundingClientRect()
+  const base = nav.getBoundingClientRect()
   const rect = active.getBoundingClientRect()
   glow.style.opacity = '1'
   glow.style.height = `${Math.round(rect.height)}px`
-  glow.style.transform = `translate3d(0, ${Math.round(rect.top - base.top)}px, 0)`
+  glow.style.transform = `translate3d(0, ${Math.round(rect.top - base.top + nav.scrollTop)}px, 0)`
 }
 
 function scheduleActiveGlow() {
@@ -432,8 +460,6 @@ const PIN_KEY = 'trailsnap_expanded'
 const pinned = ref(false)
 try { pinned.value = localStorage.getItem(PIN_KEY) === '1' } catch { pinned.value = false }
 
-const panelOpen = computed(() => pinned.value)
-
 /* 首次使用的一次性提示：只在从未展开过导航时出现几秒。 */
 const HINT_KEY = 'trailsnap_rail_hint'
 const showExploreHint = ref(false)
@@ -459,9 +485,6 @@ onMounted(() => {
   hintTimer = setTimeout(dismissHint, 7000)
 })
 
-// 兼容旧实现：模板已改为窄轨道，这里保留 isCollapsed 供子组件判断展开状态。
-const isCollapsed = computed(() => !panelOpen.value)
-
 // 搜索相关状态和逻辑
 const searchText = ref('')
 const openModelSearch = () => {
@@ -471,7 +494,18 @@ const openModelSearch = () => {
   showDropdown.value = false
 }
 const showDropdown = ref(false)
+const searchFieldRef = ref<HTMLElement | null>(null)
+const searchDropdownRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
+const { top: searchFieldTop, bottom: searchFieldBottom, width: searchFieldWidth } = useElementBounding(searchFieldRef)
+const { height: viewportHeight } = useWindowSize()
+const searchPopupBelow = computed(() => viewportHeight.value - searchFieldBottom.value)
+const searchPopupAbove = computed(() => searchPopupBelow.value < 310 && searchFieldTop.value > searchPopupBelow.value)
+const searchPopupMaxHeight = computed(() => {
+  const available = searchPopupAbove.value ? searchFieldTop.value : searchPopupBelow.value
+  // Allow for the anchor gap, panel border and breathing room at the viewport edge.
+  return `min(18rem, ${Math.max(0, available - 22)}px)`
+})
 const suggestions = ref<SearchSuggestion[]>([])
 const searchHints = ['海边日落', '猫咪', '雪景', '花园', '城市夜景']
 
@@ -520,12 +554,34 @@ const openSearch = () => {
   })
 }
 
-const handleBlur = () => {
-  setTimeout(() => {
-    showDropdown.value = false
-    suggestions.value = []
-  }, 200)
+const closeSearchDropdown = () => {
+  showDropdown.value = false
+  suggestions.value = []
 }
+
+const handleSearchFocusOut = (event: FocusEvent) => {
+  const next = event.relatedTarget
+  if (next instanceof Node && !searchFieldRef.value?.contains(next) && !searchDropdownRef.value?.contains(next)) {
+    closeSearchDropdown()
+  }
+}
+
+const closeSearchFromKeyboard = () => {
+  if (!showDropdown.value) return
+  searchInputRef.value?.focus()
+  closeSearchDropdown()
+}
+
+const focusFirstSuggestion = async () => {
+  if (!showDropdown.value) handleFocus()
+  await nextTick()
+  searchDropdownRef.value?.querySelector('button')?.focus()
+}
+
+onClickOutside(searchDropdownRef, closeSearchDropdown, { ignore: [searchFieldRef] })
+watch([pinned, searchFieldWidth], ([expanded, width]) => {
+  if (!expanded || !width) closeSearchDropdown()
+})
 
 const handleFocus = () => {
   showDropdown.value = true
@@ -571,6 +627,7 @@ const fetchSuggestions = useDebounceFn(async (q: string) => {
   }
   try {
     const res = await searchService.getSuggestions(q)
+    if (!showDropdown.value || searchText.value !== q) return
     const processedSuggestions: SearchSuggestion[] = []
     let hasOcr = false
     
@@ -656,7 +713,6 @@ const getIcon = (type: string) => {
 
 /* The indicator needs every nav list resolved, so it is wired at the end. */
 let sidebarObserver: ResizeObserver | undefined
-let glowScrollTarget: HTMLElement | null = null
 
 onMounted(() => {
   void nextTick(scheduleActiveGlow)
@@ -664,53 +720,47 @@ onMounted(() => {
   if (!sidebar) return
   sidebarObserver = new ResizeObserver(scheduleActiveGlow)
   sidebarObserver.observe(sidebar)
-  glowScrollTarget = sidebar.querySelector('nav')
-  glowScrollTarget?.addEventListener('scroll', scheduleActiveGlow, { passive: true })
 })
 
 onBeforeUnmount(() => {
   if (glowFrame) cancelAnimationFrame(glowFrame)
   sidebarObserver?.disconnect()
-  glowScrollTarget?.removeEventListener('scroll', scheduleActiveGlow)
   if (hintTimer) clearTimeout(hintTimer)
 })
 
 watch(
-  [() => route.path, isCollapsed, () => navItemsList.value.length],
+  [() => route.path, pinned, () => navItemsList.value.length],
   () => void nextTick(scheduleActiveGlow),
   { flush: 'post' },
 )
 </script>
 
 <style scoped>
-/* ===========================================================================
- * 桌面导航轨道（Lumen rail）
- *
- * 收起：一条 64px 的玻璃竖条，只有图标；所有图标共用同一条中轴线。
- * 展开：面板加宽到 236px，画布整体让位；图标原位不动，文字从右侧淡入。
- * 开关固定在底部同一行，两种状态下位置完全一致。
- * ========================================================================= */
-
 .lm-rail {
+  --rail-compact-width: 64px;
   --rail-icon: 22px;
-  --rail-pad: 12px;
+  --rail-shell-pad: 8px;
+  --rail-inner-width: calc(var(--rail-compact-width) - 2 * (var(--rail-shell-pad) + 1px));
+  --rail-pad: calc((var(--rail-inner-width) - var(--rail-icon)) / 2);
   --rail-gap: 12px;
+  --rail-transition: 320ms var(--lm-ease);
+  --rail-copy-opacity: 0;
   position: relative;
-  width: 92px;
+  width: calc(var(--rail-compact-width) + 28px);
   padding: 14px 0 14px 14px;
   background: transparent;
-  transition: width 320ms var(--lm-ease);
+  transition: width var(--rail-transition);
 }
 
-.lm-rail.is-open { width: 252px; }
+.lm-rail.is-open { width: 252px; --rail-copy-opacity: 1; }
 
 .lm-rail-shell {
   display: flex;
   height: 100%;
-  width: 64px;
+  width: var(--rail-compact-width);
   flex-direction: column;
   gap: 4px;
-  padding: 10px 8px 12px;
+  padding: 10px var(--rail-shell-pad) 12px;
   overflow: hidden;
   border: 1px solid var(--ts-glass-border);
   border-radius: 30px;
@@ -718,7 +768,7 @@ watch(
   box-shadow: var(--ts-shadow-glass);
   -webkit-backdrop-filter: blur(26px) saturate(var(--ts-glass-saturation));
   backdrop-filter: blur(26px) saturate(var(--ts-glass-saturation));
-  transition: width 380ms var(--lm-ease), box-shadow 320ms var(--lm-ease), border-radius 320ms var(--lm-ease);
+  transition: width var(--rail-transition), box-shadow var(--rail-transition), border-radius var(--rail-transition), background-color var(--rail-transition);
 }
 
 /* 玻璃内侧的一束顶部光，让轨道不再像一块白板。 */
@@ -759,7 +809,7 @@ watch(
   flex-shrink: 0;
   align-items: center;
   gap: 10px;
-  padding: 0 5px;
+  padding: 0 calc((var(--rail-inner-width) - 32px) / 2);
 }
 
 .lm-rail-logo {
@@ -776,29 +826,53 @@ watch(
 .lm-rail-logo:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: 3px; }
 
 .lm-rail-word {
-  max-width: 0;
   overflow: hidden;
-  opacity: 0;
+  opacity: var(--rail-copy-opacity);
   color: var(--ts-color-text);
   font-family: var(--lm-font-display);
   font-size: 19px;
   font-weight: 700;
   letter-spacing: -.05em;
   white-space: nowrap;
-  transition: max-width 320ms var(--lm-ease), opacity 220ms ease;
+  transition: opacity var(--rail-transition);
 }
-.lm-rail.is-open .lm-rail-word { max-width: 120px; opacity: 1; }
 
 /* ——— 搜索 ——— */
 .lm-rail-search { position: relative; z-index: 3; display: flex; padding: 2px 0 4px; }
+.lm-rail-search-field {
+  position: relative;
+  width: 100%;
+  height: 38px;
+  min-width: 0;
+  opacity: var(--rail-copy-opacity);
+  transition: opacity var(--rail-transition);
+}
+.lm-rail-search-icon {
+  position: absolute;
+  z-index: 1;
+  inset: 2px auto auto 0;
+  display: grid;
+  width: var(--rail-inner-width);
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--ts-color-text-secondary);
+}
+.lm-rail-search-icon:disabled { pointer-events: none; }
+.lm-rail-search-icon:hover:enabled { background: var(--ts-color-surface-muted); }
+.lm-rail-search-icon:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
 .lm-rail-input { height: 38px; min-height: 38px; border-radius: 12px; background: color-mix(in srgb, var(--ts-color-surface) 72%, transparent); font-size: 13px; }
 
-.lm-rail-dropdown {
+:global(.el-popper.lm-rail-search-popper) {
   border: 1px solid var(--ts-color-border);
   border-radius: 18px;
   background: var(--ts-color-surface);
   box-shadow: var(--ts-shadow-floating);
   overflow: hidden;
+}
+.lm-rail-dropdown {
+  overflow: hidden auto;
+  overscroll-behavior: contain;
 }
 .lm-rail-hint {
   border-radius: 999px;
@@ -865,10 +939,25 @@ watch(
   transition: transform 420ms var(--ts-ease-spring), height 200ms var(--ts-ease-paper), opacity 200ms ease;
 }
 
-.lm-rail-sep {
+.lm-rail-group-heading {
+  position: relative;
+  display: flex;
+  height: 20px;
+  align-items: center;
+  padding-inline: var(--rail-pad);
+  color: var(--ts-color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lm-rail-group-heading.has-divider::before {
+  position: absolute;
+  inset: 50% 10px auto;
   height: 1px;
-  margin: 6px 10px;
-  background: linear-gradient(to right, var(--ts-color-divider), transparent);
+  background: var(--ts-color-divider);
+  opacity: calc(1 - var(--rail-copy-opacity));
+  transition: opacity var(--rail-transition);
+  content: '';
 }
 
 .lm-rail-list { display: flex; flex-direction: column; gap: 1px; }
@@ -893,13 +982,6 @@ watch(
   line-height: 1.2;
   white-space: nowrap;
   transition: color 180ms ease, background-color 180ms ease, transform 120ms ease;
-}
-
-/* 收起时：零内边距、零间距，图标严格居中在同一条中轴线上 */
-.lm-rail:not(.is-open) :is(.lm-rail-item, .lm-rail-ai, .lm-rail-account) {
-  justify-content: center;
-  gap: 0;
-  padding: 0;
 }
 
 .lm-rail-item:hover,
@@ -934,13 +1016,12 @@ watch(
 .lm-rail-item:hover > svg { transform: translate3d(0, -1px, 0) scale(1.07); }
 
 .lm-rail-label {
-  max-width: 0;
+  min-width: 0;
   overflow: hidden;
-  opacity: 0;
+  opacity: var(--rail-copy-opacity);
   text-overflow: ellipsis;
-  transition: max-width 300ms var(--lm-ease), opacity 200ms ease;
+  transition: opacity var(--rail-transition);
 }
-.lm-rail.is-open .lm-rail-label { max-width: 150px; opacity: 1; }
 
 /* 快捷访问 */
 .lm-rail-thumb {
@@ -975,6 +1056,8 @@ watch(
 
 .lm-rail-item--add { color: var(--ts-color-text-tertiary); font-size: 12.5px; font-weight: 550; }
 .lm-rail-item--add:hover { color: var(--ts-color-text); }
+.lm-rail-add { height: 38px; overflow: hidden; transition: height var(--rail-transition); }
+.lm-rail-add.is-hidden { height: 0; }
 
 /* ——— 底部 ——— */
 .lm-rail-foot {
@@ -1005,38 +1088,21 @@ watch(
 .lm-rail-toggle {
   display: flex;
   width: 100%;
-  height: 32px;
+  height: 34px;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  border-radius: 10px;
-  color: var(--ts-color-text-tertiary);
+  gap: var(--rail-gap);
+  padding-inline: var(--rail-pad);
+  border-radius: 12px;
+  color: var(--ts-color-text-secondary);
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
   transition: color 180ms ease, background-color 180ms ease;
 }
-.lm-rail-toggle > svg { margin-inline: 2px; opacity: .85; transition: transform 320ms var(--ts-ease-spring); }
-.lm-rail.is-open .lm-rail-toggle { justify-content: flex-start; padding: 0 var(--rail-pad); }
+.lm-rail-toggle-icon { margin-inline: 2px; transition: transform var(--rail-transition); }
+.lm-rail.is-open .lm-rail-toggle-icon { transform: rotate(180deg); }
 .lm-rail-toggle:hover { color: var(--ts-color-text); background: color-mix(in srgb, var(--ts-color-surface-muted) 72%, transparent); }
-.lm-rail-toggle:hover > svg { opacity: 1; }
-.lm-rail.is-open .lm-rail-toggle:hover > svg { transform: translateX(-2px); }
 .lm-rail-toggle:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
-
-/* 收起时做成一颗带描边的按钮，和导航图标区分开；高度与展开时保持一致，
-   这样上下两块内容不会因为开关形态变化而位移。 */
-.lm-rail:not(.is-open) .lm-rail-toggle {
-  width: min(44px, 100%);
-  margin-inline: auto;
-  border: 1px solid var(--ts-color-border);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--ts-color-surface) 58%, transparent);
-  color: var(--ts-color-text-secondary);
-}
-.lm-rail:not(.is-open) .lm-rail-toggle .lm-rail-label { display: none; }
-.lm-rail:not(.is-open) .lm-rail-toggle:hover {
-  border-color: color-mix(in srgb, var(--ts-color-border) 45%, var(--ts-color-text-tertiary));
-  color: var(--ts-color-text);
-}
 
 /* 首次使用提示：不弹气泡（会压住页面标题），改成让开关自己「呼吸」三下 */
 @keyframes lm-handle-nudge {
@@ -1054,7 +1120,7 @@ watch(
 }
 
 /* 展开时在开关下加一条发丝线，和搜索分开；用阴影画，不占高度 */
-.lm-rail.is-open .lm-rail-handle { box-shadow: inset 0 -1px 0 var(--ts-color-divider); }
+.lm-rail-handle { box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ts-color-divider) calc(var(--rail-copy-opacity) * 100%), transparent); transition: box-shadow var(--rail-transition); }
 
 .lm-rail-ai { color: var(--ts-color-text); font-weight: 600; }
 
@@ -1072,9 +1138,7 @@ watch(
     color-mix(in srgb, var(--ts-color-surface) 70%, transparent);
   box-shadow: inset 0 0 0 1px rgba(var(--theme-rgb), .26);
 }
-.lm-rail-ai-spark { margin-left: auto; color: var(--ts-journal-focus); opacity: 0; transition: opacity 220ms ease; }
-.lm-rail:not(.is-open) .lm-rail-ai-spark { display: none; }
-.lm-rail.is-open .lm-rail-ai-spark { opacity: .8; animation: ts-twinkle 5.2s var(--ts-ease-breathe) infinite; }
+.lm-rail-ai-spark { flex-shrink: 0; margin-left: auto; color: var(--ts-journal-focus); opacity: calc(var(--rail-copy-opacity) * .8); transition: opacity var(--rail-transition); }
 
 .lm-rail-dot {
   position: absolute;
@@ -1111,17 +1175,16 @@ watch(
   gap: 1px;
   line-height: 1.2;
 }
-.lm-rail.is-open .lm-rail-account-copy { max-width: 130px; }
 .lm-rail-account-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 600; color: var(--ts-color-text); }
 .lm-rail-account-id { overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--ts-color-text-tertiary); }
-.lm-rail-account-caret { margin-left: auto; color: var(--ts-color-text-tertiary); opacity: 0; transition: opacity 200ms ease; }
-.lm-rail:not(.is-open) .lm-rail-account-caret { display: none; }
-.lm-rail.is-open .lm-rail-account-caret { opacity: 1; }
+.lm-rail-account-caret { flex-shrink: 0; margin-left: auto; color: var(--ts-color-text-tertiary); opacity: var(--rail-copy-opacity); transition: opacity var(--rail-transition); }
 
 .lm-rail-foot :deep(.el-dropdown) { width: 100%; }
 
 @media (prefers-reduced-motion: reduce) {
   .lm-rail, .lm-rail-shell, .lm-rail-word, .lm-rail-label,
-  .lm-rail-item, .lm-rail-glow, .lm-rail-ai-spark { transition-duration: 0s !important; animation: none !important; }
+  .lm-rail-item, .lm-rail-glow, .lm-rail-ai-spark, .lm-rail-account-caret,
+  .lm-rail-toggle-icon, .lm-rail-search-field, .lm-rail-add,
+  .lm-rail-handle, .lm-rail-group-heading::before { transition-duration: 0s !important; animation: none !important; }
 }
 </style>

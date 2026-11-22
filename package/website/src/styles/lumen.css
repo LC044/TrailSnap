@@ -11,19 +11,6 @@
  * ========================================================================= */
 
 :root {
-  /* —— 纸面 —— */
-  --ts-color-page: #f4f1ec;
-  --ts-color-surface: #fffefc;
-  --ts-color-surface-muted: #efebe4;
-  --ts-color-surface-raised: #ffffff;
-  --ts-color-text: #17161a;
-  --ts-color-text-secondary: #6a666f;
-  --ts-color-text-tertiary: #9a959e;
-  --ts-color-border: #e4ddd2;
-  --ts-color-divider: #ece6dc;
-  --ts-color-overlay: rgb(23 22 26 / 56%);
-  --ts-color-danger: #d94b46;
-
   /* —— 尺度 —— */
   --ts-radius-control: 14px;
   --ts-radius-card: 22px;
@@ -31,25 +18,16 @@
   --ts-radius-photo: 16px;
   --ts-section-gap: 28px;
 
-  /* —— 光 —— */
-  --lm-light-warm: rgb(255 233 199 / 55%);
-  --lm-light-cool: rgb(206 224 255 / 46%);
-  --lm-ink: #17161a;
-  --lm-hairline: rgb(23 22 26 / 8%);
-  --ts-shadow-card: 0 1px 1px rgb(38 32 24 / 4%), 0 14px 34px -22px rgb(38 32 24 / 22%);
-  --ts-shadow-floating: 0 24px 60px -24px rgb(32 27 20 / 30%), 0 2px 8px rgb(32 27 20 / 8%);
-  --ts-shadow-photo: 0 1px 2px rgb(30 25 18 / 6%), 0 18px 38px -26px rgb(30 25 18 / 34%);
+  --lm-ink: var(--ts-color-text);
+  --lm-hairline: rgb(15 23 42 / 8%);
+  --ts-shadow-photo: 0 1px 2px rgb(15 23 42 / 6%), 0 18px 38px -26px rgb(15 23 42 / 34%);
 
   /* —— 玻璃：更薄、更亮，只做导航与浮动层 —— */
   --ts-glass-clear: rgb(255 255 255 / 30%);
-  --ts-glass-bg: rgb(255 253 250 / 78%);
-  --ts-glass-panel: rgb(255 253 250 / 92%);
   --ts-glass-control: rgb(255 255 255 / 43%);
   --ts-glass-border: rgb(255 255 255 / 62%);
   --ts-glass-highlight: rgb(255 255 255 / 82%);
-  --ts-menu-card: rgb(255 253 250 / 46%);
   --ts-glass-sheen: linear-gradient(158deg, rgb(255 255 255 / 46%), transparent 30%, transparent 78%, rgb(255 255 255 / 18%));
-  --ts-shadow-glass: 0 10px 30px -14px rgb(40 33 24 / 26%), 0 1px 3px rgb(40 33 24 / 8%);
   --ts-glass-blur: 22px;
   --ts-glass-saturation: 150%;
   --ts-glass-label-shadow: 0 0 3px rgb(255 255 255 / 85%);
@@ -78,6 +56,31 @@
   --el-border-color: var(--ts-color-border);
   --el-border-radius-base: var(--ts-radius-control);
   --el-bg-color-overlay: var(--ts-glass-panel);
+}
+
+html[data-theme-skin="warm"]:not(.dark) {
+  --ts-color-page: #f4f1ec;
+  --ts-color-surface: #fffefc;
+  --ts-color-surface-muted: #efebe4;
+  --ts-color-surface-raised: #ffffff;
+  --ts-color-text: #17161a;
+  --ts-color-text-secondary: #6a666f;
+  --ts-color-text-tertiary: #9a959e;
+  --ts-color-border: #e4ddd2;
+  --ts-color-divider: #ece6dc;
+  --ts-color-overlay: rgb(23 22 26 / 56%);
+  --ts-color-danger: #d94b46;
+  --lm-light-warm: rgb(255 233 199 / 55%);
+  --lm-light-cool: rgb(206 224 255 / 46%);
+  --lm-ink: #17161a;
+  --lm-hairline: rgb(23 22 26 / 8%);
+  --ts-shadow-card: 0 1px 1px rgb(38 32 24 / 4%), 0 14px 34px -22px rgb(38 32 24 / 22%);
+  --ts-shadow-floating: 0 24px 60px -24px rgb(32 27 20 / 30%), 0 2px 8px rgb(32 27 20 / 8%);
+  --ts-shadow-photo: 0 1px 2px rgb(30 25 18 / 6%), 0 18px 38px -26px rgb(30 25 18 / 34%);
+  --ts-glass-bg: rgb(255 253 250 / 78%);
+  --ts-glass-panel: rgb(255 253 250 / 92%);
+  --ts-menu-card: rgb(255 253 250 / 46%);
+  --ts-shadow-glass: 0 10px 30px -14px rgb(40 33 24 / 26%), 0 1px 3px rgb(40 33 24 / 8%);
 }
 
 html.dark {
@@ -139,6 +142,9 @@ body,
 .ts-main-scroll,
 .ts-blank-layout {
   background-color: var(--ts-color-page);
+}
+
+html:is(.dark, [data-theme-skin="warm"]) :is(.ts-page-background, .ts-main-scroll, .ts-blank-layout) {
   background-image:
     radial-gradient(1100px 620px at 12% -8%, var(--lm-light-warm), transparent 62%),
     radial-gradient(900px 540px at 96% 4%, var(--lm-light-cool), transparent 58%);

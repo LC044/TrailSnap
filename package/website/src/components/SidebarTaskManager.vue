@@ -31,7 +31,7 @@
             <CheckCircle2 v-else class="h-5 w-5 text-primary-500" />
             <span v-if="isCollapsed && hasPending && totalFailed > 0" class="task-failure-dot" />
           </span>
-          <span v-if="!isCollapsed" class="task-status-copy">
+          <span class="task-status-copy" aria-hidden="true">
             <span class="task-status-heading">
               <span>后台任务</span>
               <ChevronRight class="h-4 w-4 task-muted" />
@@ -226,18 +226,19 @@ onUnmounted(() => {
 .task-muted { color: var(--ts-color-text-secondary); }
 .task-danger { color: var(--ts-color-danger); }
 .task-status-trigger {
-  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px;
+  display: flex; align-items: center; gap: var(--rail-gap, 12px); width: 100%; height: 48px;
+  padding-inline: var(--rail-pad, 10px);
   border-radius: var(--ts-radius-control); text-align: left;
   transition: background-color var(--ts-motion-fast) ease;
 }
 .task-status-trigger:hover, .task-status-trigger.is-open { background: var(--ts-color-surface-muted); }
 .task-status-trigger:focus-visible, .task-panel button:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
-.task-status-icon { position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; }
+.task-status-icon { position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: var(--rail-icon, 24px); height: 24px; }
 .task-failure-dot { position: absolute; top: -1px; right: -1px; width: 7px; height: 7px; border-radius: 50%; background: var(--ts-color-danger); box-shadow: 0 0 0 2px var(--ts-color-surface); }
-.task-status-copy { flex: 1; min-width: 0; }
+.task-status-copy { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; transition: opacity var(--rail-transition, 320ms ease); }
+.task-status-trigger.is-collapsed .task-status-copy { opacity: 0; }
 .task-status-heading { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; }
-.task-status-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; margin-top: 4px; font-size: 11px; font-variant-numeric: tabular-nums; }
-.task-status-trigger.is-collapsed { justify-content: center; }
+.task-status-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 11px; font-variant-numeric: tabular-nums; }
 .task-panel { color: var(--ts-color-text); }
 .task-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 8px; }
 .task-panel-close { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; color: var(--ts-color-text-secondary); }

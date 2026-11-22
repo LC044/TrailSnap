@@ -296,34 +296,40 @@ test('confirmDelete 把批量/灯箱来源传给视图，真删除才播放粒�
   const build = buildFn(readSource('components/UnifiedPhotoPage.vue'), 'confirmDelete', [
     'lightboxDeleteId', 'props', 'captureVisiblePhoto', 'emit', 'showParticle',
     'galleryRef', 'closeLightbox', 'nextTick', 'requestAnimationFrame', 'restoreVisiblePhoto', 'idsToDelete',
+    'preserveDeleteSelection',
   ], 'braces')
-  for (const { lightbox, label, source, particle } of [
+  for (const { lightbox, label, source, particle, preserveSelection = false } of [
     { lightbox: null, label: '从人物中移除', source: 'batch', particle: 1 },
     { lightbox: 'p1', label: '从人物中移除', source: 'lightbox', particle: 0 },
     { lightbox: 'p1', label: '删除', source: 'lightbox', particle: 1 },
+    { lightbox: null, label: '删除', source: 'batch', particle: 1, preserveSelection: true },
   ]) {
     const events = []
+    const ids = preserveSelection ? ['p3'] : ['p1', 'p2']
     let particles = 0
+    let selectionCleared = false
     const ctx = {
       lightboxDeleteId: { value: lightbox },
       props: { deleteLabel: label, removeLabel: label === '删除' ? '' : label },
       captureVisiblePhoto: () => 'anchor',
       emit: (...args) => events.push(args),
       showParticle: { get value() { return false }, set value(v) { if (v) particles++ } },
-      galleryRef: { value: { exitSelectionMode: () => {} } },
+      galleryRef: { value: { exitSelectionMode: () => { selectionCleared = true } } },
       closeLightbox: () => {},
       nextTick: cb => cb(),
       requestAnimationFrame: cb => cb(),
       restoreVisiblePhoto: () => {},
-      idsToDelete: { value: ['p1', 'p2'] },
+      idsToDelete: { value: ids },
+      preserveDeleteSelection: { value: preserveSelection },
     }
     build(ctx)()
     assert.equal(events.length, 1)
     assert.equal(events[0][0], 'confirm-delete')
-    assert.deepEqual(events[0][1], ['p1', 'p2'])
+    assert.deepEqual(events[0][1], ids)
     assert.equal(events[0][3], source)
     events[0][2](true)
     assert.equal(particles, particle)
+    assert.equal(selectionCleared, !preserveSelection)
   }
 })
 

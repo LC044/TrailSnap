@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, computed, onMounted, onBeforeUnmount, onDeactivated, onActivated } from 'vue'
+import { ref, nextTick, computed, watch, onMounted, onBeforeUnmount, onDeactivated, onActivated } from 'vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useMediaQuery } from '@vueuse/core'
 import ResponsiveDialog from './ResponsiveDialog.vue'
@@ -21,7 +21,7 @@ import { useZIndex } from 'element-plus'
 import { nextDialogZIndex } from '@/utils/pickerDate'
 import { reducedMotion } from '@/utils/motion'
 import { useRouteDismiss } from '@/composables/useRouteDismiss'
-const props = withDefaults(defineProps<{ modelValue: boolean; title: string; glass?: boolean; closeOnAction?: boolean; mobilePresentation?: 'sheet' | 'popover'; placement?: 'bottom' | 'top-end' }>(), { closeOnAction: false, mobilePresentation: 'sheet', placement: 'bottom' })
+const props = withDefaults(defineProps<{ modelValue: boolean; title: string; glass?: boolean; closeOnAction?: boolean; mobilePresentation?: 'sheet' | 'popover'; placement?: 'bottom' | 'top-end'; point?: { x: number; y: number } }>(), { closeOnAction: false, mobilePresentation: 'sheet', placement: 'bottom' })
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const mobile = useMediaQuery('(max-width: 767px)')
 const menuRef = ref<HTMLElement | null>(null)
@@ -32,6 +32,7 @@ let layerZIndex = 3000
 const popoverVisible = computed(() => props.modelValue && !(mobile.value && props.mobilePresentation === 'sheet'))
 useOverlayStack(popoverVisible, () => emit('update:modelValue', false))
 const trigger = () => {
+  if (props.point) return null
   const sibling = anchorRef.value?.previousElementSibling
   return sibling instanceof HTMLElement && sibling.matches('button, [role="button"]')
     ? sibling : anchorRef.value?.parentElement?.querySelector<HTMLElement>('button[aria-expanded]')
@@ -41,10 +42,20 @@ const positionMenu = async () => {
   const control = trigger()
   const anchor = (props.placement === 'top-end' ? control : control?.closest<HTMLElement>('.ts-glass-toolbar') ?? control ?? anchorRef.value?.parentElement)?.getBoundingClientRect()
   const menu = menuRef.value
-  if (!anchor || !menu) return
+  if (!menu) return
   const viewport = window.visualViewport
   const viewportTop = viewport?.offsetTop ?? 0
   const viewportHeight = viewport?.height ?? window.innerHeight
+  if (props.point) {
+    const viewportLeft = viewport?.offsetLeft ?? 0
+    const viewportWidth = viewport?.width ?? window.innerWidth
+    const maxHeight = Math.max(0, viewportHeight - 16)
+    const top = Math.max(viewportTop + 8, Math.min(props.point.y, viewportTop + viewportHeight - Math.min(menu.offsetHeight, maxHeight) - 8))
+    const left = Math.max(viewportLeft + 8, Math.min(props.point.x, viewportLeft + viewportWidth - menu.offsetWidth - 8))
+    menuStyle.value = { position: 'fixed', zIndex: String(layerZIndex), marginTop: '0', right: 'auto', top: `${top}px`, left: `${left}px`, maxHeight: `${maxHeight}px`, overflowY: 'auto' }
+    return
+  }
+  if (!anchor) return
   // Measure layout size, not the temporarily scaled animation bounds.
   const menuWidth = menu.offsetWidth
   const above = props.placement === 'top-end'
@@ -119,11 +130,17 @@ const dismiss = (event: PointerEvent | KeyboardEvent) => {
   if (!props.modelValue || (mobile.value && props.mobilePresentation === 'sheet')) return
   if (event instanceof KeyboardEvent) {
     if (event.key === 'Escape') emit('update:modelValue', false)
-  } else if (menuRef.value && !menuRef.value.contains(event.target as Node) && !anchorRef.value?.parentElement?.contains(event.target as Node)) {
+  } else if (menuRef.value && !menuRef.value.contains(event.target as Node) && (props.point || !anchorRef.value?.parentElement?.contains(event.target as Node))) {
     emit('update:modelValue', false)
   }
 }
 const reposition = () => { if (popoverVisible.value) void positionMenu() }
+watch(() => props.point, reposition)
+const handleScroll = (event: Event) => {
+  if (props.point && popoverVisible.value) {
+    if (event.target !== menuRef.value) emit('update:modelValue', false)
+  } else reposition()
+}
 const dismissImmediately = () => {
   enterSequence++
   suppressMotion = true
@@ -137,8 +154,8 @@ const dismissImmediately = () => {
 useRouteDismiss(dismissImmediately)
 onDeactivated(dismissImmediately)
 onActivated(() => { suppressMotion = false })
-onMounted(() => { document.addEventListener('pointerdown', dismiss); document.addEventListener('keydown', dismiss); window.addEventListener('resize', reposition); window.addEventListener('scroll', reposition, true); if (popoverVisible.value) void positionMenu() })
-onBeforeUnmount(() => { suppressMotion = true; cancelMorph(); document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', dismiss); window.removeEventListener('resize', reposition); window.removeEventListener('scroll', reposition, true) })
+onMounted(() => { document.addEventListener('pointerdown', dismiss); document.addEventListener('keydown', dismiss); window.addEventListener('resize', reposition); window.addEventListener('scroll', handleScroll, true); if (popoverVisible.value) void positionMenu() })
+onBeforeUnmount(() => { suppressMotion = true; cancelMorph(); document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', dismiss); window.removeEventListener('resize', reposition); window.removeEventListener('scroll', handleScroll, true) })
 const closeAfterAction = (event: MouseEvent) => {
   if (props.closeOnAction && (event.target as HTMLElement).closest('button:not(:disabled)')) emit('update:modelValue', false)
 }

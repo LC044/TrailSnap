@@ -12,15 +12,18 @@ export interface ThemeColor {
 
 /** 主题模式类型（限定可选值） */
 export type ThemeMode = 'light' | 'auto' | 'dark';
+export type ThemeSkin = 'classic' | 'warm';
 
 /** 提供/注入的主题对象类型（汇总所有状态和方法） */
 export interface ThemeProvide {
   isDarkMode: ComputedRef<boolean>;
   currentMode: Ref<ThemeMode>;
+  currentSkin: Ref<ThemeSkin>;
   currentTheme: Ref<ThemeColor>;
   themeStyle: ComputedRef<Record<string, string>>;
   themeColors: ThemeColor[];
   setMode: (mode: ThemeMode) => void;
+  setSkin: (skin: ThemeSkin) => void;
   setTheme: (themeObj: ThemeColor) => void;
 }
 
@@ -42,6 +45,8 @@ export function useTheme(): ThemeProvide {
   // 状态初始化（从 localStorage 读取或默认值，添加类型注解）
   const savedMode = localStorage.getItem('theme-mode') as ThemeMode | null;
   const currentMode = ref<ThemeMode>(savedMode || 'auto'); // 初始化为 ThemeMode 类型
+
+  const currentSkin = ref<ThemeSkin>(localStorage.getItem('theme-skin') === 'warm' ? 'warm' : 'classic');
 
   const savedColor = localStorage.getItem('theme-color');
   const initialTheme = themeColors.find(t => t.name === savedColor) || themeColors[0];
@@ -76,6 +81,11 @@ export function useTheme(): ThemeProvide {
     console.log(`🌗 主题模式已切换为：${mode}`);
   };
 
+  const setSkin = (skin: ThemeSkin): void => {
+    currentSkin.value = skin;
+    localStorage.setItem('theme-skin', skin);
+  };
+
   // 设置主题颜色（参数类型约束为 ThemeColor）
   const setTheme = (themeObj: ThemeColor): void => {
     currentTheme.value = themeObj;
@@ -108,6 +118,10 @@ export function useTheme(): ThemeProvide {
     { immediate: true }
   );
 
+  watch(currentSkin, (skin) => {
+    document.documentElement.dataset.themeSkin = skin;
+  }, { immediate: true });
+
   // 同步主题 CSS 变量到 <html> 根元素。
   // el-dropdown / el-popover / el-select 等弹层默认 teleport 到 <body>，
   // 脱离了 MainLayout（--theme-primary 仅在其根节点上声明）的作用域，
@@ -126,10 +140,12 @@ export function useTheme(): ThemeProvide {
   return {
     isDarkMode,
     currentMode,
+    currentSkin,
     currentTheme,
     themeStyle,
     themeColors,
     setMode,
+    setSkin,
     setTheme,
   };
 }

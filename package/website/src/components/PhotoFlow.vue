@@ -1,6 +1,19 @@
 <template>
-  <div ref="rootEl" class="photo-flow" @wheel.passive="cancelDateJump" @touchstart.passive="cancelDateJump">
+  <div ref="rootEl" class="photo-flow" :class="{ 'ts-photo-selecting': isSelectionMode }" @touchstart="startSwipeSelect" @click.capture="handleGridClickCapture" @wheel.passive="cancelDateJump" @touchstart.passive="cancelDateJump">
     <GalleryChrome :loading="loading && !blocks.length" :error="error" :photos="photos" @retry="$emit('retry')" />
+
+    <PhotoContextMenu
+      ref="contextMenu" :selected-ids="localSelectedIds" :is-downloading="isDownloading"
+      allow-add-to-album :album-context="!!removeLabel && store?.currentContext?.type === 'album'"
+      :remove-label="removeLabel"
+      :delete-label="deleteLabel === '删除' ? '移到回收站' : deleteLabel"
+      @view="(photo, details) => emit('click-photo', photo, details)"
+      @download="downloadPhotos"
+      @add-to-album="(ids, preserve) => emit('add-to-album', ids, preserve)"
+      @set-cover="ids => emit('set-album-cover', ids)"
+      @remove="(ids, preserve) => emit('remove-association', ids, preserve)"
+      @delete="(ids, preserve) => emit('batch-delete', ids, preserve)"
+    />
 
     <PhotoBatchActionBar
       :visible="isSelectionMode"
@@ -35,7 +48,7 @@
 
     <!-- 悬浮日期标签：滚动时告诉你「现在停在哪一天」 -->
     <div class="pf-datebar" :class="{ 'is-visible': showDateLabel }" aria-hidden="true">
-      <span v-glass-refraction.rim="showDateLabel" class="pf-datelabel ts-liquid-glass ts-photo-date">
+      <span v-glass-refraction.rim="showDateLabel && !isSelectionMode" class="pf-datelabel ts-liquid-glass ts-photo-date">
         <span class="pf-date-day lm-num">{{ currentDay.day }}</span>
         <span class="pf-date-copy">
           <strong>{{ currentDay.monthLabel }}</strong>
@@ -88,7 +101,7 @@
           @click="handlePhotoClick(item.photo, $event)"
           @keydown.enter.prevent="handlePhotoClick(item.photo, $event)"
           @keydown.space.prevent="handlePhotoClick(item.photo, $event)"
-          @contextmenu.prevent
+          @contextmenu="contextMenu?.open($event, item.photo)"
         >
           <img
             :src="item.photo.thumbnail"
@@ -108,7 +121,7 @@
           </span>
 
           <span
-            class="pf-check"
+            class="pf-check ts-photo-selection-indicator"
             :class="{ 'is-visible': isSelectionMode || localSelectedIds.has(item.photo.id), 'is-checked': localSelectedIds.has(item.photo.id) }"
             role="checkbox"
             :aria-checked="localSelectedIds.has(item.photo.id)"
@@ -138,8 +151,10 @@ import { Check, PlayCircle } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import GalleryChrome from '@/components/GalleryChrome.vue'
 import PhotoBatchActionBar from '@/components/PhotoBatchActionBar.vue'
+import PhotoContextMenu from '@/components/PhotoContextMenu.vue'
 import PersonSelector from '@/components/PersonSelector.vue'
 import { useSelection } from '@/composables/useSelection'
+import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { usePhotoBatchActions } from '@/composables/usePhotoBatchActions'
 import { aspectOf, flyPhotoIntoViewer } from '@/utils/photoFlight'
 import { getPhotoColumns } from '@/utils/photoGridLayout'
@@ -182,10 +197,12 @@ const emit = defineEmits([
 const {
   isSelectionMode,
   selectedIds: localSelectedIds,
+  selectionAnchorId,
   enterSelectionMode,
   exitSelectionMode,
   toggleSelect: toggleSelectionId,
   selectAll: selectAllIds,
+  selectRange: selectRangeIds,
 } = useSelection()
 
 watch(() => Array.from(localSelectedIds), ids => emit('selection-change', ids))
@@ -572,6 +589,8 @@ const attachScroll = () => {
 const detachScroll = () => {
   mounted.value = false
   cancelDateJump()
+  cancelSwipeSelect()
+  if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
   scrollContainer.removeEventListener('scroll', handleScroll)
   resizeObserver?.disconnect()
   window.removeEventListener('resize', measure)
@@ -594,14 +613,70 @@ const onImageLoad = (event: Event) => (event.currentTarget as HTMLImageElement).
  * ------------------------------------------------------------------------- */
 const toggleSelection = (photo: AlbumImage) => {
   toggleSelectionId(photo.id)
+  // 普通点击移动 Shift 范围选择的锚点
+  selectionAnchorId.value = photo.id
   if (localSelectedIds.size > 0 && !isSelectionMode.value) enterSelectionMode()
+}
+
+// 瀑布流的视觉顺序：photos 数组顺序（blocks/rows 按同一顺序切分排版）
+const orderedPhotoIds = computed(() => props.photos.map(photo => photo.id))
+
+// PC 端 Shift 点击范围选择/取消选择：整段置为与目标端相反的单一状态。
+// Shift 点击不移动锚点（与 macOS Finder 一致），普通点击才移动。
+const handleRangeClick = (photo: AlbumImage) => {
+  const targetSelected = localSelectedIds.has(photo.id)
+  if (!isSelectionMode.value && !targetSelected) enterSelectionMode()
+  selectRangeIds(orderedPhotoIds.value, photo.id)
+  return true
+}
+
+// 移动端滑选：长按进入选择模式，不松手拖动按视觉顺序整段选择/取消。
+// 滑选/长按结束后的合成 click 抑制（350ms 内点击被吞掉）
+const suppressGridClick = ref(false)
+let suppressGridClickTimer: ReturnType<typeof setTimeout> | null = null
+const suppressClickAfterGesture = () => {
+  suppressGridClick.value = true
+  if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
+  suppressGridClickTimer = setTimeout(() => {
+    suppressGridClick.value = false
+    suppressGridClickTimer = null
+  }, 350)
+}
+
+const {
+  onTouchstart: startSwipeSelect,
+  cancel: cancelSwipeSelect,
+} = useSwipeSelect({
+  canStart: () => containerWidth.value < 640,
+  canSweep: () => true,
+  isSelected: (id) => localSelectedIds.has(id),
+  onLongPressActivate: (photoId) => {
+    const photo = props.photos.find(item => item.id === photoId)
+    if (!photo) return
+    toggleSelection(photo)
+    navigator.vibrate?.(10)
+  },
+  onSwipePhoto: (photoId, shouldSelect) => {
+    if (shouldSelect) localSelectedIds.add(photoId)
+    else localSelectedIds.delete(photoId)
+    if (localSelectedIds.size > 0 && !isSelectionMode.value) enterSelectionMode()
+  },
+  onSuppressClick: suppressClickAfterGesture,
+})
+
+const handleGridClickCapture = (event: MouseEvent) => {
+  if (!suppressGridClick.value) return
+  event.preventDefault()
+  event.stopPropagation()
 }
 
 const handlePhotoClick = (photo: AlbumImage, event?: Event) => {
   if (isSelectionMode.value) {
+    if ((event as MouseEvent | undefined)?.shiftKey && handleRangeClick(photo)) return
     toggleSelection(photo)
     return
   }
+  if ((event as MouseEvent | undefined)?.shiftKey && handleRangeClick(photo)) return
   if (photo.file_type && photo.file_type !== 'image' && photo.file_type !== 'live_photo') {
     emit('click-photo', photo)
     return
@@ -620,7 +695,8 @@ const toggleSelectAll = () => {
   enterSelectionMode()
 }
 
-const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload } = usePhotoBatchActions({
+const contextMenu = ref<InstanceType<typeof PhotoContextMenu> | null>(null)
+const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload, downloadPhotos } = usePhotoBatchActions({
   selectedIds: () => localSelectedIds,
   photos: () => props.photos,
   clearSelection: () => exitSelectionMode(),
@@ -848,8 +924,8 @@ html.dark .pf-photo::before {
   background: rgb(10 12 16 / 22%);
   color: #fff;
   box-shadow: 0 1px 4px rgb(0 0 0 / 24%);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: var(--ts-photo-check-filter, blur(6px));
+  backdrop-filter: var(--ts-photo-check-filter, blur(6px));
   transition: background-color 160ms ease, border-color 160ms ease, transform 160ms var(--ts-ease-spring);
 }
 .pf-check.is-visible { display: flex; }

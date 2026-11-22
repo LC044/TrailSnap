@@ -394,7 +394,17 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
   gap: var(--ts-toolbar-gap);
 }
 .ts-glass-toolbar > .ts-icon-button { min-height: var(--ts-toolbar-control-size); height: var(--ts-toolbar-control-size); }
-.ts-selection-glass { --glass-tint: var(--ts-glass-panel); }
+/* Selection controls stay legible without sampling the scrolling photo grid. */
+.ts-photo-selecting { --ts-photo-check-filter: none; }
+.ts-selection-glass,
+.ts-photo-selecting .ts-photo-date {
+  --glass-tint: var(--ts-color-surface-raised);
+}
+.ts-selection-glass,
+.ts-photo-selecting :is(.ts-photo-date, .ts-photo-selection-indicator) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 
 .ts-glass-button {
   flex-shrink: 0; align-items: center; justify-content: center;
