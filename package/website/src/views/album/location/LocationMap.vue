@@ -1,7 +1,19 @@
 <template>
-  <div class="relative w-full h-full">
+  <div class="photo-map-stage relative w-full h-full">
     <div id="tianditu-map" class="w-full h-full z-10 overflow-hidden"></div>
     <MapUnavailable v-if="mapError" :error="mapError" class="absolute inset-0 z-20" retryable @retry="initializeMap" />
+
+    <div class="photo-map-top-veil" aria-hidden="true"></div>
+    <div class="photo-map-title">
+      <p class="la-eyebrow"><span class="la-eyebrow-dot" aria-hidden="true"></span>照片地图 · PHOTO MAP</p>
+      <h2 class="la-display photo-map-name">照片地图</h2>
+      <p class="photo-map-sub">{{ level === 'scene' ? '按景区聚合照片落点' : '按城市聚合照片落点' }} · 缩放地图查看</p>
+    </div>
+    <div class="photo-map-hint">
+      <span>点击聚合点展开</span>
+      <i aria-hidden="true"></i>
+      <span>滚轮缩放</span>
+    </div>
     
     <!-- Loading Overlay -->
     <div v-if="loading" class="absolute inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
@@ -571,5 +583,80 @@ onUnmounted(() => {
 .map-marker-cluster:hover {
   transform: scale(1.15);
   z-index: 9999;
+}
+
+.photo-map-stage { background: var(--ts-color-page); }
+.photo-map-top-veil {
+  position: absolute;
+  z-index: 11;
+  inset: 0 0 auto;
+  height: 132px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    var(--ts-color-page) 0%,
+    color-mix(in srgb, var(--ts-color-page) 68%, transparent) 30%,
+    transparent 100%
+  );
+}
+.photo-map-title {
+  position: absolute;
+  z-index: 12;
+  top: 86px;
+  left: 28px;
+  max-width: 280px;
+  padding: 14px 17px 15px;
+  border: 1px solid var(--ts-color-border);
+  border-radius: 20px;
+  background: var(--ts-glass-bg);
+  box-shadow: var(--ts-shadow-glass);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+  backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+  pointer-events: none;
+}
+.photo-map-name {
+  margin: 6px 0 0;
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1;
+}
+.photo-map-sub {
+  margin: 7px 0 0;
+  color: var(--ts-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.photo-map-hint {
+  position: absolute;
+  z-index: 12;
+  bottom: 24px;
+  left: 50%;
+  display: flex;
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border: 1px solid var(--ts-color-border);
+  border-radius: 999px;
+  background: var(--ts-glass-bg);
+  box-shadow: var(--ts-shadow-glass);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel));
+  backdrop-filter: blur(var(--ts-glass-blur-panel));
+  color: var(--ts-color-text-secondary);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.photo-map-hint i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ts-color-text-tertiary);
+}
+@media (max-width: 767px) {
+  .photo-map-title { top: 128px; left: 14px; max-width: calc(100% - 28px); padding: 11px 14px; }
+  .photo-map-name { font-size: 26px; }
+  .photo-map-sub { font-size: 10px; }
+  .photo-map-top-veil { height: 150px; }
+  .photo-map-hint { bottom: calc(var(--ts-tabbar-h, 92px) + 10px); }
 }
 </style>

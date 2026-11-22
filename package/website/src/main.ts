@@ -15,6 +15,7 @@ import 'element-plus/es/components/loading/style/css'
 import './style.css'
 import './styles/ui.css'
 import './styles/motion.css'
+import './styles/location-atlas.css'
 // Lumen 改版层：最后加载，用 token 覆写统一明暗与质感。
 import './styles/lumen.css'
 

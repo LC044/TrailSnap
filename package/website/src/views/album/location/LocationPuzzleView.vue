@@ -4,7 +4,7 @@
     <!-- min-h-0 让 flex-1 在移动端 flex-col 下正确分配高度，避免 h-full 百分比链
          在 overflow-y-auto 的 flex 父容器内解析为 0（移动端 Safari 真机表现），
          导致 ResizeObserver 测得 0 高 → setup() 跳过 → 画布空白 -->
-    <div class="flex-1 min-h-0 relative overflow-hidden bg-gray-50 dark:bg-gray-900 md:h-full">
+    <div class="puzzle-stage flex-1 min-h-0 relative overflow-hidden md:h-full">
       <!-- 加载遮罩 -->
       <div
         v-if="loading"
@@ -57,10 +57,21 @@
         @resize="resize"
       />
 
+      <div v-if="scope !== 'province'" class="puzzle-atlas-title">
+        <p class="la-eyebrow">
+          <span class="la-eyebrow-dot" aria-hidden="true"></span>
+          <span>照片拼图</span>
+          <span class="la-eyebrow-rule" aria-hidden="true"></span>
+          <span>{{ cells.length.toLocaleString() }} 格</span>
+        </p>
+        <h2 class="la-display puzzle-atlas-name">中国</h2>
+        <p class="puzzle-atlas-sub">{{ usedPhotoCount.toLocaleString() }} 张照片拼成的足迹</p>
+      </div>
+
       <!-- 面包屑导航（单省模式，浮在画布左上，与地图视图保持一致） -->
       <div
         v-if="scope === 'province'"
-        class="absolute top-6 left-6 z-20 flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md px-3 py-2 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 animate-fade-in"
+        class="puzzle-breadcrumb absolute top-6 left-6 z-20 flex items-center gap-2 px-3 py-2 rounded-xl"
       >
         <BackButton label="返回全国" @click="handleDrillUp" />
         <div class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
@@ -78,7 +89,7 @@
 
     <!-- 右侧配置面板：移动端为 fixed 底部抽屉（peek/expand），桌面端为侧栏 -->
     <div
-      class="fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+var(--ts-safe-area-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-sm transition-[height] duration-300 ease-out"
+      class="puzzle-panel fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+var(--ts-safe-area-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 border-t md:border-t-0 md:border-l rounded-t-2xl md:rounded-none shadow-2xl md:shadow-sm transition-[height] duration-300 ease-out"
       :class="{ '!transition-none': isDragging }"
       :style="isMobile ? { height: sheetHeight + 'px', transition: 'none' } : {}"
     >
@@ -443,9 +454,66 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.puzzle-stage {
+  background:
+    radial-gradient(80% 70% at 46% 40%, rgba(var(--theme-rgb), 0.07), transparent 66%),
+    var(--ts-color-page);
+}
+.puzzle-stage::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  opacity: 0.6;
+  background:
+    repeating-radial-gradient(ellipse at 72% 72%, transparent 0 34px, rgba(var(--theme-rgb), 0.05) 35px 36px);
+  mask-image: radial-gradient(ellipse at center, #000, transparent 76%);
+}
+.puzzle-atlas-title {
+  position: absolute;
+  z-index: 15;
+  top: 28px;
+  left: 30px;
+  pointer-events: none;
+}
+.puzzle-atlas-name {
+  margin: 6px 0 0;
+  font-size: clamp(32px, 3.4vw, 46px);
+  line-height: 1;
+}
+.puzzle-atlas-sub {
+  margin: 8px 0 0;
+  color: var(--ts-color-text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.puzzle-panel {
+  border-color: var(--ts-color-border);
+  background:
+    radial-gradient(120% 44% at 100% 0%, rgba(var(--theme-rgb), 0.1), transparent 62%),
+    color-mix(in srgb, var(--ts-color-surface) 95%, transparent);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+  backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+}
+.puzzle-breadcrumb {
+  border: 1px solid var(--ts-color-border);
+  background: var(--ts-glass-bg);
+  box-shadow: var(--ts-shadow-glass);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel));
+  backdrop-filter: blur(var(--ts-glass-blur-panel));
+  animation: fadeIn 0.3s ease-in-out;
+}
+
 .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 767px) {
+  .puzzle-atlas-title { display: none; }
+  .puzzle-breadcrumb { top: 14px; left: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .puzzle-breadcrumb, .animate-fade-in { animation: none !important; }
 }
 </style>

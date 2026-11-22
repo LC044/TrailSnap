@@ -11,7 +11,7 @@
     @load-more="loadMore"
   >
     <template #header-left="{ scrolled }">
-      <AlbumDetailTitle :title="title" :scrolled="scrolled" :subtitle="`${totalCount > 0 ? totalCount : `${photos.length}${hasMore ? '+' : ''}`} 个项目`" back-label="返回位置相册" @back="goBack" />
+      <AlbumDetailTitle :title="title" :scrolled="scrolled" :subtitle="`位置图鉴 · ${totalCount > 0 ? totalCount : `${photos.length}${hasMore ? '+' : ''}`} 个项目`" back-label="返回位置相册" @back="goBack" />
     </template>
     <template #header-actions>
       <RouterLink v-if="name !== 'map_selection'" :to="{ path: '/explore/relations', query: placeKey ? { root: placeKey } : sceneId ? { root: `place:scene:${sceneId}` } : { placeName: name } }" title="关联" aria-label="关联" class="ts-glass-button sm:w-auto sm:px-4 text-sm font-medium"><Link2 class="h-5 w-5 sm:hidden" /><span class="hidden sm:inline">关联</span></RouterLink>

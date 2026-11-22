@@ -1,10 +1,15 @@
 <template>
-  <div :class="['location-list mx-auto w-full max-w-screen-2xl flex flex-col relative ts-browse-page px-[var(--ts-page-gutter)]', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? '!max-w-none !px-0 h-full min-h-0 !py-0' : '', isImmersiveMap ? 'location-immersive' : '', isDarkMode ? 'location-dark' : '']">
+  <div :class="['location-list mx-auto w-full max-w-screen-2xl flex flex-col relative ts-browse-page px-[var(--ts-page-gutter)]', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? '!max-w-none !px-0 h-full min-h-0 !py-0' : '', viewMode === 'grid' ? 'location-list--grid h-full min-h-0' : '', isImmersiveMap ? 'location-immersive' : '', isDarkMode ? 'location-dark' : '']">
     <!-- Header -->
     <div class="ts-browse-header location-toolbar mx-auto w-full max-w-screen-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="location-toolbar-heading flex w-full shrink-0 items-center justify-between gap-3 md:w-auto">
         <div class="location-title-group flex shrink-0 items-center gap-2">
           <h1 class="journal-page-title whitespace-nowrap">位置</h1>
+          <p v-if="viewMode === 'grid' && !loading && locations.length" class="location-title-meta">
+            <span>{{ locations.length }} {{ levelMeta.unit }}</span>
+            <span class="location-title-meta-sep" aria-hidden="true"></span>
+            <span>{{ formatCount(totalPhotoCount) }} 帧影像</span>
+          </p>
         </div>
         <RouterLink to="/footprint" class="location-footprint-link flex shrink-0 items-center gap-1.5 rounded-full bg-primary-500 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:hidden" title="3D 足迹地图 · 全屏沉浸查看">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
@@ -12,7 +17,7 @@
       </div>
 
       <div v-glass-refraction :class="['ts-liquid-glass ts-glass-toolbar location-toolbar-actions flex w-full min-w-0 items-center md:w-auto', { 'is-dark': isDarkMode }]">
-        <RouterLink to="/footprint" class="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:flex" title="3D 足迹地图 · 全屏沉浸查看">
+        <RouterLink to="/footprint" class="location-footprint-link-wide hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:flex" title="3D 足迹地图 · 全屏沉浸查看" aria-label="3D 足迹地图">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
         </RouterLink>
         <!-- Add Scene Button (Left) -->
@@ -21,6 +26,7 @@
           @click="editingScene = null; showAddScene = true"
           class="location-add-scene flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary-500 px-3 py-1.5 text-white shadow-sm transition-all hover:bg-primary-600"
           title="新增景区"
+          aria-label="新增景区"
         >
           <Plus class="w-4 h-4" />
           <span class="hidden sm:inline">新增景区</span>
@@ -37,13 +43,13 @@
              class="location-filter-trigger flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
            >
              <Calendar class="location-filter-icon h-4 w-4 shrink-0" />
-             <span class="location-filter-value truncate">{{ selectedYear ? selectedYear + '年' : (isCustomRange ? '自定义范围' : '全部时间') }}</span>
+             <span class="location-filter-value truncate">{{ yearFilterLabel }}</span>
              <ChevronDown class="location-filter-chevron h-3.5 w-3.5 shrink-0 transition-transform duration-200" :class="{ 'rotate-180': showYearMenu }" />
            </button>
 
            <div
              v-show="showYearMenu"
-             class="ts-surface absolute top-full right-0 mt-2 hidden w-32 overflow-hidden z-[60] max-h-60 overflow-y-auto lg:block"
+             :class="['ts-surface absolute top-full right-0 mt-2 hidden z-[60] max-h-[80vh] overflow-y-auto lg:block', isCustomRange ? 'w-[300px]' : 'w-32']"
            >
              <button
                @click="selectYear(null); showYearMenu = false"
@@ -57,6 +63,18 @@
              >
                自定义范围
              </button>
+             <div v-if="isCustomRange" class="px-3 pb-2 pt-1">
+               <UnifiedDatePicker
+                 v-model="dateRange"
+                 type="daterange"
+                 range-separator="至"
+                 start-placeholder="开始日期"
+                 end-placeholder="结束日期"
+                 value-format="YYYY-MM-DD"
+                 class="!w-[276px]"
+                 @change="handleDateRangeChange"
+               />
+             </div>
              <button
                v-for="year in availableYears"
                :key="year"
@@ -70,19 +88,8 @@
            </div>
         </div>
 
-        <!-- Date Range Filter -->
-        <div v-if="isCustomRange" class="relative hidden rounded-lg bg-white dark:bg-gray-800 lg:flex">
-          <UnifiedDatePicker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            class="!w-[260px]"
-            @change="handleDateRangeChange"
-          />
-        </div>
+        <!-- Date Range Filter moved into the year menu (the inline picker
+             pushed the toolbar past the viewport on narrow desktops). -->
 
         <!-- Filter Toggle (Only for Scene Level) -->
         <div
@@ -115,7 +122,7 @@
           <!-- Mobile Dropdown Menu -->
           <div
             v-show="showLevelMenu"
-            class="ts-surface location-level-menu absolute left-0 top-full z-[60] mt-2 hidden max-h-[80vh] w-40 flex-col overflow-hidden"
+            class="ts-surface location-level-menu absolute left-0 top-full z-[60] mt-2 flex max-h-[80vh] w-40 flex-col overflow-hidden"
           >
             <!-- Level Options -->
             <div class="py-1">
@@ -383,9 +390,6 @@
         <button type="button" :class="{ active: !selectedYear && !isCustomRange }" @click="selectYear(null)">
           <span>全部时间</span><Check v-if="!selectedYear && !isCustomRange" class="h-5 w-5" />
         </button>
-        <button v-for="year in availableYears" :key="`sheet-${year}`" type="button" :class="{ active: selectedYear === year }" @click="selectYear(year)">
-          <span>{{ year }}年</span><Check v-if="selectedYear === year" class="h-5 w-5" />
-        </button>
         <button type="button" :class="{ active: isCustomRange }" @click="handleCustomRangeClick">
           <span class="flex items-center gap-2"><Calendar class="h-4 w-4" />自定义范围</span><Check v-if="isCustomRange" class="h-5 w-5" />
         </button>
@@ -393,6 +397,9 @@
           <UnifiedDatePicker v-model="dateRangeStart" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" class="!w-full" />
           <UnifiedDatePicker v-model="dateRangeEnd" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" class="!w-full" />
         </div>
+        <button v-for="year in availableYears" :key="`sheet-${year}`" type="button" :class="{ active: selectedYear === year }" @click="selectYear(year)">
+          <span>{{ year }}年</span><Check v-if="selectedYear === year" class="h-5 w-5" />
+        </button>
       </div>
 
       <div v-else-if="activeMobileSheet === 'level'" class="location-sheet-options">
@@ -450,13 +457,22 @@
 
     <!-- Grid View -->
     <LocationListView
+      ref="listViewRef"
       v-show="viewMode === 'grid'"
       :locations="locations"
       :loading="loading"
       :level="level"
+      :statistics="statistics"
+      :available-years="availableYears"
+      :selected-year="selectedYear"
+      :range-label="rangeLabel"
+      :start-date="dateRange?.[0]"
+      :end-date="dateRange?.[1]"
+      :error="loadError"
       @click="goToLocation"
       @edit="handleEdit"
       @delete="handleDelete"
+      @retry="fetchLocations"
     />
     <!-- Trajectory View -->
     <LocationTrajectoryView
@@ -492,7 +508,7 @@
 
 <script setup lang="ts">
 import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
-import { ref, onMounted, onBeforeUnmount, watch, computed, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick, defineAsyncComponent } from 'vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { useRouter } from 'vue-router'
 import { injectTheme } from '@/composables/useTheme'
@@ -514,6 +530,7 @@ const LocationTrajectoryView = defineAsyncComponent(() => import('./LocationTraj
 const LocationStatsView = defineAsyncComponent(() => import('./LocationStatsView.vue'))
 const LocationPuzzleView = defineAsyncComponent(() => import('./LocationPuzzleView.vue'))
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
+import { formatCount, locationLevelMeta } from '@/utils/locationPresentation'
 
 const router = useRouter()
 const { isDarkMode } = injectTheme()
@@ -522,6 +539,8 @@ const { level, viewMode, filterStatus } = storeToRefs(locationStore)
 const locationsRaw = ref<Location[]>([])
 const statistics = ref<LocationStatistics | null>(null)
 const loading = ref(true)
+const loadError = ref(false)
+const listViewRef = ref<{ scrollToTop: () => void } | null>(null)
 const showAddScene = ref(false)
 const editingScene = ref<Scene | null>(null)
 const showLevelMenu = ref(false)
@@ -614,6 +633,29 @@ const locations = computed(() => {
   })
 })
 
+const levelMeta = computed(() => locationLevelMeta(level.value))
+const totalPhotoCount = computed(() => locations.value.reduce((sum, loc) => sum + (loc.count || 0), 0))
+const rangeLabel = computed(() => {
+  if (selectedYear.value) return `${selectedYear.value} 年`
+  if (isCustomRange.value) {
+    const [start, end] = dateRange.value || []
+    if (start && end) return `${start.replaceAll('-', '.')} — ${end.replaceAll('-', '.')}`
+    return '自定义范围'
+  }
+  return '全部时间'
+})
+
+const yearFilterLabel = computed(() => {
+  if (selectedYear.value) return `${selectedYear.value}年`
+  if (!isCustomRange.value) return '全部时间'
+  const [start, end] = dateRange.value || []
+  if (!start || !end) return '自定义范围'
+  const format = (value: string) => value.slice(5).replace('-', '.')
+  return start.slice(0, 4) === end.slice(0, 4)
+    ? `${format(start)}–${format(end)}`
+    : `${start.slice(0, 4)}–${end.slice(0, 4)}`
+})
+
 onClickOutside(levelMenuRef, () => {
   showLevelMenu.value = false
 })
@@ -622,7 +664,11 @@ onClickOutside(viewMenuRef, () => {
   showViewMenu.value = false
 })
 
-onClickOutside(yearMenuRef, () => {
+onClickOutside(yearMenuRef, (event) => {
+  // The date calendar is teleported to <body>; interacting with it must not
+  // dismiss the menu that owns the range inputs.
+  const target = event.target as HTMLElement | null
+  if (target?.closest('.el-picker__popper')) return
   showYearMenu.value = false
 })
 
@@ -689,6 +735,7 @@ let locationRequest = 0
 const fetchLocations = async () => {
   const request = ++locationRequest
   loading.value = true
+  loadError.value = false
   try {
     const startDate = dateRange.value?.[0] || undefined
     const endDate = dateRange.value?.[1] || undefined
@@ -720,6 +767,7 @@ const fetchLocations = async () => {
     }
   } catch (e) {
     console.error(e)
+    if (request === locationRequest) loadError.value = true
   } finally {
     if (request === locationRequest) loading.value = false
   }
@@ -757,10 +805,12 @@ const selectYear = (year: number | null) => {
 }
 
 const handleCustomRangeClick = () => {
+  const alreadyCustom = isCustomRange.value
   isCustomRange.value = true
   selectedYear.value = null
-  dateRange.value = null
-  showYearMenu.value = false
+  if (!alreadyCustom) dateRange.value = null
+  // Keep the time menu open so the range inputs are immediately available;
+  // the menu is the only place they live on desktop now.
   // We don't fetch locations here immediately since dateRange is empty,
   // user needs to pick a range first. But we could fetch all.
   fetchLocations()
@@ -804,6 +854,7 @@ const handleDateRangeChange = (val: [string, string] | null) => {
     // keep isCustomRange state
   }
   showLevelMenu.value = false
+  showYearMenu.value = false
   fetchLocations()
 }
 
@@ -917,6 +968,17 @@ watch(locationMetadataRevision, () => {
   fetchStatistics()
   fetchYears()
 })
+
+// Changing the level, time range or scene filter produces a different
+// collection; return the reader to the chapter opening instead of leaving them
+// halfway down a list that no longer exists.
+watch(
+  [level, filterStatus, selectedYear, () => dateRange.value?.[0], () => dateRange.value?.[1]],
+  () => {
+    if (viewMode.value !== 'grid') return
+    nextTick(() => listViewRef.value?.scrollToTop())
+  },
+)
 onBeforeUnmount(() => {
   ++locationRequest
   ++metadataRequest
@@ -1017,6 +1079,55 @@ onMounted(() => {
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
+}
+
+.location-title-meta {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  padding-left: 14px;
+  border-left: 1px solid var(--ts-color-divider);
+  color: var(--ts-color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.location-title-meta-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ts-color-text-tertiary);
+  opacity: 0.8;
+}
+
+@media (min-width: 1440px) {
+  .location-title-meta { display: flex; }
+}
+
+/* The atlas grid scrolls inside the page so filters and the title remain
+   reachable while browsing a long collection. */
+.location-list--grid {
+  overflow: hidden;
+}
+
+.location-list--grid .location-toolbar {
+  position: relative;
+}
+
+/* Soften the seam where the fixed header meets the scrolling photo grid. */
+.location-list--grid .location-toolbar::after {
+  position: absolute;
+  right: 0;
+  bottom: -14px;
+  left: 0;
+  height: 14px;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--ts-color-page), transparent);
 }
 
 
@@ -1165,7 +1276,40 @@ onMounted(() => {
 }
 .location-toolbar-actions svg { width: 20px; height: 20px; }
 @media (min-width: 768px) {
-  .location-toolbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .location-toolbar-actions {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 100%;
+  }
+}
+
+/* Between a phone and a wide desktop the four-level segmented control no
+   longer fits beside the scene filters. Collapse it into the existing
+   dropdown and keep the single-row toolbar intact. */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .location-level-desktop { display: none !important; }
+  .location-level-trigger { display: flex !important; }
+  .location-level-menu { display: flex; }
+}
+
+/* Keep the two primary actions compact until there is comfortable room for
+   their labels next to the filters. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .location-footprint-link-wide { padding-inline: 10px; }
+  .location-footprint-link-wide span { display: none; }
+  .location-add-scene { width: 40px; padding-inline: 0; }
+  .location-add-scene span { display: none; }
+}
+
+/* Give the time control enough room for「全部时间」on a 390px phone; the view
+   control can stay compact because its icon is already familiar. */
+@media (max-width: 767px) {
+  .location-year-control { flex: 1.25 1 0; }
+  .location-level-control { flex: 0.92 1 0; }
+  .location-view-control { flex: 1 1 0; }
+  .location-filter-trigger { padding-inline: 7px; }
+  .location-filter-value { max-width: 100px; }
 }
 </style>
 

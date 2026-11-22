@@ -38,3 +38,14 @@ test('calendar shows every day once, including leap day, and excludes neighbouri
   assert.equal(calendarWeeks([], 2023).flatMap(w => w.days).filter(d => !d.outside).length, 365)
   assert.deepEqual(timeBuckets([], 'year', 2024), [])
 })
+
+test('camera clock years in the far future do not stretch the report axis', () => {
+  const data = [
+    { date: '2024-05-01', count: 3 },
+    { date: '2555-08-08', count: 999 },
+  ]
+  assert.deepEqual(statsYears(data), [2024])
+  const buckets = timeBuckets(data, 'year', 2024)
+  assert.deepEqual(buckets.map(b => b.label), ['2024'])
+  assert.equal(buckets[0].photos, 3)
+})

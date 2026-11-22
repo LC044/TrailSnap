@@ -29,7 +29,7 @@
         <button class="ts-button ts-button-secondary ts-button-sm" @click="openSelected">查看照片</button>
         <button class="ts-icon-button ts-button-sm ts-button-ghost" aria-label="下载趋势图" @click="downloadPng"><Download class="w-4 h-4" /></button>
       </div>
-      <p class="stats-caption mt-3">点击柱状图查看照片{{ buckets.length > 12 ? '；拖动图下滑块查看较早年份' : '' }}。无记录的时间段显示为 0。</p>
+      <p class="stats-caption mt-3">点击柱状图查看照片{{ buckets.length > 20 ? '；拖动图下滑块查看较早年份' : '' }}。无记录的时间段显示为 0。</p>
     </template>
   </SurfaceCard>
 </template>
@@ -73,10 +73,10 @@ function render() {
   chart.setOption({
     animation: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (value: number) => `${value.toLocaleString()} ${unit.value}` },
-    grid: { left: 12, right: 12, top: 30, bottom: buckets.value.length > 12 ? 60 : 28, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' },
-    xAxis: { type: 'category', data: buckets.value.map(b => b.label), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: text } },
+    grid: { left: 12, right: 12, top: 30, bottom: buckets.value.length > 20 ? 60 : 28, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' },
+    xAxis: { type: 'category', data: buckets.value.map(b => b.label), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: text, interval: 0, hideOverlap: true } },
     yAxis: { type: 'value', minInterval: 1, name: metric.value === 'photos' ? '照片 / 张' : '记录 / 天', nameTextStyle: { color: text }, axisLabel: { color: text }, splitLine: { lineStyle: { color: border, type: 'dashed' } } },
-    dataZoom: buckets.value.length > 12 ? [{ type: 'slider', startValue: Math.max(0, buckets.value.length - 10), endValue: buckets.value.length - 1, bottom: 0, height: 20, borderColor: border, textStyle: { color: text }, fillerColor: `rgba(${currentTheme.value.rgb}, .15)`, handleStyle: { color: currentTheme.value.primary } }] : [],
+    dataZoom: buckets.value.length > 20 ? [{ type: 'slider', startValue: Math.max(0, buckets.value.length - 10), endValue: buckets.value.length - 1, bottom: 0, height: 20, borderColor: border, textStyle: { color: text }, fillerColor: `rgba(${currentTheme.value.rgb}, .15)`, handleStyle: { color: currentTheme.value.primary } }] : [],
     series: [{ name: metric.value === 'photos' ? '照片数' : '记录天数', type: 'bar', barMaxWidth: 36, data: buckets.value.map(b => b[metric.value]), itemStyle: { color: currentTheme.value.primary, borderRadius: [5, 5, 0, 0] } }],
   }, true)
 }
