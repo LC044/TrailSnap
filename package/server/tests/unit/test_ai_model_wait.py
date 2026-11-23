@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,6 +13,151 @@ pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 def snapshot(status):
     return {"models": [{"id": "face", "name": "人脸模型", "status": status}],
             "tasks": {"face": {"selected": "face"}}}
+
+
+@pytest.mark.parametrize('timeout_source', ['read', 'body', 'gateway'])
+def test_clip_inference_timeout_exhausts_retry_budget(monkeypatch, timeout_source):
+    import requests
+    from urllib3.exceptions import ReadTimeoutError
+
+    from app.service import clip_classification
+
+    if timeout_source == 'gateway':
+        response = requests.Response()
+        response.status_code = 504
+        post = MagicMock(return_value=response)
+    elif timeout_source == 'body':
+        post = MagicMock(side_effect=requests.ConnectionError(
+            ReadTimeoutError(None, '/embedding/text', 'response body timed out')
+        ))
+    else:
+        post = MagicMock(side_effect=requests.ReadTimeout('no embedding response'))
+    monkeypatch.setattr(clip_classification.requests, 'post', post)
+    with pytest.raises(RuntimeError, match=state.INFERENCE_TIMEOUT_PREFIX) as exc:
+        clip_classification.category_vector('http://ai', 'clip', ['train'])
+    assert post.call_args.kwargs['timeout'] == 120
+
+    worker = task_worker.TaskWorker()
+    worker._publish_task_row = MagicMock()
+    db = MagicMock()
+    task = SimpleNamespace(id='clip', status=TaskStatus.PROCESSING, error=None,
+                           next_retry_at=None, attempt_count=0)
+    error = str(exc.value)
+    assert worker._is_retryable_error(error)
+    assert not worker._is_model_preparing_error(error)
+    for attempt in (1, 2):
+        assert worker._schedule_retry(db, task, error, 3)
+        assert task.attempt_count == attempt
+        assert task.status == TaskStatus.PENDING
+        assert task.error.startswith(state.INFERENCE_TIMEOUT_PREFIX)
+        assert task.next_retry_at > datetime.now()
+    task.status = TaskStatus.PROCESSING
+    task.next_retry_at = None
+    assert not worker._schedule_retry(db, task, error, 3)
+    assert task.attempt_count == 3
+    assert task.next_retry_at is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("task_type", [
+    TaskType.CLASSIFY_IMAGE, TaskType.RECOGNIZE_FACE, TaskType.OCR,
+    TaskType.IMAGE_EMBEDDING, TaskType.RECOGNIZE_TICKET,
+])
+@pytest.mark.parametrize("http_status", [None, 504])
+async def test_photo_model_batch_reports_inference_timeout(
+    monkeypatch, face_sqlite_session, tmp_path, task_type, http_status,
+):
+    from PIL import Image
+
+    from app.core.config_manager import config_manager
+    from app.db.models.task import Task
+    from app.service import storage
+    from test_basic_pipeline_performance import seed
+
+    db = face_sqlite_session
+    owner, (photo,) = seed(db, 1)
+    image_path = tmp_path / "photo.jpg"
+    Image.new("RGB", (8, 8)).save(image_path)
+    monkeypatch.setattr(storage, "get_available_photo_path", lambda *_: str(image_path))
+    monkeypatch.setattr(config_manager, "get_user_config",
+                        lambda *_: SimpleNamespace(ai=SimpleNamespace(ai_api_url="http://ai")))
+    response = MagicMock(status=http_status)
+    response.text = AsyncMock(return_value="gateway timed out")
+    if http_status is None:
+        response.__aenter__.side_effect = TimeoutError()
+    else:
+        response.__aenter__.return_value = response
+    session = MagicMock()
+    session.__aenter__.return_value = session
+    session.post.return_value = response
+    monkeypatch.setattr(state.aiohttp, "ClientSession", lambda: session)
+
+    task = Task(type=task_type, owner_id=owner, payload={"photo_id": str(photo.id)})
+    db.add(task)
+    db.commit()
+    strategy = task_worker.TaskStrategyFactory.get_strategy(task_type)
+    (result,) = await strategy.process_batch(None, [task], db)
+
+    session.post.assert_called_once()
+    assert result["status"] == TaskStatus.FAILED
+    assert result["error"].startswith(state.INFERENCE_TIMEOUT_PREFIX)
+    assert not task_worker.TaskWorker._is_model_preparing_error(result["error"])
+
+
+@pytest.mark.parametrize("task_type,category,resource_key", [
+    (TaskType.OCR, "AI", "ocr"),
+    (TaskType.RECOGNIZE_TICKET, "AI", "tickets"),
+    (TaskType.PROCESS_BASIC, "CPU", "basic"),
+])
+def test_batch_deadline_uses_inference_timeout_only_for_ai(
+    monkeypatch, face_sqlite_session, task_type, category, resource_key,
+):
+    import asyncio
+
+    from app.db.models.task import Task
+
+    async def wait_for_inference(*_):
+        await asyncio.Event().wait()
+
+    db = face_sqlite_session
+    task = Task(type=task_type, payload={}, attempt_count=2)
+    db.add(task)
+    db.commit()
+    task_id = task.id
+    strategy = SimpleNamespace(task_category=category, resource_key=resource_key,
+                               timeout=0.01, max_attempts=3, process_batch=wait_for_inference)
+    monkeypatch.setattr(task_worker, "SessionLocal", lambda: db)
+    monkeypatch.setattr(task_worker.TaskStrategyFactory, "get_strategy", lambda *_: strategy)
+    worker = task_worker.TaskWorker()
+    worker._publish_task_row = MagicMock()
+
+    (result,), outcome = worker._execute_batch_sync([{"id": task_id, "type": task_type}])
+
+    assert outcome == "overload"
+    assert result["status"] == TaskStatus.FAILED
+    assert result["error"].startswith(
+        state.INFERENCE_TIMEOUT_PREFIX if category == "AI" else "Task timeout after"
+    )
+    assert db.get(Task, task_id).attempt_count == 3
+
+
+def test_timeout_classifier_distinguishes_connection_and_openai_read_timeouts():
+    import aiohttp
+    import httpx
+    from openai import APITimeoutError, InternalServerError
+
+    request = httpx.Request("POST", "http://ai/v1/chat/completions")
+    wrapped = APITimeoutError(request)
+    wrapped.__cause__ = httpx.ConnectTimeout("connect timed out")
+    assert state.inference_timeout_error(wrapped) is None
+    assert state.inference_timeout_error(aiohttp.ConnectionTimeoutError()) is None
+
+    wrapped.__cause__ = httpx.ReadTimeout("read timed out")
+    assert state.inference_timeout_error(wrapped) == state.INFERENCE_TIMEOUT_PREFIX
+    response = httpx.Response(504, request=request)
+    assert "HTTP 504" in state.inference_timeout_error(
+        InternalServerError("gateway timed out", response=response, body=None)
+    )
 
 
 @pytest.mark.parametrize("status,word", [("pending", "尚未下载"), ("downloading", "正在下载"),
@@ -210,6 +355,49 @@ async def test_http_detail_and_legacy_not_ready_are_preserved():
     assert "Face model is not ready" in error
     assert task_worker.TaskWorker._is_retryable_error(error)
     assert not task_worker.TaskWorker._is_retryable_error("AI Service error: 500: broken input")
+
+
+@pytest.mark.asyncio
+async def test_service_unavailable_retry_reports_service_without_overwriting_model_state():
+    response = SimpleNamespace(status=503, text=AsyncMock(return_value='{"detail":"sidecar restarting"}'))
+    error = await state.ai_response_error(response)
+    worker = task_worker.TaskWorker()
+    worker._publish_task_row = MagicMock()
+    task = SimpleNamespace(id="ticket", status=TaskStatus.PROCESSING, error=None,
+                           next_retry_at=None, attempt_count=1)
+
+    assert worker._is_retryable_error(error)
+    assert worker._schedule_retry(MagicMock(), task, error, 3)
+    assert task.status == TaskStatus.PENDING
+    assert task.attempt_count == 1
+    assert task.next_retry_at > datetime.now()
+    assert task.error == "AI 服务尚未就绪（HTTP 503），恢复后自动继续: sidecar restarting"
+
+
+def test_expired_generic_ticket_retry_no_longer_marks_the_group_waiting(face_sqlite_session):
+    from app.crud.task import get_grouped_status
+    from app.db.models.task import Task
+
+    db = face_sqlite_session
+    future = datetime.now() + timedelta(minutes=1)
+    old_retry = Task(type=TaskType.RECOGNIZE_TICKET, status=TaskStatus.PENDING,
+                     error=state.MODEL_RETRY_REASON, next_retry_at=future, payload={})
+    db.add_all([
+        old_retry,
+        Task(type=TaskType.RECOGNIZE_TICKET, status=TaskStatus.PENDING, payload={}),
+        Task(type=TaskType.OCR, status=TaskStatus.PENDING,
+             error=state.WAIT_PREFIX + "PP-OCRv6 Small 正在下载", payload={}),
+    ])
+    db.commit()
+    groups = {row['category']: row for row in get_grouped_status(db, set())}
+    assert groups[TaskType.RECOGNIZE_TICKET]['waiting_reason'] == state.MODEL_RETRY_REASON
+
+    old_retry.next_retry_at = datetime.now() - timedelta(seconds=1)
+    db.commit()
+    groups = {row['category']: row for row in get_grouped_status(db, set())}
+    assert groups[TaskType.RECOGNIZE_TICKET]['pending'] == 2
+    assert 'waiting_reason' not in groups[TaskType.RECOGNIZE_TICKET]
+    assert '正在下载' in groups[TaskType.OCR]['waiting_reason']
 
 
 @pytest.mark.asyncio

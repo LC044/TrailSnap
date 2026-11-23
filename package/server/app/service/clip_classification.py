@@ -22,6 +22,7 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.photo import Photo, FileType
 from app.db.models.image_vector import ImageVector
 from app.core.config_manager import config_manager
+from app.service.ai_model_state import inference_timeout_error, inference_timeout_message
 from app.service.clip_catalog import load_catalog
 
 _cache = OrderedDict()
@@ -106,16 +107,20 @@ def selected_embedding_model(url):
     return next(model["runtimeName"] for model in data["models"] if model["id"] == selected)
 
 
-def ai_request(method, url, **kwargs):
-    """Keep startup and model preparation failures resumable by the worker."""
+def ai_request(method, url, *, timeout, inference=False, **kwargs):
+    """Distinguish an inference deadline from service and model availability."""
     try:
-        response = method(url, **kwargs)
+        response = method(url, timeout=timeout, **kwargs)
         response.raise_for_status()
         return response
-    except (requests.ConnectionError, requests.Timeout) as exc:
+    except (requests.Timeout, requests.ConnectionError) as exc:
+        if inference and inference_timeout_error(exc):
+            raise RuntimeError(inference_timeout_message(f"{timeout} 秒")) from exc
         raise RuntimeError("等待 AI 模型：AI 服务暂不可达，恢复后自动继续") from exc
     except requests.HTTPError as exc:
         response = exc.response
+        if inference and (error := inference_timeout_error(exc)):
+            raise RuntimeError(error) from exc
         if response is not None and response.status_code in (409, 502, 503, 504):
             raise RuntimeError("等待 AI 模型：AI 服务或模型尚未就绪，稍后自动继续") from exc
         if response is not None and "not ready" in response.text.lower():
@@ -208,7 +213,7 @@ def _encode_rule_items(url, model, kind, items):
         if kind == "text":
             payload["cache"] = True
         response = ai_request(requests.post, url + "/embedding/" + kind,
-                              json=payload, timeout=120)
+                              inference=True, json=payload, timeout=120)
         if response.headers.get("X-Embedding-Model") != model:
             raise ValueError("AI 服务未确认模型身份，请升级 AI 服务")
         vectors = response.json()
@@ -238,6 +243,7 @@ def _category_vectors(url, model, description_groups):
         response = ai_request(
             requests.post,
             url + "/embedding/text",
+            inference=True,
             json={"texts": texts, "model": model, "cache": True},
             timeout=120,
         )

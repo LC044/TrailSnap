@@ -91,7 +91,7 @@ def delete_task(db: Session, task: Task) -> None:
 
 def get_grouped_status(db: Session, paused_categories: set) -> List[Dict[str, Any]]:
     from sqlalchemy import func
-    from app.service.ai_model_state import WAIT_PREFIX
+    from app.service.ai_model_state import MODEL_RETRY_REASON, WAIT_PREFIX
     stats = []
     categories = [
         TaskType.PROCESS_BASIC, TaskType.EXTRACT_METADATA,
@@ -121,6 +121,9 @@ def get_grouped_status(db: Session, paused_categories: set) -> List[Dict[str, An
             # Match the partial index: tasks without errors need no row fetch.
             Task.error.isnot(None),
             Task.error.startswith(WAIT_PREFIX),
+            # A generic inference retry expires when the task is eligible
+            # again, even when another task type still owns AI dispatch.
+            or_(Task.error != MODEL_RETRY_REASON, Task.next_retry_at > datetime.now()),
             Task.type.in_(categories),
         ).group_by(Task.type).all()
         waiting_map = {row[0]: row[1] for row in waiting_rows}

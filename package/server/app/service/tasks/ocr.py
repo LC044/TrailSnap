@@ -1,4 +1,4 @@
-from app.service.ai_model_state import ai_response_error
+from app.service.ai_model_state import ai_response_error, inference_timeout_error
 from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
@@ -258,9 +258,10 @@ class OcrStrategy(BaseTaskStrategy):
                     db.rollback()
                 except Exception:
                     logger.debug("Failed to roll back OCR batch session", exc_info=True)
+                error = inference_timeout_error(e) or str(e)
                 for task in owner_tasks:
                     if not any(r['task_id'] == task.id for r in results):
-                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': str(e)})
+                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': error})
 
         return results
     async def process_single_photo(self, worker, photo: Photo, db: Session) -> Dict[str, Any]:
@@ -363,6 +364,9 @@ class OcrStrategy(BaseTaskStrategy):
                         return {'status': 'failed', 'error': await ai_response_error(resp)}
         except Exception as e:
             logger.error(f"Error processing OCR for photo {photo.id}: {e}")
+            error = inference_timeout_error(e)
+            if error:
+                return {'status': 'failed', 'error': error}
             tasks_status = dict(photo.processed_tasks or {})
             tasks_status['ocr'] = False
             photo.processed_tasks = tasks_status

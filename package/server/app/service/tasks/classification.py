@@ -1,4 +1,4 @@
-from app.service.ai_model_state import ai_response_error
+from app.service.ai_model_state import ai_response_error, inference_timeout_error
 from app.service.disk_budget import disk_budget
 import traceback
 from uuid import UUID
@@ -167,9 +167,10 @@ class ClassifyImageStrategy(BaseTaskStrategy):
             db.info.pop("classification_tags", None)
             logger.error(f"Error in Classification processing batch for owner {owner_id}: {e}")
             logger.error(traceback.format_exc())
+            error = inference_timeout_error(e) or str(e)
             for task in tasks:
                 if not any(r['task_id'] == task.id for r in results):
-                    results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': str(e)})
+                    results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': error})
 
         return results
 
