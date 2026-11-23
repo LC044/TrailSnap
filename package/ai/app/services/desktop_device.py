@@ -15,7 +15,12 @@ def prepare_cuda_libraries():
     if sys.platform == "win32" and not _dll_directories:
         from importlib.util import find_spec
         for package in ("cuda_runtime", "cublas", "cudnn", "cuda_nvrtc", "cufft", "curand", "nvjitlink"):
-            spec = find_spec(f"nvidia.{package}")
+            # The nvidia-* wheels only ship with the desktop-cuda extra; a machine
+            # without them must not crash the probe, it simply has no CUDA DLLs.
+            try:
+                spec = find_spec(f"nvidia.{package}")
+            except (ImportError, ModuleNotFoundError, ValueError):
+                spec = None
             if spec is not None:
                 from pathlib import Path
                 for location in spec.submodule_search_locations or []:

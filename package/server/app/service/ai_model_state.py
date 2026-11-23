@@ -3,12 +3,19 @@ import json
 import threading
 import time
 
+import aiohttp
+import httpx
 import requests
+from openai import APIStatusError, APITimeoutError
+from urllib3.exceptions import ReadTimeoutError
 
 from app.core.ai_endpoint import normalize_ai_api_url
 from app.db.models.task import TaskType
 
 WAIT_PREFIX = "等待 AI 模型："
+MODEL_RETRY_REASON = f"{WAIT_PREFIX}模型尚未就绪，就绪后自动继续；请在设置 → AI 模型管理查看下载状态"
+AI_SERVICE_RETRY_PREFIX = "AI 服务尚未就绪（HTTP "
+INFERENCE_TIMEOUT_PREFIX = "AI 推理超时"
 DEPENDENCIES = {
     TaskType.CLASSIFY_IMAGE: ("classification",),
     TaskType.RECOGNIZE_FACE: ("face",),
@@ -125,6 +132,31 @@ def get_model_wait_reason(api_url, task_type):
             pending.wait()
 
 
+def inference_timeout_message(detail=None):
+    return f"{INFERENCE_TIMEOUT_PREFIX}（{detail}）" if detail else INFERENCE_TIMEOUT_PREFIX
+
+
+def inference_timeout_error(error):
+    '''Return the retry reason for an inference request that timed out.'''
+    if isinstance(error, aiohttp.ClientResponseError):
+        return inference_timeout_message("HTTP 504") if error.status == 504 else None
+    if isinstance(error, (requests.HTTPError, httpx.HTTPStatusError, APIStatusError)):
+        response = error.response
+        return inference_timeout_message("HTTP 504") if response is not None and response.status_code == 504 else None
+    # requests wraps timeouts while reading the response body as ConnectionError.
+    if isinstance(error, requests.ConnectionError) and error.args and isinstance(error.args[0], ReadTimeoutError):
+        return inference_timeout_message()
+    transport_error = error.__cause__ if isinstance(error, APITimeoutError) else error
+    if isinstance(transport_error, (
+        aiohttp.ConnectionTimeoutError, requests.ConnectTimeout,
+        httpx.ConnectTimeout, httpx.PoolTimeout, httpx.WriteTimeout,
+    )):
+        return None
+    if isinstance(error, (TimeoutError, requests.Timeout, httpx.TimeoutException, APITimeoutError)):
+        return inference_timeout_message()
+    return None
+
+
 async def ai_response_error(response):
     """Keep useful service details, while bounding persisted error size."""
     try:
@@ -136,6 +168,8 @@ async def ai_response_error(response):
     except Exception:
         detail = ""
     suffix = f": {str(detail)[:1000]}" if detail else ""
-    if response.status in (502, 503, 504):
-        return f"{WAIT_PREFIX}AI 服务尚未就绪（HTTP {response.status}），恢复后自动继续{suffix}"
+    if response.status == 504:
+        return inference_timeout_message("HTTP 504") + suffix
+    if response.status in (502, 503):
+        return f"{AI_SERVICE_RETRY_PREFIX}{response.status}），恢复后自动继续{suffix}"
     return f"AI Service error: {response.status}{suffix}"

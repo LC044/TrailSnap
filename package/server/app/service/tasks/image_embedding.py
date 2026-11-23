@@ -1,5 +1,5 @@
 from app.service.tasks.photo_generator import generate_photo_tasks
-from app.service.ai_model_state import ai_response_error
+from app.service.ai_model_state import ai_response_error, inference_timeout_error
 from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType, DEFAULT_PRIORITIES
@@ -203,8 +203,10 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                 owner_ids = {t.id for t in owner_tasks}
                 results = [r for r in results if r["task_id"] not in owner_ids]
                 logger.error(f"Error in Image Embedding processing batch for owner {owner_id}: {e}")
-                error = ("等待 AI 模型：AI 服务暂不可达，恢复后自动继续"
-                         if isinstance(e, (aiohttp.ClientConnectionError, TimeoutError)) else str(e))
+                error = inference_timeout_error(e)
+                if error is None:
+                    error = ("等待 AI 模型：AI 服务暂不可达，恢复后自动继续"
+                             if isinstance(e, aiohttp.ClientConnectionError) else str(e))
                 for task in owner_tasks:
                     if not any(r['task_id'] == task.id for r in results):
                         results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': error})
@@ -257,10 +259,13 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                         text = await resp.text()
                         logger.error(f"AI Service error: {resp.status} {text}")
                         return {'status': 'failed', 'error': await ai_response_error(resp)}
-        except (aiohttp.ClientConnectionError, TimeoutError) as e:
-            raise RuntimeError("等待 AI 模型：AI 服务暂不可达，恢复后自动继续") from e
         except Exception as e:
             logger.error(f"Error processing Image Embedding for photo {photo.id}: {e}")
+            error = inference_timeout_error(e)
+            if error:
+                return {'status': 'failed', 'error': error}
+            if isinstance(e, aiohttp.ClientConnectionError):
+                raise RuntimeError("等待 AI 模型：AI 服务暂不可达，恢复后自动继续") from e
             tasks_status = dict(photo.processed_tasks or {})
             tasks_status['image_embedding'] = False
             photo.processed_tasks = tasks_status

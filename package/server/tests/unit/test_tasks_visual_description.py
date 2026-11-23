@@ -232,6 +232,46 @@ async def test_multi_image_request_saves_results_by_number_and_isolates_missing_
     ]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection", ["builtin", "external"])
+async def test_visual_request_timeout_does_not_trigger_format_fallback(monkeypatch, connection):
+    import httpx
+    from openai import APITimeoutError
+
+    from app.core.config_manager import AISettings
+    from app.db.models.task import TaskType
+    from app.service.ai_model_state import INFERENCE_TIMEOUT_PREFIX
+    from app.service.tasks import visual_description as vd_mod
+
+    strategy = vd_mod.VisualDescriptionStrategy()
+    settings = AISettings(analysis_connection_id=connection, analysis_images_per_request=2)
+    error = APITimeoutError(httpx.Request("POST", "http://ai/v1/chat/completions"))
+    error.__cause__ = httpx.ReadTimeout("read timed out")
+    client = SimpleNamespace(ainvoke=AsyncMock(side_effect=error))
+    monkeypatch.setattr(strategy, "create_client", lambda _: client)
+    monkeypatch.setattr(strategy, "_image_content", lambda *_, **__: [{"type": "text", "text": "photo"}])
+    db = MagicMock()
+    if connection == "builtin":
+        photo = SimpleNamespace(id="photo", owner_id="owner", image_type="normal")
+        results = [await strategy.process_single_photo(None, photo, db, settings)]
+    else:
+        tasks = [
+            SimpleNamespace(id=i, type=TaskType.VISUAL_DESCRIPTION, owner_id="owner",
+                            payload={"photo_id": f"photo-{i}"})
+            for i in range(2)
+        ]
+        monkeypatch.setattr(vd_mod.config_manager, "get_user_config", lambda *_: SimpleNamespace(ai=settings))
+        monkeypatch.setattr(strategy, "_task_photo", lambda task, _: (
+            SimpleNamespace(id=task.payload["photo_id"], image_type="normal"), None
+        ))
+        results = await strategy.process_batch(None, tasks, db)
+
+    client.ainvoke.assert_awaited_once()
+    assert len(results) == (1 if connection == "builtin" else 2)
+    assert all(result["status"] == "failed" and result["error"] == INFERENCE_TIMEOUT_PREFIX
+               and not result.get("retry_as_single") for result in results)
+
+
 def test_batch_prompt_keeps_analysis_criteria_in_the_shared_prefix():
     from os.path import commonprefix
 

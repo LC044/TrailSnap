@@ -1,5 +1,5 @@
 from app.service.tasks.photo_generator import generate_photo_tasks
-from app.service.ai_model_state import ai_response_error
+from app.service.ai_model_state import ai_response_error, inference_timeout_error
 from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import DEFAULT_PRIORITIES
@@ -222,9 +222,10 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
             except Exception as e:
                 db.rollback()
                 logger.error(f"Error in Ticket Recognition processing batch for owner {owner_id}: {e}")
+                error = inference_timeout_error(e) or str(e)
                 for task in owner_tasks:
                     if not any(r['task_id'] == task.id for r in results):
-                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': str(e)})
+                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': error})
         return results
 
     async def save_recognition_result(self, photo: Photo, result: Any, db: Session) -> Dict[str, Any]:
@@ -356,7 +357,7 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
         except Exception as exc:
             db.rollback()
             logger.warning('Error processing tickets for photo %s: %s', photo.id, exc)
-            return {'status': 'failed', 'error': str(exc)}
+            return {'status': 'failed', 'error': inference_timeout_error(exc) or str(exc)}
 
     def release_resources(self) -> None:
         pass
