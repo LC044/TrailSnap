@@ -10,11 +10,14 @@ from PIL import Image
 
 from app.services.model_manager import model_manager
 from app.services.unified_model_manager import ai_model_manager
-from app.services.onnx_providers import create_inference_session
+from app.services.onnx_providers import create_inference_session, create_session_options, get_onnx_providers
 
 class ONNXCLIPTextWrapper:
+    _fixed_input_shape = False
+
     def __init__(self, model_dir):
         from modelscope import AutoTokenizer
+        import json
         import os
 
         self.model_dir = model_dir
@@ -23,27 +26,48 @@ class ONNXCLIPTextWrapper:
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
         text_model_path = os.path.join(model_dir, "textual.onnx")
-        self.text_session = create_inference_session(text_model_path)
-        # Preset texts are reused, but only within this loaded model instance.
-        self._text_cache = OrderedDict()
-        self._text_cache_lock = threading.Lock()
-        import json
         config_path = os.path.join(model_dir, "embedding_config.json")
         self.max_length = 128
         if os.path.isfile(config_path):
             with open(config_path, encoding="utf-8") as stream:
                 self.max_length = int(json.load(stream)["max_length"])
+            providers, provider_options = get_onnx_providers()
+            self._fixed_input_shape = (
+                providers[0] == "OpenVINOExecutionProvider"
+                and provider_options[0]["device_type"].split(".", 1)[0] == "NPU"
+            )
+        if self._fixed_input_shape:
+            # Chinese-CLIP exports symbolic batch and sequence dimensions.
+            # Pin both for the NPU so the first run of each new shape cannot
+            # trigger a slow OpenVINO compilation during a classification job.
+            sess_options = create_session_options()
+            sess_options.add_free_dimension_override_by_name("batch", 1)
+            sess_options.add_free_dimension_override_by_name("sequence", self.max_length)
+            self.text_session = create_inference_session(text_model_path, sess_options)
+        else:
+            self.text_session = create_inference_session(text_model_path)
+        # Preset texts are reused, but only within this loaded model instance.
+        self._text_cache = OrderedDict()
+        self._text_cache_lock = threading.Lock()
 
     def encode_text(self, texts: List[str]):
         import numpy as np
-        inputs = self.tokenizer(text=texts, return_tensors="np", padding=True, truncation=True, max_length=self.max_length)
+        padding = "max_length" if self._fixed_input_shape else True
+        inputs = self.tokenizer(text=texts, return_tensors="np", padding=padding, truncation=True, max_length=self.max_length)
         
         values = [inputs["input_ids"], inputs["attention_mask"],
                   inputs.get("token_type_ids", np.zeros_like(inputs["input_ids"]))]
         ort_inputs = {node.name: values[i].astype(np.int64)
                       for i, node in enumerate(self.text_session.get_inputs())}
-        outputs = self.text_session.run(None, ort_inputs)
-        embeddings = outputs[0]
+        if self._fixed_input_shape:
+            embeddings = np.concatenate([
+                self.text_session.run(
+                    None, {name: value[index:index + 1] for name, value in ort_inputs.items()}
+                )[0]
+                for index in range(len(texts))
+            ])
+        else:
+            embeddings = self.text_session.run(None, ort_inputs)[0]
         # Normalize
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         normalized = embeddings / np.maximum(norms, 1e-12)

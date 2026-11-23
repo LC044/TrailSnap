@@ -105,6 +105,10 @@ def _detect_apple_perf_cores() -> int:
 
 @functools.lru_cache(maxsize=1)
 def get_session_options():
+    return create_session_options()
+
+
+def create_session_options():
     """Bound ONNX Runtime threads on every platform.
 
     The default leaves ``intra_op_num_threads`` unset so ORT sizes its thread

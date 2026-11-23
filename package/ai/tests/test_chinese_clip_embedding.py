@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import numpy as np
 import pytest
@@ -26,6 +26,47 @@ def test_text_wrapper_supplies_chinese_clip_three_int64_inputs():
     assert not feed['token_type_ids'].any()
     assert wrapper.tokenizer.call_args.kwargs['max_length'] == 52
     assert np.linalg.norm(result[0]) == pytest.approx(1)
+
+
+def test_npu_pads_to_static_shape_and_preserves_batch_order(tmp_path, monkeypatch):
+    from modelscope import AutoTokenizer
+    from app.services import embedding_service as module
+
+    (tmp_path / "embedding_config.json").write_text('{"max_length": 4}', encoding="utf-8")
+    tokenizer = MagicMock(return_value={
+        "input_ids": np.array([[101, 12, 102, 0], [101, 34, 102, 0]]),
+        "attention_mask": np.array([[1, 1, 1, 0], [1, 1, 1, 0]]),
+    })
+    monkeypatch.setattr(AutoTokenizer, "from_pretrained", lambda _: tokenizer)
+    monkeypatch.setattr(module, "get_onnx_providers", lambda: (
+        ["OpenVINOExecutionProvider", "CPUExecutionProvider"], [{"device_type": "NPU.0"}, {}]
+    ))
+    options = MagicMock()
+    monkeypatch.setattr(module, "create_session_options", lambda: options)
+    create_session = MagicMock()
+    monkeypatch.setattr(module, "create_inference_session", create_session)
+    session = create_session.return_value
+    session.get_inputs.return_value = [
+        SimpleNamespace(name=name) for name in ("input_ids", "attention_mask", "token_type_ids")
+    ]
+    session.run.side_effect = [[np.array([[3.0, 0.0]])], [np.array([[0.0, 4.0]])]]
+
+    wrapper = module.ONNXCLIPTextWrapper(str(tmp_path))
+    result = wrapper.encode_text_cached(["甲", "乙", "甲"])
+
+    assert options.add_free_dimension_override_by_name.call_args_list == [
+        call("batch", 1), call("sequence", 4)
+    ]
+    create_session.assert_called_once_with(str(tmp_path / "textual.onnx"), options)
+    tokenizer.assert_called_once_with(
+        text=["甲", "乙"], return_tensors="np", padding="max_length", truncation=True, max_length=4
+    )
+    feeds = [invocation.args[1] for invocation in session.run.call_args_list]
+    assert [feed["input_ids"][0, 1] for feed in feeds] == [12, 34]
+    for feed in feeds:
+        assert all(value.shape == (1, 4) and value.dtype == np.int64 for value in feed.values())
+        np.testing.assert_array_equal(feed["attention_mask"], [[1, 1, 1, 0]])
+    np.testing.assert_array_equal(result, [[1, 0], [0, 1], [1, 0]])
 
 
 def test_old_default_upgrades_once_and_explicit_old_choice_survives_restart(tmp_path, monkeypatch):
