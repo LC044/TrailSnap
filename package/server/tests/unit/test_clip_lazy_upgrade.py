@@ -193,7 +193,7 @@ def test_unavailable_ai_waits_then_ready_resumes(monkeypatch, task_type):
     assert state.get_model_wait_reason("http://lazy-ai", task_type) is None
 
 
-@pytest.mark.parametrize("status", [409, 502, 503, 504])
+@pytest.mark.parametrize("status", [409, 502, 503])
 def test_transient_text_service_errors_are_model_waits(monkeypatch, status):
     response = requests.Response()
     response.status_code = status

@@ -9,6 +9,7 @@ import pytest
 from app.db.models.task import INTERACTIVE_TASK_PRIORITY, Task, TaskStatus, TaskType
 from app.db.models.user import User
 from app.service import task_worker
+from app.service.ai_model_state import INFERENCE_TIMEOUT_PREFIX
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
@@ -258,3 +259,19 @@ def test_model_wait_yields_to_ready_lower_priority_type(scheduler):
     waiting.next_retry_at = datetime.now() - timedelta(seconds=1)
     db.commit()
     assert [t['id'] for _, batch in fetch() for t in batch] == [waiting.id]
+
+
+def test_clip_timeout_backoff_yields_to_ticket_recognition(scheduler):
+    db, worker, add, fetch = scheduler
+    clip = add(TaskType.CLASSIFY_IMAGE_CLIP, 8, status=TaskStatus.PROCESSING)
+    ticket = add(TaskType.RECOGNIZE_TICKET, 4)
+    worker.ai_phase_type = TaskType.CLASSIFY_IMAGE_CLIP
+
+    assert worker._schedule_retry(db, clip, f'{INFERENCE_TIMEOUT_PREFIX}（120 秒）', 3)
+    assert [item['id'] for _, batch in fetch() for item in batch] == [ticket.id]
+    assert worker.ai_phase_type == TaskType.RECOGNIZE_TICKET
+
+    db.delete(ticket)
+    clip.next_retry_at = datetime.now() - timedelta(seconds=1)
+    db.commit()
+    assert [item['id'] for _, batch in fetch() for item in batch] == [clip.id]

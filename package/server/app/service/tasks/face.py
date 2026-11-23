@@ -1,4 +1,4 @@
-from app.service.ai_model_state import ai_response_error
+from app.service.ai_model_state import ai_response_error, inference_timeout_error
 from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
@@ -284,9 +284,10 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                 owner_ids = {t.id for t in owner_tasks}
                 results = [r for r in results if r["task_id"] not in owner_ids]
                 logger.error(f"Error in Face Recognition processing batch for owner {owner_id}: {e}")
+                error = inference_timeout_error(e) or str(e)
                 for task in owner_tasks:
                     if not any(r['task_id'] == task.id for r in results):
-                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': str(e)})
+                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': error})
 
         return results
     async def process_single_photo(self, worker, photo: Photo, db: Session) -> Dict[str, Any]:
@@ -385,6 +386,9 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                         return {'status': 'failed', 'error': await ai_response_error(resp)}
         except Exception as e:
             logger.error(f"Error processing Face for photo {photo.id}: {e}")
+            error = inference_timeout_error(e)
+            if error:
+                return {'status': 'failed', 'error': error}
             tasks_status = dict(photo.processed_tasks or {})
             tasks_status['face'] = False
             photo.processed_tasks = tasks_status

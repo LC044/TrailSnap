@@ -1,5 +1,6 @@
 from app.service.tasks.photo_generator import generate_photo_tasks
 from app.service.disk_budget import media_io
+from app.service.ai_model_state import inference_timeout_error
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType, DEFAULT_PRIORITIES
 import logging
@@ -386,8 +387,9 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 if not isinstance(decoded, dict):
                     raise VisualDescriptionFormatError("批量结果必须是 JSON 对象")
             except Exception as exc:
+                error = inference_timeout_error(exc) or str(exc)
                 for task_id, _, _ in pending.values():
-                    record(task_id, {'status': 'failed', 'error': str(exc)},
+                    record(task_id, {'status': 'failed', 'error': error},
                            retry_as_single=isinstance(exc, (json.JSONDecodeError, VisualDescriptionFormatError)))
             else:
                 for number, (task_id, photo_id, payload) in pending.items():
@@ -553,7 +555,10 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 ])
                 result = await parse_visual_result_with_repair(client, response.content, photo_id)
             return self._save_result(db, photo_id, result, payload, photo)
-        except Exception:
+        except Exception as exc:
             db.rollback()
             logger.exception("Error processing visual description for photo %s", photo_id)
+            error = inference_timeout_error(exc)
+            if error:
+                return {'status': 'failed', 'error': error}
             raise

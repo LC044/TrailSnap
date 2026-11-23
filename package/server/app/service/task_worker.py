@@ -25,6 +25,9 @@ from app.crud.task import DEFAULT_SCAN_STATUS
 from app.crud import task as crud_task
 
 from app.service.task_strategy import TaskStrategyFactory
+from app.service.ai_model_state import (
+    INFERENCE_TIMEOUT_PREFIX, WAIT_PREFIX, inference_timeout_error, inference_timeout_message,
+)
 from app.service.adaptive_limiter import AdaptiveResourceLimiter
 from app.service.task_runtime import await_owned
 from app.service.disk_budget import disk_budget
@@ -712,8 +715,8 @@ class TaskWorker:
                     continue
                 if cat == 'AI' and self.ai_phase_type is not None:
                     phase_query = db.query(Task.priority).filter(Task.type == self.ai_phase_type)
-                    # Retry backoff keeps the phase ahead of equal/lower priority
-                    # work, but must not hold up a newly arrived urgent type.
+                    # Keep the phase during ordinary retry backoff. Model waits
+                    # and inference timeouts release it until their retry is due.
                     phase_head = phase_query.filter(or_(
                         Task.status == TaskStatus.PROCESSING,
                         Task.id.in_(reserved_task_ids),
@@ -722,7 +725,7 @@ class TaskWorker:
                             Task.priority >= INTERACTIVE_TASK_PRIORITY,
                         ) & or_(
                             Task.error.is_(None),
-                            ~Task.error.startswith('等待 AI 模型：'),
+                            ~(Task.error.startswith(WAIT_PREFIX) | Task.error.startswith(INFERENCE_TIMEOUT_PREFIX)),
                             Task.next_retry_at.is_(None),
                             Task.next_retry_at <= datetime.now(),
                         ),
@@ -994,7 +997,7 @@ class TaskWorker:
                 t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks
             ):
                 return [], None
-            from app.service.ai_model_state import DEPENDENCIES, WAIT_PREFIX, get_model_wait_reason
+            from app.service.ai_model_state import DEPENDENCIES, get_model_wait_reason
             if task_type in DEPENDENCIES:
                 from app.core.config_manager import config_manager
                 available = []
@@ -1078,9 +1081,16 @@ class TaskWorker:
                     results = asyncio.run(run())
             except Exception as exc:
                 db.rollback()
+                error = str(exc)
+                if strategy.task_category == 'AI':
+                    timeout_error = inference_timeout_error(exc)
+                    if type(exc) is TimeoutError:
+                        timeout_error = inference_timeout_message(f"批次执行超过 {strategy.timeout} 秒")
+                    error = timeout_error or error
+                elif isinstance(exc, TimeoutError):
+                    error = f'Task timeout after {strategy.timeout} seconds'
                 results = [{'task_id': task.id, 'task_type': task_type,
-                            'status': TaskStatus.FAILED,
-                            'error': f'Task timeout after {strategy.timeout} seconds' if isinstance(exc, TimeoutError) else str(exc)}
+                            'status': TaskStatus.FAILED, 'error': error}
                            for task in tasks]
             task_map = {task.id: task for task in tasks}
             terminal_results = []
@@ -1138,7 +1148,10 @@ class TaskWorker:
 
     @staticmethod
     def _is_retryable_error(error: Any) -> bool:
-        text = str(error or '').lower()
+        message = str(error or '')
+        if message.startswith(INFERENCE_TIMEOUT_PREFIX):
+            return True
+        text = message.lower()
         markers = (
             'timeout', 'timed out', '429', '503', '502', 'connection',
             'temporarily unavailable', 'server disconnected', 'service busy',
@@ -1152,7 +1165,10 @@ class TaskWorker:
 
     @staticmethod
     def _is_model_preparing_error(error: Any) -> bool:
-        text = str(error or '').lower()
+        message = str(error or '')
+        if message.startswith(INFERENCE_TIMEOUT_PREFIX):
+            return False
+        text = message.lower()
         return (
             '等待 ai 模型：' in text
             or 'model_status=downloading' in text
@@ -1162,15 +1178,21 @@ class TaskWorker:
         )
 
     def _schedule_retry(self, db: Session, task: Task, error: Any, max_attempts: int) -> bool:
+        from app.service.ai_model_state import AI_SERVICE_RETRY_PREFIX, MODEL_RETRY_REASON
+
+        error_text = str(error)
         if self._is_model_preparing_error(error):
             delay = 60
             task.status = TaskStatus.PENDING
             # Model downloads can take many minutes. Waiting for readiness is
             # not an inference attempt and must not exhaust max_attempts.
             task.next_retry_at = datetime.now() + timedelta(seconds=delay)
-            task.error = ("AI 大模型正在下载，下载完成后将自动继续"
-                          if 'model_status=' in str(error) else
-                          "等待 AI 模型：模型尚未就绪，就绪后自动继续；请在设置 → AI 模型管理查看下载状态")
+            if 'model_status=' in error_text:
+                task.error = "AI 大模型正在下载，下载完成后将自动继续"
+            elif error_text.startswith(AI_SERVICE_RETRY_PREFIX):
+                task.error = error_text
+            else:
+                task.error = MODEL_RETRY_REASON
             db.commit()
             self._publish_task_row(task)
             logging.info(
@@ -1189,7 +1211,8 @@ class TaskWorker:
         task.status = TaskStatus.PENDING
         task.attempt_count = attempt
         task.next_retry_at = datetime.now() + timedelta(seconds=delay)
-        task.error = f"设备繁忙，将在 {delay} 秒后自动重试（{attempt}/{max_attempts}）"
+        reason = error_text if error_text.startswith(INFERENCE_TIMEOUT_PREFIX) else "设备繁忙"
+        task.error = f"{reason}，将在 {delay} 秒后自动重试（{attempt}/{max_attempts}）"
         db.commit()
         self._publish_task_row(task)
         logging.warning(
