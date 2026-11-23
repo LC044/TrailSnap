@@ -71,12 +71,8 @@ def _make_manager(monkeypatch, settings, ready=True):
     monkeypatch.setattr(lm, "ai_model_manager", fake)
     monkeypatch.setattr(lm, "settings", settings)
 
-    manager = lm.LLMProcessManager.__new__(lm.LLMProcessManager)
-    manager.process = None
-    manager.active_model_id = None
+    manager = lm.LLMProcessManager()
     manager.last_access_time = 0
-    manager.lock = asyncio.Lock()
-    manager.port = settings.LLM_SERVER_PORT
     manager.repo_id = "fake/model"
     manager.model_dir_name = "MiniCPM-V"
     manager.model_name = "MiniCPM-V.gguf"

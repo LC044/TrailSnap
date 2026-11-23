@@ -257,3 +257,24 @@ def test_npu_rejects_non_npu_execution_and_remembers_failed_shape(monkeypatch):
         with pytest.raises(RuntimeError, match="Expected NPU execution"):
             session._infer(((1, 3),), [], [0])
     assert attempts == ["NPU"]
+
+
+def test_llama_uses_the_selected_openvino_npu_backend(monkeypatch):
+    from app.services import llm_manager
+
+    listing = """Available devices:
+  OPENVINO0: GGML_OPENVINO_DEVICE=CPU - CPU
+  OPENVINO1: GGML_OPENVINO_DEVICE=GPU - Intel Graphics
+  OPENVINO2: GGML_OPENVINO_DEVICE=NPU (selected) - Intel AI Boost
+"""
+    def probe(command, **kwargs):
+        assert command == ["llama-server", "--list-devices"]
+        assert kwargs["env"]["GGML_OPENVINO_DEVICE"] == "NPU"
+        return SimpleNamespace(returncode=0, stdout=listing, stderr="")
+
+    monkeypatch.setattr(llm_manager.subprocess, "run", probe)
+    env = {"GGML_OPENVINO_DEVICE": "NPU"}
+    assert llm_manager.LLMProcessManager._llama_npu_backend("llama-server", env) == "OPENVINO2"
+    listing = listing.replace("NPU (selected)", "NPU")
+    with pytest.raises(RuntimeError, match="未检测到所选 NPU"):
+        llm_manager.LLMProcessManager._llama_npu_backend("llama-server", env)
