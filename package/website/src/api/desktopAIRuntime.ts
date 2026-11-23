@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 export type AIBackend = 'cpu' | 'cuda' | 'openvino'
 export interface AIRuntimeProgress {
   backend: AIBackend
-  phase: 'checking' | 'downloading' | 'verifying' | 'installing' | 'switching' | 'ready' | 'error'
+  phase: 'detecting' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'switching' | 'ready' | 'error'
   downloaded: number
   size: number
   error: string | null
@@ -26,4 +26,5 @@ export interface AIRuntimeStatus {
 }
 export const getAIRuntimeStatus = () => invoke<AIRuntimeStatus>('desktop_ai_runtime_status')
 export const downloadAIRuntime = (backend: AIBackend) => invoke<void>('desktop_ai_runtime_download', { backend })
+export const autoSelectAIRuntime = () => invoke<void>('desktop_ai_runtime_auto')
 export const selectAIRuntime = (backend: AIBackend, device: string) => invoke<void>('desktop_ai_runtime_select', { backend, device })

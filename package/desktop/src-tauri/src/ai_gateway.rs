@@ -345,6 +345,9 @@ impl AIGateway {
             if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
                 command.env("TS_AI_SKIP_AUTO_DOWNLOAD", "1");
             }
+            if let Some(directory) = llama_runtime::managed_runtime_dir() {
+                command.env("TS_LLAMA_RUNTIME_DIR", directory);
+            }
             if let Some(llama_server) = llama_runtime::find_llama_server() {
                 command.env("LLAMA_SERVER_PATH", llama_server);
             }

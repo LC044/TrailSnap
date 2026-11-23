@@ -101,9 +101,8 @@ python scripts/prepare_chinese_clip.py --checkpoint <上游checkpoint目录> --o
 
 TrailSnap 内置 AI 连接使用 MiniCPM-V-4_6-Q4_K_M 多模态模型，需要安装 llama.cpp。
 
-TrailSnap 桌面版可在“设置 → AI 扩展包 → llama.cpp 运行时”中检测安装状态。
-Windows 和 macOS 支持点击“一键安装”；安装完成后会再次执行
-`llama-server --version` 验证。Docker 镜像仍自带 llama-server。
+TrailSnap 桌面版在首次下载或使用本地大模型时自动准备 llama-server，Docker 镜像内置
+CPU 版 llama-server。两处托管版本均为 llama.cpp b12651。以下安装步骤适用于独立部署。
 
 ### Windows
 

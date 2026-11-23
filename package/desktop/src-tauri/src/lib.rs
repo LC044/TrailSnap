@@ -6,6 +6,7 @@ mod library_link;
 mod import_flow;
 mod maintenance_wait;
 mod process_shutdown;
+mod hardware;
 mod llama_runtime;
 mod portable;
 mod update_manager;
@@ -700,6 +701,7 @@ pub fn run() {
             desktop_runtime_status,
             ai_runtime::desktop_ai_runtime_status,
             ai_runtime::desktop_ai_runtime_download,
+            ai_runtime::desktop_ai_runtime_auto,
             ai_runtime::desktop_ai_runtime_select,
             data_directory::desktop_port_config,
             data_directory::desktop_set_port,

@@ -145,16 +145,22 @@ class LLMProcessManager:
             return configured
         # The desktop may prepare its private runtime after this AI process has
         # started. Resolve it on each inference instead of requiring a restart.
+        managed_dir = os.getenv("TS_LLAMA_RUNTIME_DIR")
         desktop_root = os.getenv("TS_DESKTOP_ROOT")
-        if desktop_root:
-            runtime = Path(desktop_root) / "runtime" / "llama.cpp"
+        if managed_dir or desktop_root:
             executable = "llama-server.exe" if sys.platform == "win32" else "llama-server"
-            for candidate in sorted(runtime.glob(f"*/**/{executable}"), reverse=True):
+            if managed_dir:
+                candidates = sorted(Path(managed_dir).rglob(executable))
+            else:
+                runtime = Path(desktop_root) / "runtime" / "llama.cpp"
+                candidates = sorted(runtime.glob(f"*/**/{executable}"), reverse=True)
+            for candidate in candidates:
                 if candidate.is_file():
                     return str(candidate)
-        discovered = shutil.which("llama-server")
-        if discovered:
-            return discovered
+        if not managed_dir:
+            discovered = shutil.which("llama-server")
+            if discovered:
+                return discovered
         raise RuntimeError(
             "本地推理环境尚未准备完成，请重试；独立部署请按照 AI 服务文档安装 llama.cpp。"
         )

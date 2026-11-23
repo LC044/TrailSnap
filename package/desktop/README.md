@@ -8,7 +8,7 @@
 
 默认安装包内置 CPU AI 运行时。在“设置 → 本地识别模型 → 推理设备”查看当前设备、各已加载模型的后端与回退原因。Windows x64 可按需下载 CUDA 或 OpenVINO 加速包，下载复用桌面更新的加速源、自动选源、有限重试与进度反馈。
 
-下载完成后点击“使用此设备”；OpenVINO 可选 CPU、GPU、NPU，最终可用性以真实推理验证为准。CUDA 需要兼容的 NVIDIA 驱动，加速包包含 CUDA/cuDNN 运行库。切换会等待 AI 请求与模型下载结束，再验证新设备；失败恢复内置 CPU。此设置不控制 llama.cpp 本地大模型。
+点击“自动配置”可探测 NVIDIA CUDA 和 Intel GPU/NPU，下载匹配的签名加速包，实际推理验证通过后启用。没有可用的加速后端时使用内置 CPU。手动下载完成后点击“使用此设备”；OpenVINO 可选 CPU、GPU、NPU，最终可用性以真实推理验证为准。CUDA 需要兼容的 NVIDIA 驱动，加速包包含 CUDA/cuDNN 运行库。切换会等待 AI 请求与模型下载结束，再验证新设备；失败恢复内置 CPU。此设置不控制 llama.cpp 本地大模型。
 
 加速包保存在桌面数据根的 `runtime/ai/<客户端版本>/<后端>`，选择保存在同根目录的 `ai-runtime.json`，不会覆盖模型和图库。升级保留下载和选择；旧包不兼容时使用 CPU，并提示重新下载。安装前校验发布签名、SHA256、大小、平台与版本。
 
@@ -183,7 +183,7 @@ Tauri 会为入口 HTML 的 `<style>` 注入 hash/nonce，此时 `style-src` 中
 AI Gateway 从当前版本的 `ai/` 启动内置程序，首次调用时按需启动，空闲十分钟后退出。
 运行日志保存在数据目录的 `logs/ai.log` 和 `logs/ai.err.log`。
 模型仍按需下载，在“设置 → AI 模型管理”查看；模型位于持久数据目录，更新不重复下载。
-本地大模型所需 llama.cpp 由应用在使用时自动准备并校验，无需服务地址或手动连通性检测。
+本地大模型首次下载或推理时自动准备 llama.cpp b12651。Windows 和 Linux 按硬件依次尝试 CUDA、ROCm、Vulkan，再回退到 CPU。macOS 使用支持 Metal 的预编译包。应用校验下载文件并验证可执行文件，检测到可用的 LLAMA_SERVER_PATH 时复用指定程序。
 
 构建顺序为前端、独立 Server/AI、完整应用打包和签名。`validate_components.py`
 在打包前检查两组件入口与版本。Windows 安装器使用 LZMA；安装版和 ZIP 均把 AI 放入
