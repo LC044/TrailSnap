@@ -10,7 +10,7 @@ from PIL import Image
 
 from app.services.model_manager import model_manager
 from app.services.unified_model_manager import ai_model_manager
-from app.services.onnx_providers import create_inference_session, create_session_options, get_onnx_providers
+from app.services.onnx_providers import create_inference_session, create_session_options, desktop_npu_device, get_onnx_providers
 
 class ONNXCLIPTextWrapper:
     _fixed_input_shape = False
@@ -36,7 +36,13 @@ class ONNXCLIPTextWrapper:
                 providers[0] == "OpenVINOExecutionProvider"
                 and provider_options[0]["device_type"].split(".", 1)[0] == "NPU"
             )
-        if self._fixed_input_shape:
+        if desktop_npu_device():
+            self._fixed_input_shape = True
+            self.text_session = create_inference_session(text_model_path, fixed_dimensions={1: self.max_length})
+            sequence = self.text_session.get_inputs()[0].shape[1]
+            if isinstance(sequence, int):
+                self.max_length = sequence
+        elif self._fixed_input_shape:
             # Chinese-CLIP exports symbolic batch and sequence dimensions.
             # Pin both for the NPU so the first run of each new shape cannot
             # trigger a slow OpenVINO compilation during a classification job.
