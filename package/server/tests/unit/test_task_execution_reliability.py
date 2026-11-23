@@ -118,6 +118,9 @@ async def test_timeout_keeps_resource_slot_and_processing_until_explicit_pool_jo
         started.set()
         release.wait(2)
     class Strategy:
+        # Real strategies inherit BaseTaskStrategy.task_category; the worker
+        # reads it when it maps a failure onto a retry reason.
+        task_category = 'CPU'
         resource_key = 'one'
         timeout = .025
         max_attempts = 3

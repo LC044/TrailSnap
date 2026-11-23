@@ -32,20 +32,20 @@ def test_remove_staging_directory_deletes_read_only_files(tmp_path):
 
 
 def test_remove_staging_directory_refuses_links(tmp_path):
-    staging = tmp_path / "staging"
-    staging.mkdir()
-    outside = tmp_path / "outside.txt"
-    outside.write_text("keep me", encoding="utf-8")
-    link = staging / "link.txt"
+    """The scratch tree itself must never be a link."""
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "keep.txt").write_text("keep", encoding="utf-8")
+    link = tmp_path / "link"
     try:
-        link.symlink_to(outside)
+        link.symlink_to(real, target_is_directory=True)
     except (OSError, NotImplementedError):
         pytest.skip("symlinks are not available on this platform")
 
     with pytest.raises(ValueError):
-        migration.remove_staging_directory(staging)
+        migration.remove_staging_directory(link)
 
-    assert outside.exists()
+    assert real.exists()
 
 
 def test_migrate_data_directory_rejects_identical_directories(tmp_path):

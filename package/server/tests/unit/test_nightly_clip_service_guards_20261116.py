@@ -72,7 +72,7 @@ def test_ai_request_reports_a_connection_failure_as_a_resumable_error():
         raise requests.ConnectionError("refused")
 
     with pytest.raises(RuntimeError):
-        clip_service.ai_request(_boom, "http://ai/embedding/text")
+        clip_service.ai_request(_boom, "http://ai/embedding/text", timeout=15)
 
 
 def test_ai_request_reports_a_not_ready_service_as_a_resumable_error():
@@ -84,7 +84,7 @@ def test_ai_request_reports_a_not_ready_service_as_a_resumable_error():
         raise requests.HTTPError("server error", response=response)
 
     with pytest.raises(RuntimeError):
-        clip_service.ai_request(_boom, "http://ai/embedding/text")
+        clip_service.ai_request(_boom, "http://ai/embedding/text", timeout=15)
 
 
 def test_ai_request_reraises_an_unrelated_http_error():
@@ -96,13 +96,13 @@ def test_ai_request_reraises_an_unrelated_http_error():
         raise requests.HTTPError("server error", response=response)
 
     with pytest.raises(requests.HTTPError):
-        clip_service.ai_request(_boom, "http://ai/embedding/text")
+        clip_service.ai_request(_boom, "http://ai/embedding/text", timeout=15)
 
 
 def test_ai_request_returns_the_response_on_success():
     response = MagicMock()
     response.raise_for_status.return_value = None
-    assert clip_service.ai_request(lambda url, **kwargs: response, "http://ai/x") is response
+    assert clip_service.ai_request(lambda url, **kwargs: response, "http://ai/x", timeout=15) is response
 
 
 def test_enqueue_photos_without_photos_creates_no_task():
