@@ -244,7 +244,8 @@ def cleanup_candidates(db, user, photos, config):
                 continue
             score = (description.memory_score or 0) + (description.quality_score or 0)
             if score <= config.quality_max:
-                candidates[photo.id] = {"group": "quality", "label": f"评分 {score:g}"}
+                candidates[photo.id] = {"group": "quality", "label": f"评分 {score:g}",
+                    "quality_score": description.quality_score or 0, "memory_score": description.memory_score or 0}
     elif config.cleanup_mode == "duplicate":
         grouped = {}
         for photo in compare.filter(Photo.md5.isnot(None), Photo.md5 != "").yield_per(250):

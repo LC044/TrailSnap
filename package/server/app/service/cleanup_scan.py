@@ -256,7 +256,7 @@ def materialize(db, plan, user, config):
         query = db.query(Photo, CleanupMember.group_id, CleanupGroup.key).join(CleanupScope, CleanupScope.photo_id == Photo.id).outerjoin(
             CleanupMember, (CleanupMember.plan_id == plan.id) & (CleanupMember.photo_id == Photo.id)).outerjoin(
             CleanupGroup, CleanupGroup.id == CleanupMember.group_id).filter(CleanupScope.plan_id == plan.id,
-                CleanupScope.in_scope.is_(True), Photo.owner_id == user.id)
+                (CleanupMember.group_id.isnot(None) if config.cleanup_mode == "similar" else CleanupScope.in_scope.is_(True)), Photo.owner_id == user.id)
         if cursor:
             query = query.filter(Photo.id > UUID(cursor))
         from app.db.models.face import Face
@@ -272,7 +272,8 @@ def materialize(db, plan, user, config):
             elif config.cleanup_mode == "quality" and not photo.is_deleted and photo.image_description:
                 score = (photo.image_description.memory_score or 0) + (photo.image_description.quality_score or 0)
                 if score <= config.quality_max:
-                    candidates[photo.id] = {"group": "quality", "label": f"评分 {score:g}"}
+                    candidates[photo.id] = {"group": "quality", "label": f"评分 {score:g}",
+                        "quality_score": photo.image_description.quality_score or 0, "memory_score": photo.image_description.memory_score or 0}
             if candidates:
                 item = item_for_photo(db, user, photo, config, 0, set(), candidates, None)
                 item.plan_id = plan.id
@@ -283,6 +284,9 @@ def materialize(db, plan, user, config):
     counts = dict(db.query(ToolboxPlanItem.status, func.count()).filter_by(plan_id=plan.id).group_by(ToolboxPlanItem.status).all())
     plan.status = "preview"
     plan.expires_at = datetime.utcnow() + timedelta(days=7)
+    if config.cleanup_mode == "similar":
+        # Similar groups explicitly include all members, including comparison-only photos.
+        plan.summary = {**plan.summary, "total": processed}
     plan.summary = {**plan.summary, "phase": "done", "candidate": counts.get("candidate", 0),
         "skipped": plan.summary.get("total", 0) - counts.get("candidate", 0), "groups": db.query(CleanupGroup).filter_by(plan_id=plan.id).count(), "ready": 0}
     db.commit()

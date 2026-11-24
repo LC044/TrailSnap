@@ -166,8 +166,17 @@ def group_members(plan_id: UUID, group_id: int, offset: int = Query(0, ge=0), li
         query = db.query(CleanupMember.photo_id, CleanupMember.in_scope).join(Photo, Photo.id == CleanupMember.photo_id).filter(
             CleanupMember.plan_id == plan_id, CleanupMember.group_id == group_id,
             Photo.owner_id == user.id, Photo.is_deleted.is_(False))
+        members = query.order_by(CleanupMember.photo_id).offset(offset).limit(limit).all()
+        photos = {photo.id: photo for photo in db.query(Photo).filter(Photo.id.in_([pid for pid, _ in members]))}
+        plan_items = {item.photo_id: item for item in db.query(ToolboxPlanItem).filter(
+            ToolboxPlanItem.plan_id == plan_id, ToolboxPlanItem.photo_id.in_(list(photos)))}
+        from app.db.models.toolbox import CleanupSelection
+        selected = {item_id for (item_id,) in db.query(CleanupSelection.item_id).filter(
+            CleanupSelection.plan_id == plan_id, CleanupSelection.item_id.in_([item.id for item in plan_items.values()]))}
         return {"total": query.count(), "representative_id": str(group.representative_id), "items": [
-            {"photo_id": str(pid), "in_scope": inside} for pid, inside in query.order_by(CleanupMember.photo_id).offset(offset).limit(limit)]}
+            {"photo_id": str(pid), "in_scope": inside, "source": photos[pid].file_path,
+             "item": {**item_view(plan_items[pid]), "selected": plan_items[pid].id in selected} if pid in plan_items else None}
+            for pid, inside in members]}
     return response_call(db, load)
 
 

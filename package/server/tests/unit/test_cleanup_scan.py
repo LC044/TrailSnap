@@ -278,7 +278,11 @@ def test_recycle_execution_crosses_batch_boundary_and_keeps_original(lib):
     assert lib.db.query(Photo).filter(Photo.id.in_(ids), Photo.is_deleted.is_(True)).count() == 101
     assert not lib.db.get(Photo, seed.id).is_deleted
     assert Path(seed.file_path).read_bytes() == b"same"
-    assert plan.status == "completed" and plan.summary["success"] == 101
+    assert plan.status == "preview" and plan.summary["success"] == 101
+    assert plan.summary["candidate"] == 1
+    remaining = lib.db.query(ToolboxPlanItem).filter_by(plan_id=plan.id, status="candidate").one()
+    assert remaining.photo_id == seed.id
+    assert lib.db.query(CleanupSelection).filter_by(plan_id=plan.id).count() == 0
 
 
 def test_cleanup_migration_matches_models_and_roundtrips(lib):

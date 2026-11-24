@@ -51,14 +51,13 @@ def start_cleanup(db, user, plan, request):
     if conflict:
         raise ValueError("这些影像正在被其他任务处理")
     query.update({ToolboxPlanItem.status: "ready", ToolboxPlanItem.reason: ""}, synchronize_session=False)
-    db.query(ToolboxPlanItem).filter(ToolboxPlanItem.plan_id == plan.id, ToolboxPlanItem.status == "candidate").update(
-        {ToolboxPlanItem.status: "skipped", ToolboxPlanItem.reason: "未勾选，保留"}, synchronize_session=False)
     task = Task(id=uuid4(), owner_id=user.id, type=TaskType.ORGANIZE_PHOTOS.value,
         status="pending", priority=10000, total_items=count, processed_items=0,
         payload={"toolbox_plan_id": str(plan.id)})
     db.add(task)
     db.flush()
     plan.task_id, plan.status = task.id, "queued"
+    plan.stop_requested = False
     plan.summary = {**plan.summary, "ready": count}
     db.commit()
     return plan
@@ -146,7 +145,11 @@ async def execute_cleanup(task, db, plan):
         await asyncio.sleep(0)
     counts = dict(db.query(ToolboxPlanItem.status, func.count()).filter_by(plan_id=plan.id).group_by(ToolboxPlanItem.status).all())
     plan.status = "stopped" if plan.stop_requested else "partial" if counts.get("failed") else "completed"
+    # Selection belongs to one execution batch; remaining candidates stay selectable.
+    db.query(CleanupSelection).filter_by(plan_id=plan.id).delete(synchronize_session=False)
+    if counts.get("candidate") and not plan.stop_requested:
+        plan.status = "preview"
     plan.finished_at = datetime.utcnow()
-    plan.summary = {**plan.summary, **counts, "ready": counts.get("ready", 0), "running": 0}
+    plan.summary = {**plan.summary, **counts, "candidate": counts.get("candidate", 0), "ready": counts.get("ready", 0), "running": 0}
     db.commit()
     return {"status": "completed", "success_count": counts.get("success", 0), "failed_count": counts.get("failed", 0)}

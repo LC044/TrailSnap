@@ -231,3 +231,30 @@ test('active tasks open each cleanup mode and undo in the matching tool with its
   assert.deepEqual(calls.at(-1), { path: '/toolbox/rename', query: { plan: 'undo' } })
   ctx.unmount()
 })
+
+test('similar group includes every member with independent details and selection', async () => {
+  const items = Array.from({ length: 5 }, (_, index) => ({
+    id: index + 1, photo_id: 'similar-' + index, source: '/photos/' + index + '.jpg',
+    target: '', status: 'candidate', selected: false, detail: { group_id: 8 },
+  }))
+  const plan = { id: 'similar-plan', kind: 'cleanup', version: 1, status: 'preview',
+    summary: { phase: 'done' }, request: { config: { cleanup_mode: 'similar' } } }
+  const workflowApi = {
+    items: async () => ({ total: 5, selected_count: 0, items: [items[0]] }),
+    members: async () => ({ total: 5, representative_id: items[0].photo_id,
+      items: items.map((item, index) => ({ photo_id: item.photo_id, in_scope: index === 0, source: item.source, item })) }),
+    selection: async () => ({ selected_count: 1 }),
+  }
+  const component = load('views/toolbox/ToolPlanPreview.vue', {
+    '@/api/toolboxWorkflows': { workflowApi }, '@/utils/mediaUrl': { thumbnailUrl: id => id },
+    'element-plus': { ElMessage: { error() {} } },
+  }).default
+  const ctx = mount(component, { plan, executing: false })
+  await ctx.state.load()
+  assert.equal(ctx.state.photoGroups.value.length, 1)
+  assert.deepEqual(ctx.state.photoGroups.value[0].items.map(item => item.source), items.map(item => item.source))
+  await ctx.state.toggle(5, true)
+  assert.equal(ctx.state.photoGroups.value[0].items[4].selected, true)
+  assert.equal(ctx.state.selectedCount.value, 1)
+  ctx.unmount()
+})

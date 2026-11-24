@@ -147,7 +147,7 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
     await expect(page.getByRole('button', { name: '按年份和城市', exact: true })).toBeVisible()
   })
 
-  test('ToolPlanPreview shows the real-preview summary before execution', async ({ page }) => {
+  test('ToolPlanPreview shows quality scores below thumbnails without duplicating details', async ({ page }) => {
     await stubScopePreview(page)
     await page.route('**/api/toolbox/plans', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback()
@@ -165,10 +165,12 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
           code: 0, msg: 'success',
           data: {
             items: [
-              { id: 1, photo_id: '00000000-0000-0000-0000-000000000401', source: '/photos/nightly-a.jpg', target: '', status: 'ready', reason: '评分低于阈值', detail: { label: '模糊' } },
-              { id: 2, photo_id: '00000000-0000-0000-0000-000000000402', source: '/photos/nightly-b.jpg', target: '', status: 'skipped', reason: '缺少分析结果', detail: {} },
+              { id: 1, photo_id: '00000000-0000-0000-0000-000000000401', source: '/photos/nightly-a.jpg', target: '', status: 'candidate', reason: '', detail: { quality_score: 12, memory_score: 18, label: '评分 30' } },
+              { id: 2, photo_id: '00000000-0000-0000-0000-000000000402', source: '/photos/nightly-b.jpg', target: '', status: 'candidate', reason: '', detail: { quality_score: 0, memory_score: 0, label: '评分 0' } },
+              { id: 3, photo_id: '00000000-0000-0000-0000-000000000403', source: '/photos/nightly-c.jpg', target: '', status: 'candidate', reason: '', detail: { quality_score: null, memory_score: null, label: '评分 0' } },
+              { id: 4, photo_id: '00000000-0000-0000-0000-000000000404', source: '/photos/nightly-legacy.jpg', target: '', status: 'candidate', reason: '', detail: { label: '评分 25' } },
             ],
-            total: 2,
+            total: 4,
           },
         }),
       })
@@ -179,12 +181,108 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
 
     const sources = page.getByRole('group', { name: '范围来源' })
     await sources.getByRole('button', { name: '全部' }).click()
+    await expect(page.getByText('综合评分上限（0–200）', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '查找', exact: true }).click()
 
     // ToolPlanPreview: preview banner, scope/operation summary and the item list.
     await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: '确认', exact: true })).toBeDisabled()
+    const cards = page.locator('article').filter({ has: page.locator('details > summary', { hasText: '详情' }) })
+    await expect(cards).toHaveCount(4)
+    await expect(cards.nth(0).getByText('质量分 12 / 综合评分 30', { exact: true })).toBeVisible()
+    await expect(cards.nth(0).locator('[aria-label="质量分（0–100）12 / 综合评分（0–200）30"]')).toBeVisible()
+    for (const index of [1, 2]) {
+      await expect(cards.nth(index).getByText('质量分 0 / 综合评分 0', { exact: true })).toBeVisible()
+    }
+    await expect(cards.nth(3).getByText('评分 25', { exact: true })).toBeVisible()
+    // All quality candidates share one responsive grid.
+    await expect(page.locator('div.grid').filter({ has: cards })).toHaveCount(1)
+    for (let index = 0; index < 4; index++) {
+      const details = cards.nth(index).locator('details')
+      await details.locator('summary').click()
+      await expect(details.locator('p').first()).toContainText('/photos/nightly-')
+      await expect(details).not.toContainText(/质量分|综合评分|评分 25/)
+    }
+    await expect(page.getByRole('checkbox', { name: /将 nightly-a.jpg 移入回收站/ })).toBeVisible()
+
+    await expect(page.getByRole('button', { name: '删除', exact: true })).toBeDisabled()
     await expect(page.getByRole('button', { name: '导出' })).toHaveCount(0)
   })
+  for (const mode of ['quality', 'similar', 'duplicate'] as const) {
+    test(`cleanup ${mode} supports two deletion batches without leaving results`, async ({ page }) => {
+      const id = 'batch-' + mode
+      let state = 'preview'
+      let executions = 0
+      const selected = new Set<number>()
+      let remaining = [1, 2, 3, 4, 5]
+      const item = (index: number) => ({
+        id: index, photo_id: 'batch-photo-' + index, source: '/photos/batch-' + index + '.jpg',
+        target: '', status: 'candidate', reason: '', selected: selected.has(index),
+        detail: mode === 'quality' ? { quality_score: 10, memory_score: 5 } : { group_id: 8 },
+      })
+      const plan = () => ({
+        ...previewPlan, id, status: state,
+        request: { ...previewPlan.request, config: { ...previewPlan.request.config, cleanup_mode: mode } },
+        summary: { phase: 'done', candidate: remaining.length, ready: 0, success: 5 - remaining.length },
+      })
+      const reply = (route: import('@playwright/test').Route, data: unknown) =>
+        route.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data }) })
+      await page.route('**/api/toolbox/plans**', async route => {
+        const url = new URL(route.request().url())
+        const path = url.pathname
+        if (path.endsWith('/selection')) {
+          const body = route.request().postDataJSON()
+          for (const value of body.item_ids) body.selected ? selected.add(value) : selected.delete(value)
+          return reply(route, { selected_count: selected.size })
+        }
+        if (path.endsWith('/execute')) {
+          expect([...selected]).toEqual([executions + 1])
+          executions++
+          remaining = remaining.filter(index => !selected.has(index))
+          selected.clear()
+          state = 'queued'
+          return reply(route, plan())
+        }
+        if (path.endsWith('/items')) return reply(route, {
+          total: remaining.length, selected_count: selected.size, items: remaining.map(item),
+        })
+        if (path.endsWith('/members')) return reply(route, {
+          total: remaining.length, representative_id: 'batch-photo-1',
+          items: remaining.map(index => ({ photo_id: item(index).photo_id, source: item(index).source,
+            in_scope: index === 1, item: item(index) })),
+        })
+        if (path.endsWith('/' + id)) { state = 'preview'; return reply(route, plan()) }
+        if (route.request().method() === 'POST') return reply(route, plan())
+        return route.fallback()
+      })
+      await page.goto('/toolbox/cleanup?plan=' + id)
+      const cards = page.locator('article').filter({ has: page.locator('details > summary', { hasText: '详情' }) })
+      await expect(cards).toHaveCount(5)
+      if (mode === 'similar') {
+        const boxes = await cards.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top))
+        expect(new Set(boxes).size).toBe(1)
+        for (let index = 0; index < 5; index++) {
+          await cards.nth(index).locator('summary').click()
+          await expect(cards.nth(index).locator('details')).toContainText('/photos/batch-' + (index + 1) + '.jpg')
+        }
+      }
+      const remove = page.getByRole('button', { name: '删除', exact: true })
+      for (const index of [1, 2]) {
+        await page.getByRole('checkbox', { name: '将 batch-' + index + '.jpg 移入回收站', exact: true }).click()
+        const confirmation = page.getByRole('checkbox', { name: '已悉知变更情况', exact: true })
+        await expect(confirmation).not.toBeChecked()
+        await page.locator('label.plan-confirmation').getByText('已悉知变更情况', { exact: true }).click()
+        await expect(confirmation).toBeChecked()
+        await expect(remove).toBeEnabled()
+        await remove.click()
+        await expect(cards).toHaveCount(5 - index)
+        await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
+        await expect(remove).toBeDisabled()
+        await expect(page.getByRole('checkbox', { name: '已悉知变更情况', exact: true })).not.toBeChecked()
+      }
+      expect(executions).toBe(2)
+      await expect(page).toHaveURL(new RegExp('plan=' + id))
+    })
+  }
+
 })
 

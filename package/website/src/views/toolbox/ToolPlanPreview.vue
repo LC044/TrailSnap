@@ -24,22 +24,27 @@
       <template v-if="isCleanup">
         <section v-for="(group, groupIndex) in photoGroups" :key="group.key" class="py-3">
           <h3 v-if="plan.request.config.cleanup_mode !== 'quality'" class="ts-muted mb-3 text-sm">第 {{ (page - 1) * 40 + groupIndex + 1 }} 组</h3>
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            <article v-for="item in group.items" :key="item.id" class="relative min-w-0">
+          <div :class="isSimilar ? 'flex gap-2 overflow-x-auto pb-2' : 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4'">
+            <article v-for="item in group.items" :key="item.id" class="relative min-w-0" :class="isSimilar && 'w-48 shrink-0 sm:w-56'">
               <el-image :src="thumbnailUrl(item.photo_id)" :preview-src-list="group.items.map(photo => thumbnailToFileUrl(thumbnailUrl(photo.photo_id)))" :initial-index="group.items.indexOf(item)" preview-teleported fit="cover" class="aspect-square w-full rounded-xl" :class="{ 'photo-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :alt="basename(item.source)" />
               <button v-if="isPreview && item.status === 'candidate'" type="button" role="checkbox" class="photo-choice" :class="{ 'is-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :aria-checked="!!(isAsyncCleanup ? item.selected : selected.includes(item.id))" :disabled="selecting" :aria-label="`将 ${basename(item.source)} 移入回收站`" @click="toggle(item.id, !(isAsyncCleanup ? item.selected : selected.includes(item.id)))">
                 <span class="photo-choice-mark"><Check v-if="isAsyncCleanup ? item.selected : selected.includes(item.id)" :size="20" :stroke-width="3" /></span>
               </button>
+              <p v-if="plan.request.config.cleanup_mode === 'quality'" class="ts-muted mt-2 break-words text-xs"
+                :aria-label="qualityScoreLabel(item, true)">{{ qualityScoreLabel(item) }}</p>
               <details class="ts-muted mt-1 text-xs"><summary class="cursor-pointer py-2">详情</summary><p class="break-all">{{ item.source }}</p><p v-if="item.status === 'failed' || item.status === 'skipped'">{{ item.reason }}</p></details>
             </article>
           </div>
-          <div v-if="group.groupId && references[group.groupId] && (references[group.groupId].total > 24 || references[group.groupId].items.some(photo => !group.items.some(item => item.photo_id === photo.photo_id)))" class="mt-2">
+          <div v-if="!isSimilar && group.groupId && references[group.groupId] && (references[group.groupId].total > 24 || references[group.groupId].items.some(photo => !group.items.some(item => item.photo_id === photo.photo_id)))" class="mt-2">
             <p class="ts-muted mb-2 text-xs">同组照片</p>
             <div class="flex gap-2 overflow-x-auto">
               <el-image v-for="member in references[group.groupId].items.filter(photo => !group.items.some(item => item.photo_id === photo.photo_id))" :key="member.photo_id" :src="thumbnailUrl(member.photo_id)" :preview-src-list="references[group.groupId].items.map(photo => thumbnailToFileUrl(thumbnailUrl(photo.photo_id)))" :initial-index="references[group.groupId].items.indexOf(member)" preview-teleported fit="cover" class="h-24 w-24 shrink-0 rounded-lg" alt="同组参考照片" />
             </div>
             <el-pagination v-if="references[group.groupId].total > 24" :current-page="referencePages[group.groupId] || 1" :page-size="24" :total="references[group.groupId].total" layout="prev, next" @current-change="page => loadReferences(group.groupId!, page)" />
           </div>
+          <el-pagination v-if="isSimilar && group.groupId && references[group.groupId]?.total > 24"
+            :current-page="referencePages[group.groupId] || 1" :page-size="24" :total="references[group.groupId].total"
+            layout="prev, next" @current-change="page => loadReferences(group.groupId!, page)" />
           <el-button v-if="group.groupId && !references[group.groupId]" link @click="loadReferences(group.groupId)">参考</el-button>
         </section>
       </template>
@@ -80,7 +85,7 @@
       <div class="flex flex-wrap justify-end gap-2">
         <el-button @click="$emit('back')">返回</el-button>
         <el-button type="primary" :loading="executing" :disabled="!confirmed || !actionCount || loading || selecting || !!error" @click="$emit('execute', isCleanup && !isAsyncCleanup ? selected : undefined)">
-          确认
+          {{ isCleanup ? '删除' : '确认' }}
         </el-button>
       </div>
     </div>
@@ -102,6 +107,7 @@ defineEmits<{ execute: [selected?: number[]]; back: []; stop: []; recover: [mode
 const labels: Record<string, string> = { preview: '待确认', queued: '排队中', running: '处理中', completed: '已完成', partial: '部分失败', stopped: '已停止', ready: '待确认', candidate: '待选', skipped: '跳过', success: '成功', failed: '失败' }
 const isPreview = computed(() => props.plan.status === 'preview')
 Object.assign(labels, { scan_queued: '等待扫描', scanning: '扫描中', scan_stopped: '扫描已停止', scan_failed: '扫描失败' })
+const isSimilar = computed(() => props.plan.kind === 'cleanup' && props.plan.request.config.cleanup_mode === 'similar')
 const isCleanup = computed(() => props.plan.kind === 'cleanup')
 const isAsyncCleanup = computed(() => isCleanup.value && !!props.plan.summary.phase)
 const resultFilters = computed(() => {
@@ -113,19 +119,39 @@ const resultFilters = computed(() => {
 const scanning = computed(() => ['scan_queued', 'scanning'].includes(props.plan.status))
 const serverSelected = ref(0), selecting = ref(false)
 const selectedCount = computed(() => isAsyncCleanup.value ? serverSelected.value : selected.value.length)
-const references = ref<Record<number, { total: number; representative_id: string; items: { photo_id: string; in_scope: boolean }[] }>>({})
+const references = ref<Record<number, { total: number; representative_id: string; items: { photo_id: string; in_scope: boolean; source?: string; item?: ToolPlanItem | null }[] }>>({})
 const referencePages = ref<Record<number, number>>({})
 const selected = ref<number[]>([])
 const confirmed = ref(false)
 const page = ref(1), status = ref('')
 const total = ref(0)
 const rows = ref<ToolPlanItem[]>([])
+const qualityScoreLabel = (item: ToolPlanItem, accessible = false) => {
+  const { quality_score, memory_score, label } = item.detail
+  // Older plans only have the combined score label; do not invent missing scores.
+  if (quality_score === undefined || memory_score === undefined) return label || '评分信息不可用'
+  const quality = quality_score ?? 0
+  const total = quality + (memory_score ?? 0)
+  return accessible
+    ? `质量分（0–100）${quality} / 综合评分（0–200）${total}`
+    : `质量分 ${quality} / 综合评分 ${total}`
+}
 const photoGroups = computed(() => {
   const groups = new Map<string, { key: string; groupId?: number; title: string; items: ToolPlanItem[] }>()
   for (const item of rows.value) {
-    const key = item.detail.group_id ? `group-${item.detail.group_id}` : `item-${item.id}`
+    const key = props.plan.request.config.cleanup_mode === 'quality' ? 'quality' : item.detail.group_id ? `group-${item.detail.group_id}` : `item-${item.id}`
     if (!groups.has(key)) groups.set(key, { key, groupId: item.detail.group_id, title: item.detail.label || '照片', items: [] })
     groups.get(key)!.items.push(item)
+  }
+  if (isSimilar.value) {
+    for (const group of groups.values()) {
+      const members = group.groupId && references.value[group.groupId]
+      if (members) {
+        group.items = members.items.map(member => member.item || group.items.find(item => item.photo_id === member.photo_id)
+          || { id: -members.items.indexOf(member) - 1, photo_id: member.photo_id, source: member.source || member.photo_id,
+            target: '', status: 'skipped', reason: '此结果不支持选择，请重新查找', detail: {} } as ToolPlanItem)
+      }
+    }
   }
   return [...groups.values()]
 })
@@ -150,7 +176,7 @@ const load = async () => {
   finally { if (version === sequence) loading.value = false }
 }
 watch(() => props.plan.id, () => { selected.value = []; confirmed.value = false; page.value = 1; status.value = ''; load() }, { immediate: true })
-watch(() => props.plan.status, () => { status.value = ''; page.value = 1; load() })
+watch(() => props.plan.status, () => { selected.value = []; confirmed.value = false; status.value = ''; page.value = 1; load() })
 const basename = (path: string) => path.split(/[\\/]/).at(-1) || path
 const operationVerb = computed(() => props.plan.kind === 'rename' ? '重命名' : props.plan.kind === 'cleanup' ? '移入回收站'
   : props.plan.kind === 'album' ? '归类到相册' : props.plan.kind === 'metadata' ? '写入拍摄信息' : props.plan.kind === 'undo' ? '恢复原路径'
@@ -170,6 +196,10 @@ const toggle = async (id: number, checked: boolean) => {
     serverSelected.value = result.selected_count
     const row = rows.value.find(item => item.id === id)
     if (row) row.selected = checked
+    for (const group of Object.values(references.value)) {
+      const member = group.items.find(member => member.item?.id === id)
+      if (member?.item) member.item.selected = checked
+    }
     error.value = ''
   } catch { error.value = '选择未保存，请刷新核对后重试' }
   finally { selecting.value = false }
