@@ -37,7 +37,7 @@ for package in ("fastapi", "pydantic", "passlib", "langchain", "langchain_core",
 # "Could not find dependency: libgfortran-...so.5.0.0". collect_all pulls the
 # submodules, data files AND the .libs binaries for each package.
 binaries = []
-for package in ("numpy", "scipy", "sklearn"):
+for package in ("numpy", "scipy", "sklearn", "rawpy"):
     try:
         pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(package)
     except Exception:
@@ -45,6 +45,19 @@ for package in ("numpy", "scipy", "sklearn"):
     datas += pkg_datas
     binaries += pkg_binaries
     hiddenimports += pkg_hiddenimports
+
+# Linux rawpy wheels keep auditwheel-renamed dependencies beside the package.
+# collect_all only searches inside rawpy; libraw_r then references missing
+# liblcms2-<hash>.so during linuxdeploy. Collect the sibling libraries into
+# the sidecar library directory, where both PyInstaller and linuxdeploy resolve
+# the ELF dependencies (installing the system liblcms2 cannot satisfy this name).
+if sys.platform.startswith('linux'):
+    from importlib.util import find_spec
+    rawpy_spec = find_spec('rawpy')
+    if rawpy_spec and rawpy_spec.origin:
+        wheel_libs = Path(rawpy_spec.origin).parent.parent / 'rawpy.libs'
+        for library in wheel_libs.glob('*.so*'):
+            binaries.append((str(library), '.'))
 
 a = Analysis(
     [str(root / "desktop_entry.py")],

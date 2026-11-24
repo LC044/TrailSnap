@@ -356,17 +356,27 @@ jobs:
           # only --exclude-library is supported, no env var). The only lever
           # that works inside ldd is the ELF's own RPATH, so prefix $ORIGIN
           # (preserving any existing RPATH) onto every .so inside *.libs/ dirs.
-          find package/desktop/server-dist/trailsnap-server/_internal package/desktop/ai-dist/trailsnap-ai/_internal -type d -name '*.libs' | while read -r d; do
-            for f in "$d"/*.so*; do
-              [ -f "$f" ] || continue
-              cur=$(patchelf --print-rpath "$f" 2>/dev/null || true)
-              case ":$cur:" in
-                *'$ORIGIN'*) : ;;  # already has $ORIGIN, leave alone
-                *) patchelf --set-rpath "\$ORIGIN${cur:+:$cur}" "$f" 2>/dev/null || true ;;
-              esac
-            done
+          # PyInstaller also flattens libraw_r and its hashed dependencies into
+          # _internal itself. Patch those ELF files too, not just *.libs/ files.
+          find package/desktop/server-dist/trailsnap-server/_internal package/desktop/ai-dist/trailsnap-ai/_internal -type f -name '*.so*' -print0 | while IFS= read -r -d '' f; do
+            cur=$(patchelf --print-rpath "$f" 2>/dev/null) || continue
+            case ":$cur:" in
+              *':$ORIGIN:'*) : ;;
+              *) patchelf --set-rpath "\$ORIGIN${cur:+:$cur}" "$f" ;;
+            esac
           done
-          echo "Ensured \$ORIGIN in RPATH of .libs/ ELF files"
+          echo "Ensured \$ORIGIN in RPATH of sidecar ELF files"
+          # Fail here with the actual ldd output instead of waiting for Tauri's
+          # linuxdeploy to report an opaque AppImage dependency failure.
+          while IFS= read -r -d '' f; do
+            dependencies=$(ldd "$f" 2>&1) || { echo "$dependencies"; exit 1; }
+            echo "$f:"
+            echo "$dependencies"
+            if grep -q 'not found' <<< "$dependencies"; then
+              echo "::error::Unresolved RAW decoder dependency: $f"
+              exit 1
+            fi
+          done < <(find package/desktop/server-dist/trailsnap-server/_internal -type f -name 'libraw_r.so*' -print0)
 
       - name: Build stable Windows portable launcher
         if: runner.os == 'Windows'

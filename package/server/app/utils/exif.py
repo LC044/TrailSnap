@@ -16,7 +16,7 @@ import re
 import os
 from typing import Dict, Any, Optional
 
-from app.utils.image_loading import Image, IMAGE_EXTENSIONS
+from app.utils.image_loading import open_image, Image, IMAGE_EXTENSIONS
 from app.service.disk_budget import budgeted_open
 from PIL.ExifTags import TAGS, GPSTAGS
 from pillow_heif import register_heif_opener
@@ -261,7 +261,7 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
             else:
                 source = budgeted_open(file_path)
                 try:
-                    img = Image.open(source)
+                    img = open_image(source, file_path)
                 except BaseException:
                     source.close()
                     raise

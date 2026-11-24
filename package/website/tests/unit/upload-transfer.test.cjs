@@ -143,3 +143,14 @@ test('ten thousand queue entries render a bounded window including the last file
   }
   assert.equal(manual.uploadWindow(10000, 879616).end, 10000)
 })
+
+
+test('manual upload accepts camera RAW files without relying on browser MIME types', () => {
+  for (const extension of ['RAF', 'NEF', 'DNG', 'CR2', 'CR3', 'ARW', 'ORF', 'RW2']) {
+    for (const type of ['', 'application/octet-stream', 'image/x-raw']) {
+      assert.equal(manual.isSupportedMedia({ name: `photo.${extension}`, type }), true)
+    }
+    assert.ok(manual.MEDIA_ACCEPT.split(',').includes(`.${extension.toLowerCase()}`))
+  }
+  assert.equal(manual.isSupportedMedia({ name: 'photo.exe', type: 'image/jpeg' }), false)
+})

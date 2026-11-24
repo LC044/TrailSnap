@@ -61,7 +61,7 @@ AI_TASK_TYPES = (
 
 CORE_TASK_TYPES = ("SCAN_FOLDER", "PROCESS_BASIC", "EXTRACT_METADATA")
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".heic", ".heif"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".heic", ".heif", ".raf", ".nef", ".nrw", ".dng", ".cr2", ".cr3", ".crw", ".arw", ".sr2", ".srf", ".orf", ".rw2", ".raw", ".pef", ".rwl", ".srw", ".3fr", ".fff", ".iiq", ".kdc", ".dcr", ".mrw", ".x3f"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
 
