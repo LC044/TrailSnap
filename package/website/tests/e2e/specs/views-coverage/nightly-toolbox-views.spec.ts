@@ -268,7 +268,11 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
       const remove = page.getByRole('button', { name: '删除', exact: true })
       for (const index of [1, 2]) {
         await page.getByRole('checkbox', { name: '将 batch-' + index + '.jpg 移入回收站', exact: true }).click()
-        await page.getByRole('checkbox', { name: '已悉知变更情况', exact: true }).check()
+        const confirmation = page.getByRole('checkbox', { name: '已悉知变更情况', exact: true })
+        await expect(confirmation).not.toBeChecked()
+        await page.locator('label.plan-confirmation').getByText('已悉知变更情况', { exact: true }).click()
+        await expect(confirmation).toBeChecked()
+        await expect(remove).toBeEnabled()
         await remove.click()
         await expect(cards).toHaveCount(5 - index)
         await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
