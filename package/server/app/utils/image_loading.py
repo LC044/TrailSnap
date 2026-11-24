@@ -17,7 +17,7 @@ IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.tif', '.tiff', '
 VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.webm')
 
 
-def open_image(source, filename=None):
+def open_image(source, filename=None, *, full_resolution=False):
     """Open ordinary images lazily; adapt camera RAW to the same Pillow contract.
 
     The caller owns the returned image and the input stream. RAW previews are
@@ -61,7 +61,16 @@ def open_image(source, filename=None):
             else:
                 image = Image.fromarray(thumb.data)
             method = 'embedded'
+            if full_resolution and (image.width < sizes.width or image.height < sizes.height):
+                metadata = metadata or image.info.get('exif')
+                image.close()
+                image = None
         except (rawpy.LibRawNoThumbnailError, rawpy.LibRawUnsupportedThumbnailError, OSError):
+            raw.unpack()
+            image = Image.fromarray(raw.postprocess(use_camera_wb=True, output_color=rawpy.ColorSpace.sRGB,
+                                                   output_bps=8, user_flip=0))
+            method = 'decoded'
+        if full_resolution and image is None:
             raw.unpack()
             image = Image.fromarray(raw.postprocess(use_camera_wb=True, output_color=rawpy.ColorSpace.sRGB,
                                                    output_bps=8, user_flip=0))
@@ -69,6 +78,21 @@ def open_image(source, filename=None):
         if metadata:
             image.info['exif'] = metadata
             image._exif = None
+        from datetime import datetime
+        other = raw.other
+        exif = image.getexif()
+        photo_ifd = exif.get_ifd(34665) if 34665 in exif else {}
+        if not photo_ifd.get(36867) and isinstance(getattr(other, 'timestamp', None), datetime):
+            timestamp = other.timestamp.strftime('%Y:%m:%d %H:%M:%S')
+            exif.setdefault(306, timestamp)
+            photo_ifd[36867] = timestamp
+        for tag, field in ((34855, 'iso_speed'), (33434, 'shutter_speed'),
+                           (33437, 'aperture'), (37386, 'focal_length')):
+            value = getattr(other, field, None)
+            if tag not in photo_ifd and isinstance(value, (int, float)) and value > 0:
+                photo_ifd[tag] = value
+        if photo_ifd:
+            exif[34665] = photo_ifd
         # LibRaw flip values map to EXIF orientation. Keep pixels unrotated;
         # the shared EXIF transpose in storage applies orientation once.
         if not image.getexif().get(274):

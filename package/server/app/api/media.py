@@ -475,9 +475,15 @@ async def get_media_file(
     file_path = photo.file_path
     # Determine media type
     ext = os.path.splitext(file_path)[1].lower()
-    # 浏览器普遍无法解码 HEIC/HEIF，默认改发 medium 预览图以便在线查看；
-    # 下载场景传 ?original=1 拿原始字节（内容和文件名保持一致）。
-    if ext in ('.heic', '.heif') + RAW_EXTENSIONS and not original:
+    # Downloads opt out; the viewer file route provides full-resolution RAW JPEG.
+    if ext in RAW_EXTENSIONS and not original:
+        try:
+            file_path = await run_in_threadpool(storage.get_raw_high_resolution_path, photo.owner_id, photo_id, file_path)
+        except Exception:
+            logging.exception("RAW high-resolution generation failed for %s", photo_id)
+            raise HTTPException(status_code=422, detail="RAW 高清图生成失败，请重试或下载原文件")
+        ext = '.jpg'
+    elif ext in ('.heic', '.heif') and not original:
         file_path = _get_thumbnail_path(photo.owner_id, photo_id, db, 'medium')
         ext = os.path.splitext(file_path)[1].lower()
     file_size = await run_in_threadpool(os.path.getsize, file_path)

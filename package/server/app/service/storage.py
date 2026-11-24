@@ -345,6 +345,44 @@ def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: Ima
     img.close()
     return m_path
 
+
+# Bound full sensor decoding across concurrent requests in this server process.
+# Keep the lock separate from the disk read budget: encoding also holds memory.
+import threading
+_RAW_HIGH_LOCK = threading.Lock()
+
+
+def get_raw_high_resolution_path(user_id: UUID, file_id: UUID, original_path: str) -> str:
+    """Cache a full-resolution browser image without touching the camera original."""
+    import hashlib
+    import tempfile
+    compact = str(file_id).replace('-', '')
+    base = os.path.join(_get_storage_root(user_id), 'thumbnails', compact[:2], compact[2:4])
+    with _RAW_HIGH_LOCK:
+        stat = os.stat(original_path)
+        version = hashlib.sha256(f'v1:{stat.st_mtime_ns}:{stat.st_size}'.encode()).hexdigest()[:20]
+        path = os.path.join(base, f'{compact}-raw-high-{version}.jpg')
+        if os.path.isfile(path):
+            return path
+        os.makedirs(base, exist_ok=True)
+        temporary = None
+        try:
+            with budgeted_open(original_path) as source, open_image(source, original_path, full_resolution=True) as image:
+                with ImageOps.exif_transpose(image) as oriented:
+                    with oriented.convert('RGB') as rgb:
+                        fd, temporary = tempfile.mkstemp(prefix=f'{compact}-raw-', suffix='.tmp', dir=base)
+                        os.close(fd)
+                        rgb.save(temporary, format='JPEG', quality=95, subsampling=0)
+            current = os.stat(original_path)
+            if (stat.st_mtime_ns, stat.st_size) != (current.st_mtime_ns, current.st_size):
+                raise OSError('RAW source changed during decoding; retry viewing')
+            os.replace(temporary, path)
+            temporary = None
+            return path
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.remove(temporary)
+
 def get_preview_path(user_id: UUID, file_id: UUID) -> Optional[str]:
     """Get the absolute path to the preview image if it exists."""
     compact = str(file_id).replace('-', '')
@@ -427,7 +465,7 @@ def delete_thumbnails(user_id: UUID, file_id: UUID):
         root = _get_storage_root(user_id)
         base = os.path.join(root, 'thumbnails', p1, p2)
         from pathlib import Path
-        for panorama_file in Path(base).glob(f"{compact}-pano-*.jpg"):
+        for panorama_file in list(Path(base).glob(f"{compact}-pano-*.jpg")) + list(Path(base).glob(f"{compact}-raw-high-*.jpg")):
             panorama_file.unlink(missing_ok=True)
         # 判断webp格式的图片是否存在
         wm = os.path.join(base, f"{compact}.webp")
