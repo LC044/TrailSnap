@@ -1,4 +1,4 @@
-import { onBeforeUnmount } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 
 /**
  * 移动端照片网格的滑选手势。
@@ -16,8 +16,7 @@ import { onBeforeUnmount } from 'vue'
  *
  * 命中检测用 elementFromPoint + 采样插值（约 20px 步长），快速甩动也能
  * 覆盖跳过的中间照片。同一张照片一次手势内只上报一次，来回滑动不重复处理。
- * 手势结束（touchend/touchcancel）时若产生过长按或滑选，调用 onSuppressClick
- * 供调用方抑制随后合成的 click（否则松手会把刚选的照片又 toggle 回去）。
+ * 消耗长按后的 touchend，避免浏览器合成的 click 再次切换起始照片。
  */
 
 export interface SwipeSelectOptions {
@@ -25,7 +24,7 @@ export interface SwipeSelectOptions {
   onSwipePhoto: (photoId: string, shouldSelect: boolean) => void
   /** 长按触发时调用（进入选择模式 + toggle 起始照片）。 */
   onLongPressActivate: (photoId: string) => void
-  /** 手势结束且产生过长按/滑选时调用，用于抑制随后的合成 click。 */
+  /** touchend 无法取消时的合成 click 兜底。 */
   onSuppressClick: () => void
   /** 手势是否可用（调用方判断移动端视口等条件）。 */
   canStart: () => boolean
@@ -39,48 +38,56 @@ export interface SwipeSelectOptions {
   moveTolerance?: number
 }
 
-interface SwipeSelectState {
-  active: boolean
-  longPressFired: boolean
-}
-
 export function useSwipeSelect(options: SwipeSelectOptions) {
   const longPressDelay = options.longPressDelay ?? 450
   const moveTolerance = options.moveTolerance ?? 10
   const SWEEP_SAMPLE_STEP = 20
 
-  const state: SwipeSelectState = { active: false, longPressFired: false }
+  const longPressFired = ref(false)
+  let active = false
 
   let timer: ReturnType<typeof setTimeout> | null = null
   let startX = 0
   let startY = 0
   let lastX = 0
   let lastY = 0
-  let startPhotoId: string | null = null
+  let touchId: number | null = null
+  let gallery: HTMLElement | null = null
   let swipeTarget = true
   const handledIds = new Set<string>()
 
   const clear = () => {
     if (timer) clearTimeout(timer)
     timer = null
-    state.active = false
-    state.longPressFired = false
-    startPhotoId = null
+    active = false
+    longPressFired.value = false
+    touchId = null
+    gallery = null
     handledIds.clear()
     window.removeEventListener('touchmove', handleMove)
     window.removeEventListener('touchend', finish)
-    window.removeEventListener('touchcancel', finish)
+    window.removeEventListener('touchcancel', clear)
+    window.removeEventListener('touchstart', cancelMultiTouch, true)
   }
 
-  const finish = () => {
-    const shouldSuppress = state.active || state.longPressFired
+  const finish = (event: TouchEvent) => {
+    const touch = Array.from(event.changedTouches).find(item => item.identifier === touchId)
+    if (!touch) return
+    if (longPressFired.value) {
+      if (active && (touch.clientX !== lastX || touch.clientY !== lastY)) sweepTo(touch.clientX, touch.clientY)
+      if (event.cancelable) event.preventDefault()
+      else options.onSuppressClick()
+    }
     clear()
-    if (shouldSuppress) options.onSuppressClick()
+  }
+
+  const cancelMultiTouch = (event: TouchEvent) => {
+    if (event.touches.length > 1) clear()
   }
 
   const photoIdAtPoint = (x: number, y: number): string | null => {
     const target = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-photo-id]')
-    return target?.dataset.photoId ?? null
+    return target && gallery?.contains(target) ? target.dataset.photoId ?? null : null
   }
 
   // 从上一次采样点向当前触点插值采样，命中路径上的所有照片卡片。
@@ -106,52 +113,57 @@ export function useSwipeSelect(options: SwipeSelectOptions) {
       return
     }
     const touch = event.touches[0]
-    if (!state.active) {
+    if (touch.identifier !== touchId) return
+    if (!active) {
       // 等待长按期间手指移出容差：取消长按，交还页面滚动。
       if (Math.hypot(touch.clientX - startX, touch.clientY - startY) > moveTolerance) clear()
       return
     }
     // 滑选进行中：阻止页面滚动，跟手更新命中集合。
-    if (event.cancelable) event.preventDefault()
+    if (!event.cancelable) {
+      clear()
+      return
+    }
+    event.preventDefault()
     sweepTo(touch.clientX, touch.clientY)
   }
 
   const onTouchstart = (event: TouchEvent) => {
     if (event.touches.length !== 1 || !options.canStart()) return
     const touch = event.touches[0]
+    const root = event.currentTarget as HTMLElement | null
     const startCard = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-photo-id]')
     const photoId = startCard?.dataset.photoId ?? null
-    if (!photoId) return
+    if (!startCard || !photoId || !root?.contains(startCard)) return
 
     clear()
-    startPhotoId = photoId
+    gallery = root
+    touchId = touch.identifier
     startX = touch.clientX
     startY = touch.clientY
     lastX = startX
     lastY = startY
-    handledIds.add(startPhotoId)
+    handledIds.add(photoId)
 
     timer = setTimeout(() => {
       timer = null
-      // 长按期间可能收到新的 touchstart（clear 会重置 startPhotoId），以局部
-      // 变量持有本手势的起始照片。
-      const photo = photoId
-      const wasSelected = options.isSelected(photo)
-      state.longPressFired = true
-      options.onLongPressActivate(photo)
+      const wasSelected = options.isSelected(photoId)
+      longPressFired.value = true
+      options.onLongPressActivate(photoId)
       if (options.canSweep()) {
         // 目标状态取起始照片长按前选中态的反转：未选→滑过全选，已选→滑过全取消。
         swipeTarget = !wasSelected
-        state.active = true
+        active = true
       }
     }, longPressDelay)
 
     window.addEventListener('touchmove', handleMove, { passive: false })
-    window.addEventListener('touchend', finish)
-    window.addEventListener('touchcancel', finish)
+    window.addEventListener('touchend', finish, { passive: false })
+    window.addEventListener('touchcancel', clear)
+    window.addEventListener('touchstart', cancelMultiTouch, { capture: true, passive: true })
   }
 
   onBeforeUnmount(clear)
 
-  return { onTouchstart, cancel: clear, finish, state }
+  return { onTouchstart, cancel: clear, longPressFired }
 }

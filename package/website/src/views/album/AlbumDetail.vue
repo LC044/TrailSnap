@@ -22,7 +22,7 @@
     @remove-from-album="handleBatchRemoveFromAlbum"
     @photo-update="handlePhotoUpdate"
     @set-cover="setCover"
-    @refresh-data="refreshAlbumData"
+    :refresh-data="refreshAlbumData"
   >
     <template #intro>
       <section v-if="album" class="album-spread" aria-label="相册封面">
@@ -248,14 +248,16 @@ const handlePhotoUpdate = (event: { id: string, location?: string, tags?: string
     const img = photoStore.images.find(i => i.id === event.id)
 }
 
-const refreshAlbumData = async (done: () => void = () => {}) => {
+const refreshAlbumData = async () => {
     try {
         await Promise.all([
             albumStore.fetchAlbums(),
             photoStore.refreshCurrentContext(),
         ])
-    } finally {
-        done()
+        return true
+    } catch (error) {
+        console.error('刷新相册失败', error)
+        return false
     }
 }
 

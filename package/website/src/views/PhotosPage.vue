@@ -24,7 +24,7 @@
     @upload="triggerUpload"
     @confirm-delete="handleConfirmDelete"
     @photo-update="handlePhotoUpdate"
-    @refresh-data="refreshPhotoData"
+    :refresh-data="refreshPhotoData"
   >
     <template #header-left="{ scrolled }">
       <div class="journal-library-title" data-testid="photo-page-title" :data-scrolled="scrolled">
@@ -223,19 +223,17 @@ const handlePhotoUpdate = (event: { id: string; filename?: string; photo_time?: 
   }
 }
 
-const refreshPhotoData = async (done: (success?: boolean) => void = () => {}) => {
-  let success = false
+const refreshPhotoData = async () => {
   try {
     await photoStore.refreshCurrentContext()
     await Promise.all([
       photoStore.fetchAvailableFilters(),
       store.fetchAlbums(),
     ])
-    success = true
+    return true
   } catch (error) {
     console.error('刷新照片失败', error)
-  } finally {
-    done(success)
+    return false
   }
 }
 
