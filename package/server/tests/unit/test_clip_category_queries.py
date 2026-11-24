@@ -44,7 +44,7 @@ def test_initialized_catalog_reads_use_two_queries(face_sqlite_session):
     queries = []
 
     def capture(conn, cursor, statement, parameters, context, executemany):
-        queries.append(statement)
+        queries.append((statement, parameters))
 
     event.listen(db.bind, "before_cursor_execute", capture)
     try:
@@ -58,7 +58,10 @@ def test_initialized_catalog_reads_use_two_queries(face_sqlite_session):
     assert row["descriptions"] == ["edited"] and row["revision"] == 2
     assert row["calibration"] == {"status": "custom"}
     assert len(queries) == 2, queries
-    assert all(q.lstrip().upper().startswith("SELECT") for q in queries)
+    assert all(statement.lstrip().upper().startswith("SELECT") for statement, _ in queries)
+    count_sql, count_params = queries[-1]
+    plan = db.connection().exec_driver_sql(f"EXPLAIN QUERY PLAN {count_sql}", count_params).all()
+    assert any("ix_photo_tag_relations_tag_alive" in row[3] for row in plan), plan
 
 
 def test_complete_presets_skip_lock_and_preserve_deleted(face_sqlite_session, monkeypatch):
