@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import Optional
 from fastapi import UploadFile
 from PIL import ImageOps
-from app.utils.image_loading import Image, LARGE_IMAGE_PIXELS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from app.utils.image_loading import open_image, Image, LARGE_IMAGE_PIXELS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from pillow_heif import register_heif_opener
 # Register HEIF opener to enable HEIC/HEIF support in Pillow
 register_heif_opener()
@@ -384,7 +384,7 @@ def generate_thumbnail(user_id: UUID, file_path: str, file_id: UUID, image_obj: 
             ):
                 return _save_thumbnails(image_obj, file_id, user_id, config=config)
             else:
-                with budgeted_open(file_path) as source, Image.open(source) as img:
+                with budgeted_open(file_path) as source, open_image(source, file_path) as img:
                     return _save_thumbnails(img, file_id, user_id, config=config, allow_draft=True)
     except Exception as e:
         logging.error(f"Error generating thumbnail for {file_path}: {e}\n{traceback.format_exc()}")
@@ -400,7 +400,7 @@ def get_image_dimensions(file_path: str, image_obj: Optional[Image.Image] = None
             if image_obj:
                 return (*display_image_size(image_obj), None)
             else:
-                with budgeted_open(file_path) as source, Image.open(source) as img:
+                with budgeted_open(file_path) as source, open_image(source, file_path) as img:
                     return (*display_image_size(img), None)
         elif ext in VIDEO_EXTENSIONS:
             cv2 = _resolve_cv2()

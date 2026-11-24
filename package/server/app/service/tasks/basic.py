@@ -9,7 +9,7 @@ import math
 import hashlib
 import tempfile
 from uuid import UUID, uuid4
-from app.utils.image_loading import Image, IMAGE_EXTENSIONS
+from app.utils.image_loading import open_image, Image, IMAGE_EXTENSIONS
 from pillow_heif import register_heif_opener
 
 from app.core.config_manager import config_manager
@@ -82,7 +82,7 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
              md5_hash = digest.hexdigest()
              image_source.seek(0)
              try:
-                 image_obj = Image.open(image_source)
+                 image_obj = open_image(image_source, file_path)
              except Exception:
                  # Do not reopen an unsupported/corrupt image repeatedly.
                  raise

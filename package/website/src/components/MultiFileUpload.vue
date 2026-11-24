@@ -60,7 +60,7 @@
           点击或拖拽上传图片/视频
         </div>
         <div class="text-xs text-gray-400 dark:text-gray-500">
-          支持 HEIC / HEIF、JPG、PNG、GIF、WebP、TIFF，以及 MP4、MOV 等视频
+          支持 RAF、NEF、DNG、CR2 / CR3、ARW 等 RAW 照片，以及 HEIC / HEIF、JPG、PNG、GIF、WebP、TIFF 和 MP4、MOV 等视频
         </div>
       </div>
       <div v-else class="flex flex-wrap justify-center gap-x-3 gap-y-1 text-sm text-gray-600 dark:text-gray-300">

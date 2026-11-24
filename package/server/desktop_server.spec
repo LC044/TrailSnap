@@ -37,7 +37,7 @@ for package in ("fastapi", "pydantic", "passlib", "langchain", "langchain_core",
 # "Could not find dependency: libgfortran-...so.5.0.0". collect_all pulls the
 # submodules, data files AND the .libs binaries for each package.
 binaries = []
-for package in ("numpy", "scipy", "sklearn"):
+for package in ("numpy", "scipy", "sklearn", "rawpy"):
     try:
         pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(package)
     except Exception:

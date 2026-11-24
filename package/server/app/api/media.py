@@ -1,3 +1,4 @@
+from app.utils.image_loading import RAW_EXTENSIONS
 import json
 import errno
 import os
@@ -476,7 +477,7 @@ async def get_media_file(
     ext = os.path.splitext(file_path)[1].lower()
     # 浏览器普遍无法解码 HEIC/HEIF，默认改发 medium 预览图以便在线查看；
     # 下载场景传 ?original=1 拿原始字节（内容和文件名保持一致）。
-    if ext in ('.heic', '.heif') and not original:
+    if ext in ('.heic', '.heif') + RAW_EXTENSIONS and not original:
         file_path = _get_thumbnail_path(photo.owner_id, photo_id, db, 'medium')
         ext = os.path.splitext(file_path)[1].lower()
     file_size = await run_in_threadpool(os.path.getsize, file_path)
