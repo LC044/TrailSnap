@@ -114,11 +114,13 @@ test.describe('P1 - 照片快速选择', () => {
     await menu.getByRole('menuitem', { name: '移到回收站' }).click()
     await expect(page.getByText(/确定要删除选中的 2 张照片/)).toBeVisible()
     await page.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(page.locator('.responsive-dialog-leave-active')).toHaveCount(0)
 
     await photos.nth(2).click({ button: 'right' })
     await menu.getByRole('menuitem', { name: '移到回收站' }).click()
     await expect(page.getByText(/确定要删除选中的 1 张照片/)).toBeVisible()
     await page.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(page.locator('.responsive-dialog-leave-active')).toHaveCount(0)
 
     await photos.nth(2).click({ button: 'right' })
     await menu.getByRole('menuitem', { name: '查看详情' }).click()
