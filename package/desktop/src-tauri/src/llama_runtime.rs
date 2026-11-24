@@ -21,6 +21,10 @@ pub fn managed_runtime_dir() -> Option<PathBuf> {
         .map(|root| root.join("runtime/llama.cpp").join(LLAMA_BUILD))
 }
 
+fn managed_npu_runtime_dir() -> Option<PathBuf> {
+    managed_runtime_dir().map(|path| path.with_file_name(format!("{LLAMA_BUILD}-openvino-npu")))
+}
+
 pub fn find_llama_server() -> Option<PathBuf> {
     if let Some(path) = env::var_os("LLAMA_SERVER_PATH")
         .map(PathBuf::from)
@@ -36,11 +40,15 @@ pub fn find_llama_server() -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-pub async fn install() -> Result<(), String> {
-    if find_llama_server().is_some() {
+pub async fn install(npu: bool) -> Result<(), String> {
+    if !npu && find_llama_server().is_some() {
         return Ok(());
     }
-    let target = managed_runtime_dir().ok_or("无法读取桌面数据目录")?;
+    let target = if npu { managed_npu_runtime_dir() } else { managed_runtime_dir() }
+        .ok_or("无法读取桌面数据目录")?;
+    if npu && find_file_named(&target, EXECUTABLE).is_some() {
+        return Ok(());
+    }
     let parent = target.parent().ok_or("运行时目录无效")?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let client = reqwest::Client::builder()
@@ -51,7 +59,16 @@ pub async fn install() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
 
     let mut errors = Vec::new();
-    for package in packages().await {
+    let candidates = if npu {
+        vec![Package::new(
+            "win-openvino-2026.4.1-x64.zip",
+            "741dac28961296df719e8d1c591a9967802e8691cb3234299ef9dcd5783ce563",
+            false,
+        )]
+    } else {
+        packages().await
+    };
+    for package in candidates {
         let work = parent.join(format!(".download-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&work).map_err(|error| error.to_string())?;
         let result = install_package(&client, &package, &work, &target).await;
