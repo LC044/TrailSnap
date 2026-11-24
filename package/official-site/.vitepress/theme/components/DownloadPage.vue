@@ -8,8 +8,8 @@
           <div class="download-hero-grid">
             <div>
               <h1 class="subpage-title">
-                {{ isEnglish ? 'Bring your photos' : '把照片的家，' }}<br>
-                <span class="title-accent">{{ isEnglish ? ' home.' : '安在自己的设备上' }}</span>
+                {{ isEnglish ? 'Bring your photos' : '准备好照片' }}<br>
+                <span class="title-accent">{{ isEnglish ? ' home.' : '开始你的行影集' }}</span>
               </h1>
               <p class="subpage-lead">{{ copy.description }}</p>
             </div>
