@@ -752,7 +752,7 @@ watch(
   transition: width var(--rail-transition);
 }
 
-.lm-rail.is-open { width: 252px; --rail-copy-opacity: 1; }
+.lm-rail.is-open { width: 228px; --rail-copy-opacity: 1; }
 
 .lm-rail-shell {
   display: flex;
@@ -794,7 +794,7 @@ watch(
 }
 
 .lm-rail.is-open .lm-rail-shell {
-  width: 236px;
+  width: 212px;
   border-radius: 28px;
   background: var(--ts-glass-panel);
   box-shadow: var(--ts-shadow-floating);

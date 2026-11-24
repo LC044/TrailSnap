@@ -39,9 +39,6 @@
               @error="hideCoverThumbnail"
             />
           </div>
-          <div v-else-if="!mediaLoading && !coverPhoto" key="cover" class="lm-hero-plate">
-            <img :src="journalCover" alt="" class="lm-hero-image" fetchpriority="high" />
-          </div>
         </Transition>
 
         <div class="lm-hero-shade" aria-hidden="true"></div>
@@ -290,7 +287,6 @@ import { FileType, type AlbumImage, type Photo } from '@/types/album'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 import { reducedMotion, spring } from '@/utils/motion'
 import { aspectOf, flyPhotoBackTo, flyPhotoIntoViewer } from '@/utils/photoFlight'
-import journalCover from '@/assets/journal-cover.webp'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import PhotoOrganizeActions from '@/components/PhotoOrganizeActions.vue'
 import DailyFrameCard from '@/components/home/DailyFrameCard.vue'
