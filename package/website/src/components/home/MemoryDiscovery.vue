@@ -1,24 +1,29 @@
 <template>
-  <section v-if="items.length" class="ts-surface p-4">
-    <div class="flex items-center justify-between">
+  <section v-if="items.length" class="lm-discovery" aria-labelledby="lm-discovery-title">
+    <div class="lm-section-head">
       <div>
-        <h2 class="ts-section-title flex items-center gap-2 font-bold text-gray-900 dark:text-white"><Sparkles class="h-4 w-4 text-amber-500" />发现新的记忆</h2>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">有 {{ total }} 段经历等待你确认</p>
+        <p class="lm-eyebrow">待确认</p>
+        <h2 id="lm-discovery-title" class="lm-title">发现新的记忆</h2>
       </div>
-      <RouterLink to="/memories" class="rounded-lg px-2 py-1 text-sm text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">全部查看</RouterLink>
+      <RouterLink to="/memories" class="lm-more">全部查看 <ArrowRight /></RouterLink>
     </div>
-    <div class="memory-scrollbar mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
+    <div class="lm-discovery-rail">
       <RouterLink
         v-for="memory in items"
         :key="memory.id"
         :to="`/memories/${memory.id}`"
-        class="min-w-[230px] flex-1 snap-start overflow-hidden rounded-xl border border-gray-200 bg-gray-50 transition hover:border-primary-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        class="lm-discovery-card"
       >
-        <img v-if="memory.cover_photo_id" :src="thumbnailUrl(memory.cover_photo_id, 'small')" :alt="memory.title" class="h-28 w-full object-cover" loading="lazy" />
-        <div class="p-3">
-          <h3 class="ts-card-title line-clamp-1 text-sm font-semibold text-gray-900 dark:text-white">{{ memory.title }}</h3>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ memory.photo_count }} 张照片<span v-if="memory.places[0]"> · {{ memory.places[0].name }}</span></p>
-        </div>
+        <span class="lm-frame lm-discovery-cover">
+          <img v-if="memory.cover_photo_id" :src="thumbnailUrl(memory.cover_photo_id, 'small')" :alt="memory.title" loading="lazy" />
+          <span v-else class="lm-discovery-blank"><Sparkles class="h-5 w-5" /></span>
+          <span class="lm-discovery-badge">{{ memory.photo_count }} 帧</span>
+        </span>
+        <span class="lm-discovery-copy">
+          <strong>{{ memory.title }}</strong>
+          <span v-if="memory.places[0]">{{ memory.places[0].name }}</span>
+          <span v-else>{{ total }} 段经历等待你确认</span>
+        </span>
       </RouterLink>
     </div>
   </section>
@@ -26,7 +31,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { Sparkles } from 'lucide-vue-next'
+import { ArrowRight, Sparkles } from 'lucide-vue-next'
 import { memoryApi } from '@/api/memory'
 import type { MemoryItem } from '@/types/memory'
 import { thumbnailUrl } from '@/utils/mediaUrl'
@@ -44,13 +49,3 @@ onMounted(async () => {
   }
 })
 </script>
-
-<style scoped>
-.memory-scrollbar {
-  scrollbar-width: none;
-}
-
-.memory-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-</style>

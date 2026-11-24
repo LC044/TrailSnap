@@ -31,7 +31,7 @@
           </div>
         </div>
       </div>
-      <div v-if="isSelectionMode" v-glass-refraction.rim class="ts-liquid-glass ts-selection-glass mb-2 flex items-center justify-between gap-2 rounded-2xl px-2 py-1 md:hidden" data-testid="recycle-selection-header">
+      <div v-if="isSelectionMode" class="ts-liquid-glass ts-selection-glass mb-2 flex items-center justify-between gap-2 rounded-2xl px-2 py-1 md:hidden" data-testid="recycle-selection-header">
         <button type="button" class="ts-button ts-button-ghost" @click="toggleSelectAll">{{ isEverythingSelected ? '取消全选' : '全选' }}</button>
         <span class="text-sm font-semibold text-gray-900 dark:text-white" aria-live="polite">已选 {{ effectiveSelectedCount }} 项</span>
         <button type="button" class="ts-icon-button ts-button-ghost" aria-label="取消选择" @click="cancelSelection"><X class="h-5 w-5" /></button>
@@ -88,8 +88,13 @@
         delete-label="永久删除"
         :pending-remove-ids="pendingRemoveIds"
         :show-action-bar="false"
+        recycle-bin
+        :context-busy="isPurging"
+        :context-selected-count="effectiveSelectedCount"
         @click-photo="openLightbox"
         @batch-delete="handlePermanentDelete"
+        @context-restore="handleContextRestore"
+        @context-delete="handleContextDelete"
         @selection-change="handleSelectionChange"
       >
         <template #bottom-left-overlay="{ photo }">
@@ -142,6 +147,7 @@
     <!-- Lightbox -->
     <PhotoLightbox
       :visible="!!lightboxImage"
+      :initial-details="lightboxInitialDetails"
       :image="lightboxImage"
       :images="photos"
       :current-index="currentIndex"
@@ -316,9 +322,15 @@ const calculateDaysRemaining = (photo: AlbumImage) => {
 }
 
 // Lightbox state
-const { currentPhoto: lightboxImage, currentIndex, hasPrev, hasNext, open: openLightbox, close: closeLightbox, prev: handlePrev, next: handleNext } = usePhotoViewer(photos, { onNextAtEnd: () => { if (hasMore.value) loadMore() } })
+const { currentPhoto: lightboxImage, currentIndex, hasPrev, hasNext, open, close: closeLightbox, prev: handlePrev, next: handleNext } = usePhotoViewer(photos, { onNextAtEnd: () => { if (hasMore.value) loadMore() } })
+const lightboxInitialDetails = ref(false)
+const openLightbox = (photo: AlbumImage, details = false) => {
+  lightboxInitialDetails.value = details
+  open(photo)
+}
 
 const handlePhotoDelete = (photoId: string) => {
+  preserveDeleteSelection.value = false
   showDeleteConfirm.value = true
   confirmMessage.value = '确定要永久删除这张照片吗？该操作不可恢复！'
   pendingDeleteIds.value = [photoId]
@@ -332,6 +344,7 @@ const pendingDeleteIds = ref<string[]>([])
 // `null` photo_ids tells the server "purge my whole bin", which is what makes
 // emptying the bin possible without listing every id in the browser first.
 const pendingDeleteAll = ref(false)
+const preserveDeleteSelection = ref(false)
 let deleteCallback: ((success: boolean) => void) | null = null
 
 // Purge progress (async server job)
@@ -351,11 +364,12 @@ const stopPolling = () => {
   }
 }
 
-const handlePermanentDelete = (ids: string[], callback?: (success: boolean) => void) => {
+const handlePermanentDelete = (ids: string[], callback?: (success: boolean) => void, preserveSelection = false) => {
   showDeleteConfirm.value = true
   confirmMessage.value = `确定要永久删除这 ${ids.length} 张照片吗？该操作不可恢复！`
   pendingDeleteIds.value = ids
   pendingDeleteAll.value = false
+  preserveDeleteSelection.value = preserveSelection
   deleteCallback = callback || null
 }
 
@@ -365,10 +379,16 @@ const handleDeleteSelection = () => {
     confirmMessage.value = `确定要永久删除回收站中的全部 ${effectiveSelectedCount.value} 张照片吗？该操作不可恢复！`
     pendingDeleteIds.value = []
     pendingDeleteAll.value = true
+    preserveDeleteSelection.value = false
     deleteCallback = null
     return
   }
   handlePermanentDelete(selectedIds.value)
+}
+
+const handleContextDelete = (ids: string[], preserveSelection: boolean) => {
+  if (selectAllAcrossPages.value && !preserveSelection) handleDeleteSelection()
+  else handlePermanentDelete(ids, undefined, preserveSelection)
 }
 
 const handleEmptyRecycleBin = () => {
@@ -380,11 +400,12 @@ const handleEmptyRecycleBin = () => {
   confirmMessage.value = `确定要清空回收站吗？将永久删除 ${totalCount.value} 张照片，该操作不可恢复！`
   pendingDeleteIds.value = []
   pendingDeleteAll.value = true
+  preserveDeleteSelection.value = false
   deleteCallback = null
 }
 
 /** Poll a background purge job until it finishes, keeping the progress bar live. */
-const pollPurgeJob = (jobId: string) => {
+const pollPurgeJob = (jobId: string, preserveSelection: boolean) => {
   stopPolling()
   pollTimer = setTimeout(async () => {
     try {
@@ -393,37 +414,38 @@ const pollPurgeJob = (jobId: string) => {
       purgeTotal.value = data?.total ?? purgeTotal.value
 
       if (data?.status === 'completed') {
-        finishPurge(`成功永久删除 ${data.deleted ?? purgeTotal.value} 张照片`)
+        finishPurge(`成功永久删除 ${data.deleted ?? purgeTotal.value} 张照片`, preserveSelection)
         return
       }
       if (data?.status === 'failed') {
-        finishPurge(null)
+        finishPurge(null, preserveSelection)
         ElMessage.error(`清理失败：${data.error || '未知错误'}`)
         return
       }
-      pollPurgeJob(jobId)
+      pollPurgeJob(jobId, preserveSelection)
     } catch (error) {
       console.error(error)
       // The job itself may still be running server-side; stop polling and let a
       // manual refresh reflect reality rather than spinning forever.
-      finishPurge(null)
+      finishPurge(null, preserveSelection)
     }
   }, 1000)
 }
 
-const finishPurge = (successMessage: string | null) => {
+const finishPurge = (successMessage: string | null, preserveSelection: boolean) => {
   stopPolling()
   isPurging.value = false
   purgeProcessed.value = 0
   purgeTotal.value = 0
   if (successMessage) ElMessage.success(successMessage)
-  cancelSelection()
+  if (!preserveSelection) cancelSelection()
   refresh()
 }
 
 const confirmDelete = async () => {
   const deleteAll = pendingDeleteAll.value
   const ids = pendingDeleteIds.value
+  const preserveSelection = preserveDeleteSelection.value
   if (!deleteAll && ids.length === 0) return
 
   showDeleteConfirm.value = false
@@ -440,7 +462,7 @@ const confirmDelete = async () => {
       purgeTotal.value = data.total ?? ids.length
       purgeProcessed.value = data.processed ?? 0
       ElMessage.info(`正在后台清理 ${purgeTotal.value} 张照片，可继续浏览`)
-      pollPurgeJob(data.job_id)
+      pollPurgeJob(data.job_id, preserveSelection)
       if (deleteCallback) {
         deleteCallback(true)
         deleteCallback = null
@@ -468,7 +490,7 @@ const confirmDelete = async () => {
       deleteCallback(true)
       deleteCallback = null
     }
-    cancelSelection()
+    if (!preserveSelection) cancelSelection()
   } catch (error) {
     console.error(error)
     ElMessage.error('永久删除失败')
@@ -562,14 +584,14 @@ const refresh = async () => {
   await Promise.all([fetchStats(), fetchPhotos(false)])
 }
 
-const handleRestore = async (ids: string[]) => {
+const handleRestore = async (ids: string[], preserveSelection = false) => {
   if (ids.length === 0) return
   try {
     await request.post('/api/photos/recycle-bin/restore', { photo_ids: ids })
     ElMessage.success(`成功恢复 ${ids.length} 张照片`)
     photos.value = photos.value.filter(p => !ids.includes(p.id))
     totalCount.value = Math.max(0, totalCount.value - ids.length)
-    cancelSelection()
+    if (!preserveSelection) cancelSelection()
   } catch (error) {
     console.error(error)
     ElMessage.error('恢复失败')
@@ -599,6 +621,11 @@ const handleRestoreSelection = () => {
     return
   }
   handleRestore(selectedIds.value)
+}
+
+const handleContextRestore = (ids: string[], preserveSelection: boolean) => {
+  if (selectAllAcrossPages.value && !preserveSelection) handleRestoreSelection()
+  else handleRestore(ids, preserveSelection)
 }
 
 const scrollContainer = ref<HTMLElement | Window>(window)

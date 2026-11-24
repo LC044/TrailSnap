@@ -105,6 +105,10 @@ def _detect_apple_perf_cores() -> int:
 
 @functools.lru_cache(maxsize=1)
 def get_session_options():
+    return create_session_options()
+
+
+def create_session_options():
     """Bound ONNX Runtime threads on every platform.
 
     The default leaves ``intra_op_num_threads`` unset so ORT sizes its thread
@@ -197,10 +201,25 @@ def _make_session(model_path, sess_options, providers, provider_options):
     record_session(model_path, session.get_providers(), error)
     return session
 
-def create_inference_session(model_path: str, sess_options=None):
-    """创建 ort.InferenceSession，带 CoreML 创建失败 → CPU-only 降级。"""
-    so = sess_options if sess_options is not None else get_session_options()
+def desktop_npu_device() -> str | None:
+    if os.getenv("TS_AI_BACKEND") == "openvino":
+        from app.services.desktop_device import desktop_device
 
+        state = desktop_device()
+        if state["backend"] == "openvino" and state["device"].split(".", 1)[0] == "NPU":
+            return state["device"]
+    return None
+
+
+def create_inference_session(model_path: str, sess_options=None, *, ocr_stage=None, fixed_dimensions=None):
+    """创建 ort.InferenceSession，带 CoreML 创建失败 → CPU-only 降级。"""
+    device = desktop_npu_device()
+    if device:
+        from app.services.openvino_npu import OpenVINONPUSession
+
+        return OpenVINONPUSession(model_path, device, ocr_stage=ocr_stage, fixed_dimensions=fixed_dimensions)
+
+    so = sess_options if sess_options is not None else get_session_options()
     if model_path in _coreml_blacklist:
         logger.info(f"[{model_path}] previously failed on CoreML, using CPU-only.")
         return _make_session(model_path, so, ["CPUExecutionProvider"], [{}])

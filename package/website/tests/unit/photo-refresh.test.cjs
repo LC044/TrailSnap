@@ -222,3 +222,51 @@ test('overview sorting only resolves its anchor and defers the full month until 
   await store.loadPhotosByMonth(2026, 10)
   assert.equal(fullMonthLoads, 2)
 })
+
+
+test('gallery chunks load the requested offset once and leave the month available for a full load', async () => {
+  const { store, api, photo } = harness()
+  const requests = []
+  api.getAllPhotos = async (skip, count, filters) => {
+    requests.push({ skip, count, filters })
+    return [photo('slice')]
+  }
+  const pending = store.loadPhotoChunk(2026, 10, 96, 48)
+  assert.equal(store.loadPhotoChunk(2026, 10, 96, 48), pending)
+  assert.equal(await pending, true)
+  assert.deepEqual(requests.map(({ skip, count }) => [skip, count]), [[96, 48]])
+  assert.equal(requests[0].filters.browse_month, 10)
+  assert.equal(store.photoChunks.get('2026-10:96')[0].id, 'slice')
+  assert.equal(store.isPartialPhotoMonth(2026, 10), true)
+  await store.loadPhotosByMonth(2026, 10)
+  assert.equal(store.isPartialPhotoMonth(2026, 10), false)
+})
+
+test('refresh drops partial chunks and removes their stale photos from the shared list', async () => {
+  const { store, api, photo } = harness()
+  store.browseEnabled.value = true
+  api.getAllPhotos = async () => [photo('deleted')]
+  assert.equal(await store.loadPhotoChunk(2026, 10, 0, 48), true)
+  assert.deepEqual(store.images.value.map(item => item.id), ['deleted'])
+
+  api.getAllPhotos = async () => [photo('remaining')]
+  await store.refreshCurrentContext()
+  assert.equal(store.photoChunks.size, 0)
+  assert.equal(store.images.value.length, 0)
+  assert.equal(store.photoOffsetMap.size, 0)
+  assert.equal(await store.loadPhotoChunk(2026, 10, 0, 48), true)
+  assert.deepEqual(store.images.value.map(item => item.id), ['remaining'])
+})
+
+test('a reset invalidates an in-flight gallery chunk even with unchanged filters', async () => {
+  const { store, api, photo } = harness()
+  let release
+  api.getAllPhotos = () => new Promise(resolve => { release = resolve })
+  const stale = store.loadPhotoChunk(2026, 10, 0, 48)
+  await Promise.resolve()
+  store.resetAll()
+  release([photo('stale')])
+  assert.equal(await stale, false)
+  assert.equal(store.photoChunks.size, 0)
+  assert.equal(store.images.value.length, 0)
+})

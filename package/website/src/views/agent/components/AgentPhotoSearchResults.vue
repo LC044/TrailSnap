@@ -15,7 +15,7 @@
     <p v-else-if="!photos.length" class="py-4 text-center text-sm text-slate-500 dark:text-slate-400">未找到符合条件的照片，可以继续补充或调整条件。</p>
     <button v-else-if="nextOffset !== null" type="button" class="ts-button ts-button-secondary mt-3 w-full" @click="loadMore">加载更多照片</button>
     <p v-else class="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">已显示全部搜索结果</p>
-    <PhotoLightbox :visible="lightboxOpen" :image="photos[photoIndex] ?? null" :images="photos" :current-index="photoIndex" :has-prev="photoIndex > 0" :has-next="photoIndex < photos.length - 1" @close="lightboxOpen = false" @prev="photoIndex--" @next="photoIndex++" @select="photoIndex = $event" />
+    <PhotoLightbox :visible="lightboxOpen" :initial-details="lightboxInitialDetails" :image="photos[photoIndex] ?? null" :images="photos" :current-index="photoIndex" :has-prev="photoIndex > 0" :has-next="photoIndex < photos.length - 1" @close="lightboxOpen = false" @prev="photoIndex--" @next="photoIndex++" @select="photoIndex = $event" />
   </section>
 </template>
 
@@ -63,7 +63,9 @@ const loadMore = async () => {
     if (!disposed) loading.value = false;
   }
 };
-const openPhoto = (photo: AlbumImage) => {
+const lightboxInitialDetails = ref(false);
+const openPhoto = (photo: AlbumImage, details = false) => {
+  lightboxInitialDetails.value = details;
   photoIndex.value = photos.value.findIndex(item => item.id === photo.id);
   lightboxOpen.value = photoIndex.value >= 0;
 };

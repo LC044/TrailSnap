@@ -1,9 +1,11 @@
 <template>
   <Transition name="bottom-nav-slide">
     <nav
+      @focusin="revealDock"
       v-glass-refraction
       v-show="!uiStore.selectionActive"
       class="journal-dock ts-liquid-glass inset-x-[var(--ts-space-3)] bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] z-40 md:hidden"
+      :class="{ 'is-receding': dockReceding }"
       aria-label="主导航"
     >
       <div class="relative z-10 grid h-14 grid-cols-5 px-1">
@@ -12,6 +14,7 @@
           :style="{ transform: `translate3d(${displayedTabIndex * 100}%, 0, 0)` }"
           aria-hidden="true"
         ></span>
+        <span class="journal-dock-glow" :style="{ transform: `translate3d(${displayedTabIndex * 100}%, 0, 0)` }" aria-hidden="true"></span>
 
         <!-- 首页 -->
         <RouterLink
@@ -277,8 +280,75 @@ watch(moreSheetVisible, visible => {
 
 let preloadTimer: ReturnType<typeof setTimeout> | undefined
 
+/*
+ * 阅读时底栏给照片让位，但必须随时回得来：
+ *   · 向上滑动立即回来；
+ *   · **停止滑动约 0.4s 后自动回来**（和 Safari 一样，不需要点任何按钮）；
+ *   · 滚到页面底部回来；
+ *   · 换页时复位，否则新页面一进来就没有底栏。
+ * 只响应主内容区向下滚动。
+ */
+const dockReceding = ref(false)
+const scrollPositions = new WeakMap<EventTarget, number>()
+let idleRevealTimer: ReturnType<typeof setTimeout> | undefined
+
+const IDLE_REVEAL_DELAY = 420
+
+function cancelIdleReveal() {
+  if (idleRevealTimer) clearTimeout(idleRevealTimer)
+  idleRevealTimer = undefined
+}
+
+function revealDock() {
+  cancelIdleReveal()
+  dockReceding.value = false
+}
+
+/** 停止滑动后把底栏放回来。 */
+function scheduleIdleReveal() {
+  cancelIdleReveal()
+  idleRevealTimer = setTimeout(() => {
+    idleRevealTimer = undefined
+    dockReceding.value = false
+  }, IDLE_REVEAL_DELAY)
+}
+
+function onScrollCapture(event: Event) {
+  const target = event.target
+  if (!(target instanceof HTMLElement) || !target.matches('.ts-main-scroll')) return
+  if (target.scrollHeight - target.clientHeight < 64) return
+  const top = target.scrollTop
+  const previous = scrollPositions.get(target)
+  scrollPositions.set(target, top)
+  if (previous === undefined) {
+    scheduleIdleReveal()
+    return
+  }
+  const delta = top - previous
+  if (Math.abs(delta) < 6) return
+  const nearBottom = top + target.clientHeight >= target.scrollHeight - 32
+  // 大幅跳转（时间轴定位、回到顶部）看不出方向，保持可见。
+  if (Math.abs(delta) > 500 || delta < 0 || nearBottom) {
+    revealDock()
+    return
+  }
+  dockReceding.value = top > 120
+  // 无论是否收起，停止滑动后都要回到可见状态。
+  scheduleIdleReveal()
+}
+
+watch(dockReceding, hidden => {
+  if (!hidden) cancelIdleReveal()
+})
+
+// 换页后底栏必须是可见的，否则用户在新页面找不到导航。
+watch(() => route.path, () => {
+  revealDock()
+})
+
 onMounted(() => {
   window.addEventListener('popstate', handleMoreHistoryPopState)
+  document.addEventListener('scroll', onScrollCapture, { capture: true, passive: true })
   // Warm the four primary route chunks after the initial screen settles. This
   // removes the one-time parse delay on the first visit without competing with
   // initial rendering and API requests.
@@ -288,9 +358,11 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('popstate', handleMoreHistoryPopState)
+  document.removeEventListener('scroll', onScrollCapture, { capture: true })
   if (historyEntryActive && isCurrentMoreHistoryEntry()) window.history.back()
   if (pendingTabTimer) clearTimeout(pendingTabTimer)
   if (preloadTimer) clearTimeout(preloadTimer)
+  cancelIdleReveal()
   resolvePendingClose()
 })
 
@@ -378,6 +450,16 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 }
 .more-sheet-link { color: var(--ts-color-text); }
 .more-sheet-link.router-link-exact-active { color: var(--ts-journal-accent-text); }
+/* Shortcuts cascade into the sheet instead of appearing all at once. */
+.more-sheet .more-sheet-link {
+  animation: ts-rise 420ms var(--ts-ease-enter) backwards;
+}
+.more-sheet .more-sheet-link:nth-child(1) { animation-delay: 40ms; }
+.more-sheet .more-sheet-link:nth-child(2) { animation-delay: 80ms; }
+.more-sheet .more-sheet-link:nth-child(3) { animation-delay: 120ms; }
+.more-sheet .more-sheet-link:nth-child(4) { animation-delay: 160ms; }
+.more-sheet .more-sheet-link:nth-child(5) { animation-delay: 200ms; }
+.more-sheet .more-sheet-link:nth-child(6) { animation-delay: 240ms; }
 </style>
 
 <style scoped>
@@ -386,7 +468,14 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   position: fixed;
   border-radius: var(--ts-radius-pill);
   color: var(--ts-color-text);
+  box-shadow: var(--ts-shadow-floating);
+  /* `translate` composes with the enter/leave `transform`, so hiding the dock
+     never fights the route transition. */
+  transition: translate 460ms var(--ts-ease-paper), opacity 320ms ease;
 }
+.journal-dock.is-receding { translate: 0 calc(100% + 44px); opacity: 0; }
+
+/* 选中项背后的胶囊：绝对定位，不参与 5 列网格的排布 */
 .journal-dock-indicator {
   position: absolute;
   z-index: -1;
@@ -394,7 +483,20 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   width: calc((100% - 8px) / 5);
   border-radius: var(--ts-radius-pill);
   background: var(--ts-journal-active);
-  transition: transform 300ms cubic-bezier(.2,.75,.24,1);
+  transition: transform 460ms var(--ts-ease-spring);
+}
+
+/* A soft halo under the active tab, as if the dock were lit from within. */
+.journal-dock-glow {
+  position: absolute;
+  z-index: -2;
+  inset: 0 auto 0 4px;
+  width: calc((100% - 8px) / 5);
+  border-radius: 9999px;
+  background: radial-gradient(circle at 50% 70%, rgba(var(--theme-rgb), .3), transparent 66%);
+  filter: blur(7px);
+  transition: transform 620ms var(--ts-ease-spring), opacity 240ms ease;
+  pointer-events: none;
 }
 .journal-dock-tab {
   font-weight: 600;
@@ -402,9 +504,11 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 }
 .journal-dock-tab > svg { filter: drop-shadow(var(--ts-glass-label-shadow)); }
 .journal-dock-tab.is-active { color: var(--ts-journal-accent-text); font-weight: 700; }
+.journal-dock-tab.is-active > svg { animation: ts-tab-bloom 560ms var(--ts-ease-spring) both; }
+.journal-dock-tab.is-active > span { animation: ts-fade-in 320ms ease both; }
 .journal-dock-tab:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
-.journal-dock-tab svg { transition: transform 190ms ease; }
-.journal-dock-tab:active svg { transform: scale(.9); }
+.journal-dock-tab svg { transition: transform 240ms var(--ts-ease-spring); }
+.journal-dock-tab:active svg { transform: scale(.88); }
 .bottom-nav-slide-enter-active, .bottom-nav-slide-leave-active {
   transition: transform var(--ts-motion-page) var(--ts-ease), opacity var(--ts-motion-normal) ease;
 }

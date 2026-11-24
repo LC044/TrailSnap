@@ -36,13 +36,19 @@ export const formatChineseLunarDay = (value: string | number) => {
   return '三十'
 }
 
+// Intl.DateTimeFormat 构造成本很高（中华历法尤甚），整个模块复用同一实例。
+let chineseCalendarFormatter: Intl.DateTimeFormat | null = null
+
 export const getChineseLunarDateParts = (date: Date) => {
   try {
-    const parts = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    }).formatToParts(date)
+    if (!chineseCalendarFormatter) {
+      chineseCalendarFormatter = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    }
+    const parts = chineseCalendarFormatter.formatToParts(date)
     const values = Object.fromEntries(parts.map((part) => [part.type, part.value])) as Record<string, string>
     const lunarDay = Number.parseInt(values.day ?? '', 10)
     return {
@@ -66,10 +72,7 @@ const getPhase = (age: number): MoonPhase => {
   return 'waning_crescent'
 }
 
-const formatLunarDate = (date: Date) => {
-  const lunar = getChineseLunarDateParts(date)
-  return `${lunar.month}${formatChineseLunarDay(lunar.day)}`
-}
+const formatLunarDate = (lunar: { month: string; day: number }) => `${lunar.month}${formatChineseLunarDay(lunar.day)}`
 
 export const calculateMoonPhase = (input: Date | string | number): MoonPhaseInfo => {
   const date = input instanceof Date ? input : new Date(input)
@@ -87,7 +90,7 @@ export const calculateMoonPhase = (input: Date | string | number): MoonPhaseInfo
     shortLabel: option.shortLabel,
     moonAge,
     illumination,
-    lunarDate: formatLunarDate(date),
+    lunarDate: formatLunarDate(lunar),
     lunarYear: lunar.year,
     lunarMonth: lunar.month,
     lunarDay: lunar.day,

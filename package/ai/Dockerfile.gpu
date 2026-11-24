@@ -16,9 +16,11 @@ ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates tar && \
     rm -rf /var/lib/apt/lists/* && \
     if [ "$TARGETARCH" = "arm64" ]; then \
-        curl -L -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b9354/llama-b9354-bin-ubuntu-arm64.tar.gz; \
+        curl -fsSL -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b12651/llama-b12651-bin-ubuntu-arm64.tar.gz && \
+        echo "b4a8d17e16a1b42f6a1395dc5cd6967ec0d98005eb3be85b7eb893b082306ed4  llama.tar.gz" | sha256sum -c -; \
     else \
-        curl -L -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b9354/llama-b9354-bin-ubuntu-x64.tar.gz; \
+        curl -fsSL -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b12651/llama-b12651-bin-ubuntu-x64.tar.gz && \
+        echo "17b242259181d5b1b1f7719aba27929700a8b0dab39bfaef1b971a992b397b38  llama.tar.gz" | sha256sum -c -; \
     fi && \
     mkdir -p /usr/local/llama && \
     tar -xzf llama.tar.gz -C /usr/local/llama --strip-components=1 && \

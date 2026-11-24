@@ -1,0 +1,210 @@
+/* ============================================================================
+ * Location atlas — shared chrome for the map / timeline / report / puzzle views.
+ * The grid view owns its own richer components; these atoms keep the remaining
+ * views in the same travel-journal language without duplicating typography.
+ * ========================================================================= */
+
+.la-eyebrow {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--ts-color-text-secondary);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.la-eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--theme-primary);
+  box-shadow: 0 0 0 4px rgba(var(--theme-rgb), 0.12);
+  animation: ts-breathe 3.6s var(--ts-ease-breathe) 400ms 2;
+}
+
+.la-eyebrow-rule {
+  width: 20px;
+  height: 1px;
+  flex-shrink: 0;
+  background: var(--ts-color-border);
+}
+
+.la-display {
+  color: var(--ts-color-text);
+  font-family: var(--lm-font-display);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.la-title {
+  color: var(--ts-color-text);
+  font-family: var(--lm-font-display);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.la-panel {
+  border: 1px solid var(--ts-color-border);
+  border-radius: var(--ts-radius-card);
+  background: var(--ts-color-surface);
+  box-shadow: var(--ts-shadow-card);
+}
+
+.la-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.la-panel-kicker {
+  color: var(--ts-color-text-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.la-panel-meta {
+  margin-top: 4px;
+  color: var(--ts-color-text-secondary);
+  font-size: 11.5px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.la-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.la-chip {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--ts-color-border);
+  border-radius: 999px;
+  color: var(--ts-color-text-secondary);
+  background: var(--ts-glass-bg);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel));
+  backdrop-filter: blur(var(--ts-glass-blur-panel));
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.la-chip--accent {
+  border-color: rgba(var(--theme-rgb), 0.28);
+  color: var(--ts-journal-accent-text);
+  background: rgba(var(--theme-rgb), 0.08);
+}
+
+.la-rule {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(to right, var(--ts-color-border), transparent 92%);
+}
+
+.la-stat-label {
+  color: var(--ts-color-text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.la-stat-value {
+  color: var(--ts-color-text);
+  font-family: var(--lm-font-display);
+  font-size: clamp(24px, 2.6vw, 34px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.la-stat-value small {
+  margin-left: 4px;
+  color: var(--ts-color-text-secondary);
+  font-family: var(--ts-font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.la-empty {
+  display: flex;
+  min-height: 220px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--ts-color-text-secondary);
+  font-size: 13px;
+}
+
+.la-loading {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--ts-color-text-secondary);
+  font-size: 12px;
+}
+
+.la-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(var(--theme-rgb), 0.22);
+  border-top-color: var(--theme-primary);
+  border-radius: 50%;
+  animation: la-spin 900ms linear infinite;
+}
+
+@keyframes la-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* A quiet paper-grain / contour backdrop for full-bleed atlas stages. */
+.la-stage-contours {
+  pointer-events: none;
+  background:
+    repeating-radial-gradient(
+      ellipse at 76% 68%,
+      transparent 0 28px,
+      rgba(var(--theme-rgb), 0.055) 29px 30px
+    ),
+    repeating-radial-gradient(
+      ellipse at 18% 12%,
+      transparent 0 46px,
+      rgba(var(--theme-rgb), 0.035) 47px 48px
+    );
+  mask-image: radial-gradient(ellipse at center, #000 0%, transparent 78%);
+}
+
+@media (max-width: 767px) {
+  .la-title { font-size: 22px; }
+  .la-eyebrow { font-size: 9.5px; letter-spacing: 0.13em; }
+  .la-chip { min-height: 26px; padding: 0 9px; font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .la-eyebrow-dot,
+  .la-spinner { animation: none !important; }
+}

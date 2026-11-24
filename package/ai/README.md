@@ -99,11 +99,10 @@ python scripts/prepare_chinese_clip.py --checkpoint <上游checkpoint目录> --o
 
 ## LLM 模型安装
 
-TrailSnap 内置 AI 连接使用 MiniCPM-V-4_6-Q4_K_M 多模态模型，需要安装 llama.cpp。
+TrailSnap 内置 AI 连接使用 MiniCPM-V-4_7-Q4_K_M 多模态模型，需要安装 llama.cpp。
 
-TrailSnap 桌面版可在“设置 → AI 扩展包 → llama.cpp 运行时”中检测安装状态。
-Windows 和 macOS 支持点击“一键安装”；安装完成后会再次执行
-`llama-server --version` 验证。Docker 镜像仍自带 llama-server。
+TrailSnap 桌面版在首次下载或使用本地大模型时自动准备 llama-server，Docker 镜像内置
+CPU 版 llama-server。两处托管版本均为 llama.cpp b12651。以下安装步骤适用于独立部署。
 
 ### Windows
 
@@ -146,7 +145,7 @@ brew install ffmpeg
 
 ### 模型下载
 
-llama.cpp 安装完成后，启动 AI 服务时会自动下载 MiniCPM-V-4_6-Q4_K_M 模型（约 4GB）。
+llama.cpp 安装完成后，启动 AI 服务时会自动下载 MiniCPM-V-4_7-Q4_K_M 模型（含视觉投影文件约 1.8GB）。
 
 如需手动下载：
 ```bash
@@ -183,7 +182,7 @@ AI 服务的推理后端按 **CUDA > OpenVINO > CoreML（仅 Apple Silicon）> C
 | --- | --- | --- |
 | `MODEL_PATH` | `data/models` | 模型文件根目录 |
 | `AI_CONFIG_PATH` | `app/data/ai_config.json` | 当前模型选择配置；Docker 部署应指向持久化卷 |
-| `LLM_MODEL_PATH` | `""` | 本地 LLM 模型路径（留空则首次启动自动下载 MiniCPM-V-4_6-Q4_K_M） |
+| `LLM_MODEL_PATH` | `""` | 本地 LLM 模型路径（留空则首次启动自动下载 MiniCPM-V-4_7-Q4_K_M） |
 | `LLM_SERVER_PORT` | `8002` | llama.cpp 子进程监听端口 |
 | `LLM_IDLE_TIMEOUT` | `300` | LLM 子进程空闲多久后退出（秒） |
 | `LLAMA_ARG_THREADS` | 自动 | llama.cpp 计算线程数；自动取可用 CPU 的约一半，有至少 3 个可用 CPU 时不少于 3，并考虑容器 CPU 配额和亲和性；设置正整数可覆盖 |

@@ -14,6 +14,10 @@ import 'element-plus/es/components/loading/style/css'
 
 import './style.css'
 import './styles/ui.css'
+import './styles/motion.css'
+import './styles/location-atlas.css'
+// Lumen 改版层：最后加载，用 token 覆写统一明暗与质感。
+import './styles/lumen.css'
 
 import App from './App.vue'
 import router from '@/router';
@@ -26,12 +30,18 @@ import { useUserStore } from '@/stores/user'
 import { registerConnectionDeepLinks } from '@/config/serverConnection'
 import { installNativeNetworkPolicy } from '@/config/nativeNetworkPolicy'
 import { registerButtonMotion } from '@/composables/useButtonMotion'
+import { registerRevealDirective } from '@/composables/useReveal'
 import { glassRefraction } from '@/utils/glassRefraction'
 import { useNavigationStore } from '@/stores/navigation'
 import { commonPageLoaders } from '@/router/commonPages'
 import { schedulePagePreloads } from '@/router/preload'
 
 async function bootstrap() {
+  // `?motion=slow` stretches the motion system so transitions can be reviewed
+  // frame by frame. Opt-in only; it never applies to regular visits.
+  if (new URLSearchParams(location.search).get('motion') === 'slow') {
+    document.documentElement.classList.add('ts-motion-slow')
+  }
   document.documentElement.classList.toggle('capacitor-android', Capacitor.getPlatform() === 'android')
   document.documentElement.classList.toggle('tauri-desktop', isTauriApp())
   // 只有 iOS 浏览器的刘海/home 指示条真正遮挡网页内容，需要避让顶部安全区。
@@ -48,6 +58,7 @@ async function bootstrap() {
   document.documentElement.classList.toggle('capacitor-native', isNativeApp())
   const app = createApp(App);
   app.directive('glass-refraction', glassRefraction)
+  registerRevealDirective(app)
   // 2. 创建 Pinia 实例
   const pinia = createPinia()
   app.use(pinia)

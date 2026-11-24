@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { getAIRuntimeStatus, downloadAIRuntime, selectAIRuntime, type AIBackend, type AIRuntimeStatus, type AIRuntimeProgress } from '@/api/desktopAIRuntime'
+import { getAIRuntimeStatus, autoSelectAIRuntime, downloadAIRuntime, selectAIRuntime, type AIBackend, type AIRuntimeStatus, type AIRuntimeProgress } from '@/api/desktopAIRuntime'
 
 export const useDesktopAIRuntimeStore = defineStore('desktop-ai-runtime', () => {
   const status = ref<AIRuntimeStatus | null>(null)
@@ -28,15 +28,18 @@ export const useDesktopAIRuntimeStore = defineStore('desktop-ai-runtime', () => 
     try { await listener } catch (cause) { listener = null; throw cause }
     await refresh()
   }
-  async function act(backend: AIBackend, device: string, download = false) {
+  async function run(action: () => Promise<void>) {
     if (busy.value) return
     working.value = true
     error.value = ''
     try {
-      if (download) await downloadAIRuntime(backend)
-      else await selectAIRuntime(backend, device)
+      await action()
     } catch (cause) { error.value = String(cause) }
     finally { working.value = false; await refresh() }
   }
-  return { status, progress, error, readError, busy, refresh, subscribe, act }
+  function act(backend: AIBackend, device: string, download = false) {
+    return run(() => download ? downloadAIRuntime(backend) : selectAIRuntime(backend, device))
+  }
+  const autoSelect = () => run(autoSelectAIRuntime)
+  return { status, progress, error, readError, busy, refresh, subscribe, act, autoSelect }
 })

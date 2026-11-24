@@ -23,8 +23,8 @@
       <p v-else-if="searched" role="status" class="ts-muted text-sm">{{ photos.length ? `找到 ${photos.length} 张相似照片，按相似度排序（最多 100 张）` : '未找到相似照片，请尝试其他图片' }}</p>
       <p v-else class="ts-muted text-xs">支持不超过 20 MB 的图片，上传仅用于本次搜索。</p>
     </section>
-    <FlatPhotoGallery v-if="photos.length" :photos="photos" :loading="loading" :show-action-bar="false" @click-photo="openPhoto" />
-    <PhotoLightbox :visible="visible" :image="photos[index] ?? null" :images="photos" :current-index="index"
+    <FlatPhotoGallery v-if="photos.length" :photos="photos" :loading="loading" :show-action-bar="false" :selectable="false" @click-photo="openPhoto" />
+    <PhotoLightbox :visible="visible" :initial-details="lightboxInitialDetails" :image="photos[index] ?? null" :images="photos" :current-index="index"
       :has-prev="index > 0" :has-next="index < photos.length - 1" @close="close" @prev="prev" @next="next" @select="value => index = value" />
     <ResponsiveDialog v-model="showPicker" title="选择搜索图片" max-width="64rem" mobile-mode="fullscreen" custom-mobile-header panel-class="image-search-picker">
       <div class="min-h-0 flex-1 md:h-[72dvh] md:flex-none"><PhotoSelector v-if="showPicker" title="选择搜索图片" is-selector single-select embedded mobile-dialog-header @select="selectPhoto" @cancel="showPicker = false" /></div>
@@ -62,7 +62,11 @@ const loading = ref(false)
 const searched = ref(false)
 const error = ref('')
 const { visible, index, open, close, prev, next } = usePhotoViewer(photos)
-const openPhoto = (photo: AlbumImage) => open(photos.value.findIndex(item => item.id === photo.id))
+const lightboxInitialDetails = ref(false)
+const openPhoto = (photo: AlbumImage, details = false) => {
+  lightboxInitialDetails.value = details
+  open(photo)
+}
 let requestId = 0
 let objectUrl = ''
 const releasePreview = () => { if (objectUrl) URL.revokeObjectURL(objectUrl); objectUrl = '' }

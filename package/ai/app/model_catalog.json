@@ -2,11 +2,11 @@
   "version": 1,
   "tasks": {
     "face": { "name": "人脸识别", "default": "face-buffalo-l", "runtimeKeys": ["face"] },
-    "ocr": { "name": "文字识别", "default": "ocr-ppocrv6-small", "runtimeKeys": ["ocr"] },
+    "ocr": { "name": "文字识别", "default": "ocr-ppocrv6-tiny", "runtimeKeys": ["ocr"] },
     "embedding": { "name": "语义向量", "default": "embedding-chinese-clip-vit-b16", "runtimeKeys": ["clip_text", "clip_image"] },
     "classification": { "name": "图片分类", "default": "photo-classification-v1", "runtimeKeys": ["yolo_photo_cls_general"] },
     "ticket": { "name": "票据识别", "default": "photo-classification-v1", "runtimeKeys": ["tickets_yolo"] },
-    "llm": { "name": "本地多模态模型", "default": "llm-minicpm-v-4.6", "runtimeKeys": [] }
+    "llm": { "name": "本地多模态模型", "default": "llm-minicpm-v-4.7", "runtimeKeys": [] }
   },
   "models": [
     {
@@ -237,6 +237,24 @@
       "requirements": { "diskMB": 60, "memoryMB": 250 },
       "downloadSize": 52428800,
       "available": false
+    },
+    {
+      "id": "llm-minicpm-v-4.7",
+      "tasks": ["llm"],
+      "name": "MiniCPM-V 4.7 1B Q4",
+      "runtimeName": "MiniCPM-V-4_7-Q4_K_M",
+      "description": "通过 llama.cpp 提供本地视觉语言能力。",
+      "choiceLabel": "效果更好",
+      "choiceHint": "图片理解更完整，适合内存充足的设备。",
+      "repoId": "SiYuan044/MiniCPM-V-4_7-Q4_K_M",
+      "localDir": "MiniCPM-V-4_7-Q4_K_M",
+      "allowPatterns": ["*.gguf", "*.json"],
+      "requiredFiles": ["MiniCPM-V-4_7-1B-Q4_K_M.gguf", "mmproj-model-f16.gguf"],
+      "tags": ["多模态", "4-bit"],
+      "requirements": { "diskMB": 1800, "memoryMB": 6500 },
+      "downloadSize": 1782121664,
+      "autoDownload": true,
+      "available": true
     },
     {
       "id": "llm-minicpm-v-4.6",
