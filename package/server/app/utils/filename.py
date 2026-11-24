@@ -112,7 +112,7 @@ def _extract_datetime_from_filename(filename)-> datetime | None:
                         dt = datetime.strptime(f"{year}-{month}-{day} {time_str}", "%Y-%m-%d %H%M%S")
                     elif len(year) == 8:
                         # 格式：YYYYMMDD_HH-MM-SS
-                        dt = datetime.strptime(f"{year} {month}-{day}-{time_str}", "%Y%m%d %H-%-M-%S")
+                        dt = datetime(int(year[:4]), int(year[4:6]), int(year[6:8]), int(month), int(day), int(time_str))
                     else:
                         # DD-MM-YYYY_HHMMSS
                         dt = datetime.strptime(f"{year}-{month}-{day} {time_str}", "%m-%d-%Y %H%M%S")
