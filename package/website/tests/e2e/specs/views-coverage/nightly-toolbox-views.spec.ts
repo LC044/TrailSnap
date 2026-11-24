@@ -207,5 +207,78 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
     await expect(page.getByRole('button', { name: '删除', exact: true })).toBeDisabled()
     await expect(page.getByRole('button', { name: '导出' })).toHaveCount(0)
   })
+  for (const mode of ['quality', 'similar', 'duplicate'] as const) {
+    test(`cleanup ${mode} supports two deletion batches without leaving results`, async ({ page }) => {
+      const id = 'batch-' + mode
+      let state = 'preview'
+      let executions = 0
+      const selected = new Set<number>()
+      let remaining = [1, 2, 3, 4, 5]
+      const item = (index: number) => ({
+        id: index, photo_id: 'batch-photo-' + index, source: '/photos/batch-' + index + '.jpg',
+        target: '', status: 'candidate', reason: '', selected: selected.has(index),
+        detail: mode === 'quality' ? { quality_score: 10, memory_score: 5 } : { group_id: 8 },
+      })
+      const plan = () => ({
+        ...previewPlan, id, status: state,
+        request: { ...previewPlan.request, config: { ...previewPlan.request.config, cleanup_mode: mode } },
+        summary: { phase: 'done', candidate: remaining.length, ready: 0, success: 5 - remaining.length },
+      })
+      const reply = (route: import('@playwright/test').Route, data: unknown) =>
+        route.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data }) })
+      await page.route('**/api/toolbox/plans**', async route => {
+        const url = new URL(route.request().url())
+        const path = url.pathname
+        if (path.endsWith('/selection')) {
+          const body = route.request().postDataJSON()
+          for (const value of body.item_ids) body.selected ? selected.add(value) : selected.delete(value)
+          return reply(route, { selected_count: selected.size })
+        }
+        if (path.endsWith('/execute')) {
+          expect([...selected]).toEqual([executions + 1])
+          executions++
+          remaining = remaining.filter(index => !selected.has(index))
+          selected.clear()
+          state = 'queued'
+          return reply(route, plan())
+        }
+        if (path.endsWith('/items')) return reply(route, {
+          total: remaining.length, selected_count: selected.size, items: remaining.map(item),
+        })
+        if (path.endsWith('/members')) return reply(route, {
+          total: remaining.length, representative_id: 'batch-photo-1',
+          items: remaining.map(index => ({ photo_id: item(index).photo_id, source: item(index).source,
+            in_scope: index === 1, item: item(index) })),
+        })
+        if (path.endsWith('/' + id)) { state = 'preview'; return reply(route, plan()) }
+        if (route.request().method() === 'POST') return reply(route, plan())
+        return route.fallback()
+      })
+      await page.goto('/toolbox/cleanup?plan=' + id)
+      const cards = page.locator('article').filter({ has: page.locator('details > summary', { hasText: '详情' }) })
+      await expect(cards).toHaveCount(5)
+      if (mode === 'similar') {
+        const boxes = await cards.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top))
+        expect(new Set(boxes).size).toBe(1)
+        for (let index = 0; index < 5; index++) {
+          await cards.nth(index).locator('summary').click()
+          await expect(cards.nth(index).locator('details')).toContainText('/photos/batch-' + (index + 1) + '.jpg')
+        }
+      }
+      const remove = page.getByRole('button', { name: '删除', exact: true })
+      for (const index of [1, 2]) {
+        await page.getByRole('checkbox', { name: '将 batch-' + index + '.jpg 移入回收站', exact: true }).click()
+        await page.getByRole('checkbox', { name: '已悉知变更情况', exact: true }).check()
+        await remove.click()
+        await expect(cards).toHaveCount(5 - index)
+        await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
+        await expect(remove).toBeDisabled()
+        await expect(page.getByRole('checkbox', { name: '已悉知变更情况', exact: true })).not.toBeChecked()
+      }
+      expect(executions).toBe(2)
+      await expect(page).toHaveURL(new RegExp('plan=' + id))
+    })
+  }
+
 })
 

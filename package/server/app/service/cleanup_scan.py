@@ -256,7 +256,7 @@ def materialize(db, plan, user, config):
         query = db.query(Photo, CleanupMember.group_id, CleanupGroup.key).join(CleanupScope, CleanupScope.photo_id == Photo.id).outerjoin(
             CleanupMember, (CleanupMember.plan_id == plan.id) & (CleanupMember.photo_id == Photo.id)).outerjoin(
             CleanupGroup, CleanupGroup.id == CleanupMember.group_id).filter(CleanupScope.plan_id == plan.id,
-                CleanupScope.in_scope.is_(True), Photo.owner_id == user.id)
+                (CleanupMember.group_id.isnot(None) if config.cleanup_mode == "similar" else CleanupScope.in_scope.is_(True)), Photo.owner_id == user.id)
         if cursor:
             query = query.filter(Photo.id > UUID(cursor))
         from app.db.models.face import Face
@@ -284,6 +284,9 @@ def materialize(db, plan, user, config):
     counts = dict(db.query(ToolboxPlanItem.status, func.count()).filter_by(plan_id=plan.id).group_by(ToolboxPlanItem.status).all())
     plan.status = "preview"
     plan.expires_at = datetime.utcnow() + timedelta(days=7)
+    if config.cleanup_mode == "similar":
+        # Similar groups explicitly include all members, including comparison-only photos.
+        plan.summary = {**plan.summary, "total": processed}
     plan.summary = {**plan.summary, "phase": "done", "candidate": counts.get("candidate", 0),
         "skipped": plan.summary.get("total", 0) - counts.get("candidate", 0), "groups": db.query(CleanupGroup).filter_by(plan_id=plan.id).count(), "ready": 0}
     db.commit()

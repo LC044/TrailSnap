@@ -153,7 +153,8 @@ const execute = async (selected?: number[]) => {
     const result = await workflowApi.execute(plan.value, selected)
     if (owner !== user.userInfo?.id || plan.value?.id !== id || disposed) return
     plan.value = result
-    ElMessage.success('任务已接受，可以离开页面')
+    ElMessage.success(kind.value === 'cleanup'
+      ? '正在删除所选照片，完成后可继续选择删除' : '任务已接受，可以离开页面')
     await router.replace({ query: { plan: plan.value.id } })
     poll()
   } catch { error.value = '执行未确认成功，请刷新此计划核对状态，勿重复创建新计划' }
