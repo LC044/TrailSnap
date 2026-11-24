@@ -140,3 +140,21 @@ test('unavailable or invalid version manifests preserve release-page fallback', 
   }
   assert.equal(await fetchHarness(async () => { throw new Error('offline') }).fetchAssets(), false)
 })
+
+test('download prefers the verified mirror and preserves the original URL on probe failure', async () => {
+  const context = harness()
+  const original = 'https://github.com/LC044/TrailSnap/releases/download/v0.21.2/TrailSnap.zip'
+  const mirror = original.replace('github.com', 'download.trailsnap.cn')
+  Object.assign(context, { AbortController, setTimeout, clearTimeout })
+  context.fetch = async (url, options) => {
+    assert.equal(url, mirror)
+    assert.equal(options.method, 'HEAD')
+    return { ok: true }
+  }
+  assert.equal(await context.preferredDownloadUrl(original), mirror)
+  context.fetch = async () => ({ ok: false })
+  assert.equal(await context.preferredDownloadUrl(original), original)
+  context.fetch = async () => { throw new Error('mirror unavailable') }
+  assert.equal(await context.preferredDownloadUrl(original), original)
+  assert.equal(await context.preferredDownloadUrl('release-fallback'), 'release-fallback')
+})

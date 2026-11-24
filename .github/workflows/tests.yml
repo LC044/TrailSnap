@@ -53,14 +53,73 @@ env:
   PYTHON_DEFAULT: '3.12'
   PYTHON_CLI: '3.10'
   NODE_VERSION: '20'
+  PNPM_VERSION: '10.18.3'
   TEST_PHOTOS_REPO: 'LC044/trailsnap-test-photos'
 
 jobs:
+  changes:
+    name: Detect test scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      shared: ${{ steps.scope.outputs.shared }}
+      cli: ${{ steps.scope.outputs.cli }}
+      server: ${{ steps.scope.outputs.server }}
+      ai: ${{ steps.scope.outputs.ai }}
+      website: ${{ steps.scope.outputs.website }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Classify changed files
+        id: scope
+        shell: bash
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          shared=false cli=false server=false ai=false website=false
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) range="$PR_BASE...$PR_HEAD" ;;
+            push) range="$PUSH_BEFORE..$GITHUB_SHA" ;;
+            *) range='' ;;
+          esac
+
+          changed_paths="$RUNNER_TEMP/trailsnap-changed-paths"
+          if [[ -z "$range" ]]; then
+            shared=true
+          elif ! git diff --no-renames --name-only -z "$range" -- > "$changed_paths"; then
+            echo "::warning::Could not determine changed files. Running all component tests."
+            shared=true
+          else
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                tests/*|.github/workflows/tests.yml|package.json|package-lock.json) shared=true ;;
+                package/trailsnap-cli/*|skills/trailsnap-cli/*) cli=true ;;
+                package/server/*) server=true ;;
+                package/ai/*) ai=true ;;
+                package/website/*) website=true ;;
+              esac
+            done < "$changed_paths"
+          fi
+
+          for scope in shared cli server ai website; do
+            printf '%s=%s\n' "$scope" "${!scope}" >> "$GITHUB_OUTPUT"
+          done
+
   # ==========================================================================
   # CLI 单元测试 - 无外部依赖，秒级
   # ==========================================================================
   cli-unit:
     name: CLI unit (pytest)
+    needs: changes
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -97,6 +156,8 @@ jobs:
   # ==========================================================================
   server-unit:
     name: Server unit (pytest)
+    needs: changes
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -136,6 +197,8 @@ jobs:
   # ==========================================================================
   ai-unit:
     name: AI unit (pytest)
+    needs: changes
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.ai == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -175,6 +238,8 @@ jobs:
   # ==========================================================================
   server-integration:
     name: Server integration (pytest + live server)
+    needs: changes
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -279,6 +344,36 @@ jobs:
           path: package/server/logs/server.log
           retention-days: 3
 
+  website-unit:
+    name: Website unit (Node test runner)
+    needs: changes
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.website == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: package/website/pnpm-lock.yaml
+
+      - name: Install website deps
+        working-directory: package/website
+        run: pnpm install --frozen-lockfile
+
+      - name: Run website unit tests
+        shell: pwsh
+        run: ./tests/scripts/run-tests.ps1 -Layer unit -Component website -Level smoke -EnvFile tests/.env.test.ci
+
   # ==========================================================================
   # 前端 E2E - 复用 tests/scripts/e2e-up/run/down 流程（与本地 run-tests.ps1 一致）
   #   PR + push master: 跑 full 档（与本地 -Level full 一致，全量 ~200 用例）
@@ -289,33 +384,24 @@ jobs:
     name: E2E (Playwright + docker compose)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      (github.event_name != 'workflow_dispatch' || !inputs.skip_e2e) &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.18.3
-          run_install: false
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          cache: pnpm
+          cache-dependency-path: package/website/pnpm-lock.yaml
 
       - name: Prepare shared test env
         run: cp tests/.env.test.ci tests/.env.test
@@ -323,10 +409,6 @@ jobs:
       - name: Install website deps
         working-directory: package/website
         run: pnpm install --frozen-lockfile
-
-      - name: Run website unit tests
-        shell: pwsh
-        run: ./tests/scripts/run-tests.ps1 -Layer unit -Component website -Level smoke -EnvFile tests/.env.test
 
       - name: Install Playwright chromium
         working-directory: package/website

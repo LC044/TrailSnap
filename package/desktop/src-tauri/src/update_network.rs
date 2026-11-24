@@ -14,6 +14,7 @@ use std::{
 // Keep aligned with the official download page. Only rewrite this project's
 // GitHub release URLs; custom/test endpoints must never be sent to a mirror.
 const RELEASE_ROOT: &str = "https://github.com/LC044/TrailSnap/releases/";
+const FIRST_PARTY_RELEASE_ROOT: &str = "https://download.trailsnap.cn/LC044/TrailSnap/releases/";
 const LLAMA_RELEASE_ROOT: &str = "https://github.com/ggml-org/llama.cpp/releases/download/";
 const MIRRORS: [&str; 2] = ["https://gh-proxy.com/", "https://gh-proxy.at9.net/"];
 pub const ROUNDS: usize = 2;
@@ -21,7 +22,34 @@ pub const CATALOG_TIMEOUT: Duration = Duration::from_secs(8);
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub fn candidates(url: &str) -> Vec<String> {
-    release_sources(url, RELEASE_ROOT)
+    let normalized = url
+        .strip_prefix(FIRST_PARTY_RELEASE_ROOT)
+        .map(|path| format!("{RELEASE_ROOT}{path}"));
+    let mut sources = release_sources(normalized.as_deref().unwrap_or(url), RELEASE_ROOT);
+    let Some(path) = sources
+        .first()
+        .and_then(|source| source.strip_prefix(RELEASE_ROOT))
+    else {
+        return sources;
+    };
+    let fixed_version = path
+        .strip_prefix("download/v")
+        .and_then(|path| path.split_once('/'));
+    if fixed_version.is_some_and(|(version, asset)| {
+        let parts: Vec<_> = version.split('.').collect();
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+            && !asset.is_empty()
+            && asset.as_bytes()[0].is_ascii_alphanumeric()
+            && asset
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+    }) {
+        sources.push(format!("{FIRST_PARTY_RELEASE_ROOT}{path}"));
+    }
+    sources
 }
 
 pub fn llama_candidates(url: &str) -> Vec<String> {
@@ -542,8 +570,19 @@ mod tests {
     fn only_project_release_urls_are_mirrored_without_nested_prefixes() {
         let url = format!("{RELEASE_ROOT}download/v1.0.0/TrailSnap.zip");
         let sources = candidates(&url);
-        assert_eq!(sources.len(), 3);
+        assert_eq!(sources.len(), 4);
         assert_eq!(candidates(&sources[1]), sources);
+        assert_eq!(candidates(&sources[3]), sources);
+        assert_eq!(
+            sources[3],
+            format!("{FIRST_PARTY_RELEASE_ROOT}download/v1.0.0/TrailSnap.zip")
+        );
+        for path in [
+            "latest/download/latest.json",
+            "download/v1.0.0-beta/TrailSnap.zip",
+        ] {
+            assert_eq!(candidates(&format!("{RELEASE_ROOT}{path}")).len(), 3);
+        }
         for custom in [
             "http://127.0.0.1:1234/test",
             "https://example.com/latest.json",
