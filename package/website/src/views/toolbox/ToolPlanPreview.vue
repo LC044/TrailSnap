@@ -30,6 +30,8 @@
               <button v-if="isPreview && item.status === 'candidate'" type="button" role="checkbox" class="photo-choice" :class="{ 'is-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :aria-checked="!!(isAsyncCleanup ? item.selected : selected.includes(item.id))" :disabled="selecting" :aria-label="`将 ${basename(item.source)} 移入回收站`" @click="toggle(item.id, !(isAsyncCleanup ? item.selected : selected.includes(item.id)))">
                 <span class="photo-choice-mark"><Check v-if="isAsyncCleanup ? item.selected : selected.includes(item.id)" :size="20" :stroke-width="3" /></span>
               </button>
+              <p v-if="plan.request.config.cleanup_mode === 'quality'" class="ts-muted mt-2 break-words text-xs"
+                :aria-label="qualityScoreLabel(item, true)">{{ qualityScoreLabel(item) }}</p>
               <details class="ts-muted mt-1 text-xs"><summary class="cursor-pointer py-2">详情</summary><p class="break-all">{{ item.source }}</p><p v-if="item.status === 'failed' || item.status === 'skipped'">{{ item.reason }}</p></details>
             </article>
           </div>
@@ -80,7 +82,7 @@
       <div class="flex flex-wrap justify-end gap-2">
         <el-button @click="$emit('back')">返回</el-button>
         <el-button type="primary" :loading="executing" :disabled="!confirmed || !actionCount || loading || selecting || !!error" @click="$emit('execute', isCleanup && !isAsyncCleanup ? selected : undefined)">
-          确认
+          {{ isCleanup ? '删除' : '确认' }}
         </el-button>
       </div>
     </div>
@@ -120,10 +122,20 @@ const confirmed = ref(false)
 const page = ref(1), status = ref('')
 const total = ref(0)
 const rows = ref<ToolPlanItem[]>([])
+const qualityScoreLabel = (item: ToolPlanItem, accessible = false) => {
+  const { quality_score, memory_score, label } = item.detail
+  // Older plans only have the combined score label; do not invent missing scores.
+  if (quality_score === undefined || memory_score === undefined) return label || '评分信息不可用'
+  const quality = quality_score ?? 0
+  const total = quality + (memory_score ?? 0)
+  return accessible
+    ? `质量分（0–100）${quality} / 综合评分（0–200）${total}`
+    : `质量分 ${quality} / 综合评分 ${total}`
+}
 const photoGroups = computed(() => {
   const groups = new Map<string, { key: string; groupId?: number; title: string; items: ToolPlanItem[] }>()
   for (const item of rows.value) {
-    const key = item.detail.group_id ? `group-${item.detail.group_id}` : `item-${item.id}`
+    const key = props.plan.request.config.cleanup_mode === 'quality' ? 'quality' : item.detail.group_id ? `group-${item.detail.group_id}` : `item-${item.id}`
     if (!groups.has(key)) groups.set(key, { key, groupId: item.detail.group_id, title: item.detail.label || '照片', items: [] })
     groups.get(key)!.items.push(item)
   }

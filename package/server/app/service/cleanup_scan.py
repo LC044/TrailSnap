@@ -272,7 +272,8 @@ def materialize(db, plan, user, config):
             elif config.cleanup_mode == "quality" and not photo.is_deleted and photo.image_description:
                 score = (photo.image_description.memory_score or 0) + (photo.image_description.quality_score or 0)
                 if score <= config.quality_max:
-                    candidates[photo.id] = {"group": "quality", "label": f"评分 {score:g}"}
+                    candidates[photo.id] = {"group": "quality", "label": f"评分 {score:g}",
+                        "quality_score": photo.image_description.quality_score or 0, "memory_score": photo.image_description.memory_score or 0}
             if candidates:
                 item = item_for_photo(db, user, photo, config, 0, set(), candidates, None)
                 item.plan_id = plan.id

@@ -23,7 +23,7 @@
           <el-form v-else-if="kind === 'cleanup' && config.cleanup_mode !== 'duplicate'" label-position="top">
             <h2 class="ts-section-title mb-4">查找设置</h2>
             <el-form-item v-if="config.cleanup_mode === 'similar'" label="相似度阈值"><el-slider v-model="config.similarity" :min=".8" :max="1" :step=".01" show-input /></el-form-item>
-            <el-form-item v-if="config.cleanup_mode === 'quality'" label="评分上限"><el-input-number v-model="config.quality_max" :min="0" :max="200" /></el-form-item>
+            <el-form-item v-if="config.cleanup_mode === 'quality'" label="综合评分上限（0–200）"><el-input-number v-model="config.quality_max" :min="0" :max="200" /></el-form-item>
           </el-form>
           <el-form v-else-if="kind === 'metadata'" label-position="top">
             <h2 class="ts-section-title mb-4">修正拍摄信息</h2>

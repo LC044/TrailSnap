@@ -71,7 +71,7 @@ export interface ToolPlanItem {
   status: string
   reason: string
   selected?: boolean
-  detail: { group_id?: number; label?: string; targets?: string[]; related_ids?: string[]; time?: string; make?: string; model?: string }
+  detail: { quality_score?: number | null; memory_score?: number | null; group_id?: number; label?: string; targets?: string[]; related_ids?: string[]; time?: string; make?: string; model?: string }
 }
 export interface ScopeItem { id: string; filename: string; photo_time: string | null; file_type: string }
 export interface PageResult<T> { total: number; items: T[] }
