@@ -4,6 +4,30 @@ description: "TrailSnap changelog: new features, refinements and fixes listed by
 
 # Changelog
 
+## 2026-11-24 (0.21.2)
+
+### New
+
+- Magazine-style "Photo Journal" home page: rebuilt hero carousel, memory discovery and daily frame cards, plus scroll reveal, count-up and photo flight motion.
+- Virtual waterfall photo wall with per-month chunk loading: the first screen renders as soon as its data arrives, and more months load while scrolling.
+- Redesigned location albums across map, timeline, tracks, stats, collages and photo detail pages, with a unified journal look.
+- New warm color theme, plus a photo context menu, swipe selection and range selection.
+- The default local multimodal model is now MiniCPM-V 4.7, and OCR defaults to the lighter PP-OCRv6 tiny model.
+- Desktop now auto-configures its AI inference backend: CUDA or OpenVINO is chosen by hardware, the NPU can handle MiniCPM text inference, and llama.cpp is upgraded.
+
+### Improvements
+
+- Faster Moon journal page: calendar conversion reuses a cached formatter, the first screen renders first, and more photos mount in batches while scrolling.
+- Redesigned sidebar and bottom bar: the bottom bar steps aside while reading, and page transitions and dialogs share the same Lumen look.
+- Retuned AI service retries: tasks wait by priority when a model is not ready, reducing wasted retries and stuck tasks.
+- Switching Moment feeds now loads only the visible month.
+
+### Bug Fixes
+
+- Fix Chinese-CLIP timing out when generating text vectors in batches on the NPU.
+- Fix slow loading on the Moon journal page with thousands of photos, and a laggy lunar-day view.
+- Fix regressions after the redesign: square thumbnail corners, the sidebar AI assistant entry, and photo action dialogs not dismissing.
+
 ## 2026-11-20 (0.21.1)
 
 ### New
