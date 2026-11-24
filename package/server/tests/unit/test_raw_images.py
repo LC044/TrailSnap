@@ -180,3 +180,14 @@ def test_linux_sidecar_collects_rawpy_sibling_libraries(tmp_path):
     with patch('importlib.util.find_spec', return_value=SimpleNamespace(origin=str(package / '__init__.py'))):
         exec(compile(ast.Module(body=[block], type_ignores=[]), str(spec_path), 'exec'), namespace)
     assert namespace['binaries'] == [(str(dependency), '.')]
+
+
+def test_linux_workflow_repairs_flattened_raw_library_rpath():
+    workflow = Path(__file__).resolve().parents[4] / '.github/workflows/build-desktop.yml'
+    source = workflow.read_text(encoding='utf-8')
+    step = source.split('- name: Ensure sidecar .libs RPATHs include $ORIGIN (Linux only)', 1)[1].split('- name:', 1)[0]
+    assert "-type f -name '*.so*' -print0" in step
+    assert "-type d -name '*.libs'" not in step
+    assert 'patchelf --set-rpath' in step
+    assert "-name 'libraw_r.so*'" in step
+    assert "grep -q 'not found'" in step
