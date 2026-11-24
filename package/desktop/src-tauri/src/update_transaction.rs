@@ -157,16 +157,7 @@ fn verify_archive_with_key(
     hash: &str,
     encoded_key: &str,
 ) -> Result<(), String> {
-    let key = String::from_utf8(STANDARD.decode(encoded_key).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
-    let signature = String::from_utf8(
-        STANDARD
-            .decode(signature.trim())
-            .map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    let key = minisign_verify::PublicKey::decode(&key).map_err(|e| e.to_string())?;
-    let signature = minisign_verify::Signature::decode(&signature).map_err(|e| e.to_string())?;
+    let (key, signature) = decode_signature(encoded_key, signature)?;
     let mut verifier = key.verify_stream(&signature).map_err(|e| e.to_string())?;
     let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut sha = Sha256::new();
@@ -186,6 +177,34 @@ fn verify_archive_with_key(
         return Err("更新文件 SHA-256 不匹配".into());
     }
     Ok(())
+}
+
+pub fn verify_installer(
+    bytes: &[u8],
+    signature: &str,
+    encoded_key: &str,
+) -> Result<(), String> {
+    let (key, signature) = decode_signature(encoded_key, signature)?;
+    // Preserve the updater's support for legacy and prehashed minisign signatures.
+    key.verify(bytes, &signature, true)
+        .map_err(|_| "更新签名校验失败".into())
+}
+
+fn decode_signature(
+    encoded_key: &str,
+    signature: &str,
+) -> Result<(minisign_verify::PublicKey, minisign_verify::Signature), String> {
+    let key = String::from_utf8(STANDARD.decode(encoded_key).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    let signature = String::from_utf8(
+        STANDARD
+            .decode(signature.trim())
+            .map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let key = minisign_verify::PublicKey::decode(&key).map_err(|e| e.to_string())?;
+    let signature = minisign_verify::Signature::decode(&signature).map_err(|e| e.to_string())?;
+    Ok((key, signature))
 }
 
 pub fn platform() -> String {
@@ -498,8 +517,10 @@ mod tests {
         let signature=STANDARD.encode("untrusted comment: signature from minisign secret key\nRUQf6LRCGA9i559r3g7V1qNyJDApGip8MfqcadIgT9CuhV3EMhHoN1mGTkUidF/z7SrlQgXdy8ofjb7bNJJylDOocrCo8KLzZwo=\ntrusted comment: timestamp:1556193335\tfile:test\ny/rUw2y8/hOUYjZU71eHp/Wo1KZ40fGy2VJEDl34XMJM+TX48Ss/17u3IvIfbVR1FkZZSNCisQbuQY+bHwhEBg==\n");
         let hash = format!("{:x}", Sha256::digest(b"test"));
         verify_archive_with_key(&path, &signature, &hash, &key).unwrap();
+        verify_installer(b"test", &signature, &key).unwrap();
         fs::write(&path, b"Test").unwrap();
         assert!(verify_archive_with_key(&path, &signature, &hash, &key).is_err());
+        assert!(verify_installer(b"Test", &signature, &key).is_err());
         fs::remove_file(path).unwrap();
     }
     #[test]

@@ -1,12 +1,10 @@
-use crate::hardware;
-use futures_util::StreamExt;
+use crate::{hardware, update_network};
 use sha2::{Digest, Sha256};
 use std::{
-    env, fs,
+    env, fs, io,
     path::{Path, PathBuf},
     time::Duration,
 };
-use tokio::io::AsyncWriteExt;
 
 const LLAMA_BUILD: &str = "b12651";
 const EXECUTABLE: &str = if cfg!(windows) {
@@ -51,13 +49,6 @@ pub async fn install(npu: bool) -> Result<(), String> {
     }
     let parent = target.parent().ok_or("运行时目录无效")?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(20))
-        .timeout(Duration::from_secs(900))
-        .user_agent("TrailSnap Desktop")
-        .build()
-        .map_err(|error| error.to_string())?;
-
     let mut errors = Vec::new();
     let candidates = if npu {
         vec![Package::new(
@@ -71,7 +62,7 @@ pub async fn install(npu: bool) -> Result<(), String> {
     for package in candidates {
         let work = parent.join(format!(".download-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&work).map_err(|error| error.to_string())?;
-        let result = install_package(&client, &package, &work, &target).await;
+        let result = install_package(&package, &work, &target).await;
         let _ = fs::remove_dir_all(&work);
         match result {
             Ok(()) => return Ok(()),
@@ -310,7 +301,6 @@ async fn vulkan_supported() -> bool {
 }
 
 async fn install_package(
-    client: &reqwest::Client,
     package: &Package,
     work: &Path,
     target: &Path,
@@ -318,14 +308,14 @@ async fn install_package(
     let stage = work.join("runtime");
     fs::create_dir(&stage).map_err(|error| error.to_string())?;
     let name = format!("llama-{LLAMA_BUILD}-bin-{}", package.suffix);
-    download_and_extract(client, &name, package.sha256, work, &stage).await?;
+    download_and_extract(&name, package.sha256, work, &stage).await?;
     let executable = find_file_named(&stage, EXECUTABLE).ok_or("压缩包缺少 llama-server")?;
     if let Some((name, sha256)) = package.dependencies {
         let bin = executable.parent().ok_or("可执行文件路径无效")?;
         if let Some(directory) = name.strip_suffix(".tar.gz") {
             let dependencies = work.join("dependencies");
             fs::create_dir(&dependencies).map_err(|error| error.to_string())?;
-            download_and_extract(client, name, sha256, work, &dependencies).await?;
+            download_and_extract(name, sha256, work, &dependencies).await?;
             for entry in
                 fs::read_dir(dependencies.join(directory)).map_err(|error| error.to_string())?
             {
@@ -334,7 +324,7 @@ async fn install_package(
                     .map_err(|error| error.to_string())?;
             }
         } else {
-            download_and_extract(client, name, sha256, work, bin).await?;
+            download_and_extract(name, sha256, work, bin).await?;
         }
     }
     let version = hardware::probe(&executable, &["--version"], 20)
@@ -383,39 +373,41 @@ fn has_gpu(output: &str) -> bool {
 }
 
 async fn download_and_extract(
-    client: &reqwest::Client,
     name: &str,
-    expected: &str,
+    expected: &'static str,
     work: &Path,
     stage: &Path,
 ) -> Result<(), String> {
     let url =
         format!("https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_BUILD}/{name}");
-    let mut stream = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| error.to_string())?
-        .error_for_status()
-        .map_err(|error| error.to_string())?
-        .bytes_stream();
     let archive = work.join(name);
-    let mut file = tokio::fs::File::create(&archive)
-        .await
-        .map_err(|error| error.to_string())?;
-    let mut hash = Sha256::new();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|error| error.to_string())?;
-        hash.update(&chunk);
-        file.write_all(&chunk)
-            .await
-            .map_err(|error| error.to_string())?;
+    update_network::Download {
+        destination: &archive,
+        size: None,
+        timeout: Duration::from_secs(900),
     }
-    file.flush().await.map_err(|error| error.to_string())?;
-    drop(file);
-    if format!("{:x}", hash.finalize()) != expected {
-        return Err(format!("{name} 校验失败"));
-    }
+    .verified(
+        update_network::llama_candidates(&url),
+        update_network::DownloadMode::desktop(),
+        |_, _| {},
+        |archive| {
+            let name = name.to_owned();
+            async move {
+                tauri::async_runtime::spawn_blocking(move || {
+                    let mut file = fs::File::open(archive).map_err(|error| error.to_string())?;
+                    let mut hash = Sha256::new();
+                    io::copy(&mut file, &mut hash).map_err(|error| error.to_string())?;
+                    if format!("{:x}", hash.finalize()) != expected {
+                        return Err(format!("{name} 校验失败"));
+                    }
+                    Ok(())
+                })
+                .await
+                .map_err(|error| error.to_string())?
+            }
+        },
+    )
+    .await?;
     let stage = stage.to_path_buf();
     let zip = name.ends_with(".zip");
     tauri::async_runtime::spawn_blocking(move || unpack(&archive, &stage, zip))

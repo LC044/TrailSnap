@@ -1,9 +1,8 @@
 //! Optional, signed AI sidecars. Models and the bundled CPU runtime are immutable here.
 use crate::{ai_gateway::AIGateway, portable, update_network, update_transaction};
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{fs, io::Write, path::{Path, PathBuf}, sync::Mutex, time::Duration};
+use std::{fs, path::{Path, PathBuf}, sync::Mutex, time::Duration};
 use tauri::{Emitter, Manager};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -215,71 +214,57 @@ async fn download(app: &tauri::AppHandle, root: &Path, backend: &str) -> Result<
     result
 }
 async fn download_into(app: &tauri::AppHandle, backend: &str, base: &str, package: &Package, temp: &Path, destination: &Path) -> Result<(), String> {
-    let sources = update_network::rank(update_network::candidates(&format!("{base}{}", package.filename))).await;
     let archive = temp.join("runtime.zip");
-    let mut last_error = String::new();
-    for round in 0..update_network::ROUNDS {
-        update_network::backoff(round).await;
-        for source in &sources {
-            let attempt = async {
-                progress(app, backend, "downloading", 0, package.size, None);
-                fetch_archive(source, &archive, package.size, |downloaded| progress(app, backend, "downloading", downloaded, package.size, None)).await?;
-                progress(app, backend, "verifying", package.size, package.size, None);
-                let archive = archive.clone();
-                let package = package.clone();
-                tauri::async_runtime::spawn_blocking(move || update_transaction::verify_archive(&archive, &package.signature, &package.sha256))
-                    .await.map_err(|e| e.to_string())??;
-                Ok::<(), String>(())
-            }.await;
-            match attempt {
-                Ok(()) => {
-                    progress(app, backend, "installing", package.size, package.size, None);
-                    let archive = archive.clone();
-                    let staging = temp.join("unpacked");
-                    let destination = destination.to_path_buf();
-                    let backend = backend.to_owned();
-                    return tauri::async_runtime::spawn_blocking(move || {
-                        unpack(&archive, &staging, &backend)?;
-                        // Preserve an invalid prior install until the replacement
-                        // is verified and published. Windows refuses in-use files.
-                        let previous = destination.with_file_name(format!(".previous-{backend}-{}", uuid::Uuid::new_v4()));
-                        let replacing = destination.exists();
-                        if replacing { fs::rename(&destination, &previous).map_err(|e| format!("旧加速包正在使用，请切回 CPU 后重试：{e}"))?; }
-                        if let Err(error) = fs::rename(staging, &destination) {
-                            if replacing { let _ = fs::rename(&previous, &destination); }
-                            return Err(error.to_string());
-                        }
-                        Ok(())
-                    }).await.map_err(|e| e.to_string())?;
-                },
-                Err(error) => last_error = error,
+    let sources = update_network::candidates(&format!("{base}{}", package.filename));
+    let mut last_progress = std::time::Instant::now();
+    update_network::Download {
+        destination: &archive,
+        size: Some(package.size),
+        timeout: Duration::from_secs(60 * 60),
+    }
+    .verified(
+        sources,
+        update_network::DownloadMode::desktop(),
+        |downloaded, _| {
+            if downloaded == 0 || downloaded == package.size
+                || last_progress.elapsed() >= Duration::from_millis(150)
+            {
+                progress(app, backend, "downloading", downloaded, package.size, None);
+                last_progress = std::time::Instant::now();
             }
-        }
-    }
-    Err(format!("所有加速源均失败（已自动重试）：{last_error}"))
-}
+        },
+        |archive| {
+            progress(app, backend, "verifying", package.size, package.size, None);
+            let package = package.clone();
+            async move {
+                tauri::async_runtime::spawn_blocking(move || {
+                    update_transaction::verify_archive(&archive, &package.signature, &package.sha256)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+            }
+        },
+    )
+    .await?;
 
-async fn fetch_archive(source: &str, archive: &Path, size: u64, on_progress: impl Fn(u64)) -> Result<(), String> {
-    let response = update_network::client()?.get(source).send().await.map_err(|e| e.to_string())?
-        .error_for_status().map_err(|e| e.to_string())?;
-    let mut stream = response.bytes_stream();
-    let mut file = fs::File::create(archive).map_err(|e| e.to_string())?;
-    let mut downloaded = 0;
-    let mut tick = std::time::Instant::now();
-    while let Some(bytes) = stream.next().await {
-        let bytes = bytes.map_err(|e| e.to_string())?;
-        downloaded += bytes.len() as u64;
-        if downloaded > size { return Err("加速包大小超过清单限制".into()); }
-        file.write_all(&bytes).map_err(|e| e.to_string())?;
-        if tick.elapsed() > Duration::from_millis(150) {
-            on_progress(downloaded);
-            tick = std::time::Instant::now();
+    progress(app, backend, "installing", package.size, package.size, None);
+    let staging = temp.join("unpacked");
+    let destination = destination.to_path_buf();
+    let backend = backend.to_owned();
+    tauri::async_runtime::spawn_blocking(move || {
+        unpack(&archive, &staging, &backend)?;
+        // Keep a prior install until its replacement is verified and published.
+        let previous = destination.with_file_name(format!(".previous-{backend}-{}", uuid::Uuid::new_v4()));
+        let replacing = destination.exists();
+        if replacing {
+            fs::rename(&destination, &previous).map_err(|e| format!("旧加速包正在使用，请切回 CPU 后重试：{e}"))?;
         }
-    }
-    file.sync_all().map_err(|e| e.to_string())?;
-    if downloaded != size { return Err("加速包下载不完整".into()); }
-    on_progress(downloaded);
-    Ok(())
+        if let Err(error) = fs::rename(staging, &destination) {
+            if replacing { let _ = fs::rename(&previous, &destination); }
+            return Err(error.to_string());
+        }
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
 }
 
 fn unpack(archive: &Path, staging: &Path, backend: &str) -> Result<(), String> {
@@ -331,6 +316,7 @@ pub async fn desktop_ai_runtime_select(app: tauri::AppHandle, backend: String, d
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     #[test]
     fn automatic_selection_only_offers_matching_hardware() {
         let devices = [
@@ -407,24 +393,6 @@ mod tests {
         assert!(validate_runtime(&target, "cuda").is_ok());
         assert!(validate_runtime(&target, "openvino").is_err());
         assert_eq!(fs::read(root.join("models/keep.onnx")).unwrap(), b"model");
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[tokio::test]
-    async fn download_rejects_truncation_and_excess_then_can_retry() {
-        let root = temporary();
-        let archive = root.join("download.zip");
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            axum::serve(listener, axum::Router::new().route("/runtime", axum::routing::get(|| async { "abc" }))).await.unwrap();
-        });
-        let url = format!("http://{address}/runtime");
-        assert!(fetch_archive(&url, &archive, 4, |_| {}).await.unwrap_err().contains("不完整"));
-        assert!(fetch_archive(&url, &archive, 2, |_| {}).await.unwrap_err().contains("超过"));
-        fetch_archive(&url, &archive, 3, |_| {}).await.unwrap();
-        assert_eq!(fs::read(&archive).unwrap(), b"abc");
-        server.abort();
         fs::remove_dir_all(root).unwrap();
     }
 }

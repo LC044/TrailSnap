@@ -1,7 +1,7 @@
-//! Legacy installer updates retain Tauri's signature verification and installer.
-use crate::update_network;
+//! Legacy installer updates use the shared downloader and Tauri's installer.
+use crate::{update_network, update_transaction};
 use serde::Serialize;
-use std::time::Duration;
+use std::{fs, time::Duration};
 use tauri::{ipc::Channel, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
@@ -72,46 +72,62 @@ pub async fn desktop_installed_update_download(
     let state = app.state::<InstalledUpdateState>();
     let mut pending = state.0.try_lock().map_err(|_| "更新操作正在进行")?;
     pending.bytes = None;
-    let mut update = pending.update.clone().ok_or("请先检查更新")?;
-    let sources =
-        update_network::rank(update_network::candidates(update.download_url.as_str())).await;
-    let mut last_error = String::new();
-    for round in 0..update_network::ROUNDS {
-        update_network::backoff(round).await;
-        for url in &sources {
-            update.download_url = url.parse().map_err(|e| format!("{e}"))?;
-            update.timeout = Some(Duration::from_secs(60 * 60));
-            let _ = on_event.send(DownloadEvent::Started {
-                content_length: None,
-            });
-            let mut started = false;
-            let result = update
-                .download(
-                    |chunk_length, content_length| {
-                        if !started {
-                            let _ = on_event.send(DownloadEvent::Started { content_length });
-                            started = true;
-                        }
-                        let _ = on_event.send(DownloadEvent::Progress { chunk_length });
-                    },
-                    || {},
-                )
-                .await;
-            match result {
-                Ok(bytes) => {
-                    // Update::download returns bytes only after minisign verification.
-                    pending.update = Some(update);
-                    pending.bytes = Some(bytes);
-                    let _ = on_event.send(DownloadEvent::Finished);
-                    return Ok(());
-                }
-                Err(error) => last_error = error.to_string(),
-            }
-        }
+    let update = pending.update.as_ref().ok_or("请先检查更新")?;
+    let key = app
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|config| config["pubkey"].as_str())
+        .ok_or("更新公钥缺失")?;
+    let sources = update_network::candidates(update.download_url.as_str());
+    // The installer API consumes bytes. Keep the partial download on disk until verified.
+    let temp = app
+        .path()
+        .temp_dir()
+        .map_err(|e| e.to_string())?
+        .join(format!("trailsnap-installer-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&temp).map_err(|e| e.to_string())?;
+    let archive = temp.join("installer");
+    let mut previous = 0;
+    let result = update_network::Download {
+        destination: &archive,
+        size: None,
+        timeout: Duration::from_secs(60 * 60),
     }
-    Err(format!(
-        "所有更新源下载失败（已自动重试），请稍后重试：{last_error}"
-    ))
+    .verified(
+        sources,
+        update_network::DownloadMode::desktop(),
+        |downloaded, content_length| {
+            if downloaded == 0 {
+                let _ = on_event.send(DownloadEvent::Started { content_length });
+            } else if downloaded > previous {
+                let _ = on_event.send(DownloadEvent::Progress {
+                    chunk_length: (downloaded - previous) as usize,
+                });
+            }
+            previous = downloaded;
+        },
+        |archive| {
+            let signature = update.signature.clone();
+            let key = key.to_owned();
+            async move {
+                tauri::async_runtime::spawn_blocking(move || {
+                    let bytes = fs::read(archive).map_err(|e| e.to_string())?;
+                    update_transaction::verify_installer(&bytes, &signature, &key)?;
+                    Ok(bytes)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+            }
+        },
+    )
+    .await;
+    let _ = fs::remove_file(archive);
+    let _ = fs::remove_dir(temp);
+    pending.bytes = Some(result?);
+    let _ = on_event.send(DownloadEvent::Finished);
+    Ok(())
 }
 
 #[tauri::command]

@@ -1,7 +1,6 @@
 use crate::{data_directory::DataDirectory, portable, update_network, update_transaction};
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, sync::Mutex};
+use std::{fs, sync::Mutex, time::Duration};
 use tauri::{Emitter, Manager};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -166,75 +165,35 @@ async fn download_and_stage_from(
         .join(format!("download-{}.zip", uuid::Uuid::new_v4()));
     let result = async {
         fs::create_dir_all(download.parent().ok_or("下载目录无效")?).map_err(|e| e.to_string())?;
-        let sources = update_network::rank(sources).await;
-        let mut last_error = String::new();
-        for round in 0..update_network::ROUNDS {
-            update_network::backoff(round).await;
-            for url in &sources {
-                info.downloaded = 0;
+        let signature = info.signature.clone();
+        let hash = info.sha256.clone();
+        update_network::Download {
+            destination: &download,
+            size: Some(info.size),
+            timeout: Duration::from_secs(60 * 60),
+        }
+        .verified(
+            sources,
+            update_network::DownloadMode::desktop(),
+            |downloaded, _| {
+                info.downloaded = downloaded;
                 info.error = None;
                 on_progress(info);
-                let attempt = async {
-                    let client = update_network::client()?;
-                    let response = tokio::time::timeout(
-                        update_network::IDLE_TIMEOUT,
-                        client
-                            .get(url)
-                            .timeout(std::time::Duration::from_secs(60 * 60))
-                            .send(),
-                    )
-                    .await
-                    .map_err(|_| "更新下载响应超时")?
-                    .map_err(|e| e.to_string())?
-                    .error_for_status()
-                    .map_err(|e| e.to_string())?;
-                    let mut stream = response.bytes_stream();
-                    let mut output = fs::OpenOptions::new()
-                        .create_new(true)
-                        .write(true)
-                        .open(&download)
-                        .map_err(|e| e.to_string())?;
-                    while let Some(chunk) =
-                        tokio::time::timeout(update_network::IDLE_TIMEOUT, stream.next())
-                            .await
-                            .map_err(|_| "更新下载超时")?
-                    {
-                        let chunk = chunk.map_err(|e| e.to_string())?;
-                        info.downloaded += chunk.len() as u64;
-                        if info.downloaded > info.size {
-                            return Err("下载体积超出签名清单".into());
-                        }
-                        output.write_all(&chunk).map_err(|e| e.to_string())?;
-                        on_progress(info);
-                    }
-                    output.sync_all().map_err(|e| e.to_string())?;
-                    drop(output);
-                    if info.downloaded != info.size {
-                        return Err("更新包下载不完整".into());
-                    }
-                    let archive = download.clone();
-                    let signature = info.signature.clone();
-                    let hash = info.sha256.clone();
+            },
+            |archive| {
+                let signature = signature.clone();
+                let hash = hash.clone();
+                async move {
                     tauri::async_runtime::spawn_blocking(move || {
                         update_transaction::verify_archive(&archive, &signature, &hash)
                     })
                     .await
-                    .map_err(|e| e.to_string())??;
-                    Ok::<(), String>(())
+                    .map_err(|e| e.to_string())?
                 }
-                .await;
-                match attempt {
-                    Ok(()) => return stage_download(instance_root, &download, info).await,
-                    Err(error) => {
-                        last_error = error;
-                        let _ = fs::remove_file(&download);
-                    }
-                }
-            }
-        }
-        Err(format!(
-            "所有更新源下载失败（已自动重试），请稍后重试：{last_error}"
-        ))
+            },
+        )
+        .await?;
+        stage_download(instance_root, &download, info).await
     }
     .await;
     let _ = fs::remove_file(download);
@@ -310,31 +269,44 @@ mod tests {
             Arc,
         };
         let count = Arc::new(AtomicUsize::new(0));
+        let resumes = Arc::new(AtomicUsize::new(0));
         let app = Router::new()
             .route(
                 "/offline",
-                get(|| async { (StatusCode::BAD_GATEWAY, "offline") }),
+                get(|headers: axum::http::HeaderMap| async move {
+                    if !headers.contains_key("range") {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                    (StatusCode::BAD_GATEWAY, "offline")
+                }),
             )
             .route(
                 "/archive",
                 get({
                     let count = count.clone();
+                    let resumes = resumes.clone();
                     move |headers: axum::http::HeaderMap| {
                         let count = count.clone();
+                        let resumes = resumes.clone();
                         async move {
-                            if headers.contains_key("range") {
+                            let range = headers.get("range").and_then(|value| value.to_str().ok());
+                            if range == Some("bytes=0-0") {
                                 return Response::builder()
                                     .status(206)
                                     .body(Body::from("t"))
                                     .unwrap();
                             }
-                            // First actual transfer ends early; second reaches signature verification.
-                            let body = if count.fetch_add(1, Ordering::SeqCst) == 0 {
-                                "te"
-                            } else {
-                                "test"
-                            };
-                            Response::new(Body::from(body))
+                            // The retry completes the archive but cannot bypass signature verification.
+                            count.fetch_add(1, Ordering::SeqCst);
+                            if range == Some("bytes=2-") {
+                                resumes.fetch_add(1, Ordering::SeqCst);
+                                return Response::builder()
+                                    .status(206)
+                                    .header("Content-Range", "bytes 2-3/4")
+                                    .body(Body::from("st"))
+                                    .unwrap();
+                            }
+                            Response::new(Body::from("te"))
                         }
                     }
                 }),
@@ -367,11 +339,12 @@ mod tests {
         server.abort();
         assert!(error.contains("已自动重试"));
         assert_eq!(count.load(Ordering::SeqCst), update_network::ROUNDS);
+        assert_eq!(resumes.load(Ordering::SeqCst), 1);
         assert!(progress
             .lock()
             .unwrap()
             .windows(2)
-            .any(|p| p[0] == 2 && p[1] == 0));
+            .any(|p| p == [2, 4]));
         assert_eq!(info.phase, "error");
         assert!(info.error.is_some());
         assert!(!update_transaction::journal_path(&root).exists());
