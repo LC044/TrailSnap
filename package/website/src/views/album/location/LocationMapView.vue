@@ -18,6 +18,17 @@
         @select-region="handleSelectRegion"
         @update-top-regions="(regions) => topRegions = regions"
       />
+      <div class="map-top-veil" aria-hidden="true"></div>
+      <div class="map-atlas-title">
+        <p class="la-eyebrow">
+          <span class="la-eyebrow-dot" aria-hidden="true"></span>
+          <span>足迹地图</span>
+          <span class="la-eyebrow-rule" aria-hidden="true"></span>
+          <span>{{ selectedYear ? `${selectedYear} 年` : '全部时间' }}</span>
+        </p>
+        <h2 class="la-display map-atlas-name">{{ mapTitle }}</h2>
+        <p class="map-atlas-sub">{{ mapSubtitle }}</p>
+      </div>
       <div class="map-legend map-glass">
         <span><i class="legend-dot legend-dot--place" />已到达</span>
         <span><i class="legend-dot legend-dot--unvisited" />未到达</span>
@@ -195,6 +206,13 @@ const regionTimeSpan = ref<string>('')
 const regionFirstVisit = ref<string>('')
 const regionTags = ref<{name: string, count: number}[]>([])
 const globalStats = computed(() => props.statistics ?? null)
+const mapTitle = computed(() => selectedRegion.value || '足迹地图')
+const mapSubtitle = computed(() => {
+  if (selectedRegion.value) return `${selectedRegionCount.value.toLocaleString()} 张影像 · 最近的足迹`
+  const stats = props.statistics
+  if (!stats) return '正在整理你的地图'
+  return `${stats.province_count || 0} 个省份 · ${stats.city_count || 0} 座城市 · ${stats.district_count || 0} 个区县`
+})
 const topRegions = ref<{name: string, count: number}[]>([])
 const recentTrips = ref<TimelineNode[]>([])
 const rawTimelineData = ref<any[]>([])
@@ -263,7 +281,10 @@ const fetchGlobalData = async () => {
 
     // 获取时间轴数据
     if (timelineData && timelineData.timeline) {
-      rawTimelineData.value = timelineData.timeline
+      const locationYears = new Set(props.availableYears || [])
+      rawTimelineData.value = locationYears.size
+        ? timelineData.timeline.filter((item: any) => locationYears.has(Number(item.year)))
+        : timelineData.timeline
     }
   } catch (e) {
     console.error('Failed to fetch global stats', e)
@@ -517,22 +538,77 @@ onUnmounted(() => {
 .map-radar span:nth-child(2) { animation-delay: 1.2s; }
 .map-radar span:nth-child(3) { animation-delay: 2.4s; }
 
+.map-top-veil {
+  position: absolute;
+  z-index: 5;
+  inset: 0 0 auto;
+  height: 128px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    var(--location-bg) 0%,
+    color-mix(in srgb, var(--location-bg) 72%, transparent) 28%,
+    transparent 100%
+  );
+}
+
+.map-atlas-title {
+  position: absolute;
+  z-index: 11;
+  top: 86px;
+  left: 28px;
+  max-width: min(420px, 52vw);
+  padding: 14px 17px 15px;
+  border: 1px solid rgba(var(--theme-rgb), 0.18);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--location-panel) 88%, transparent);
+  box-shadow: 0 12px 30px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(16px) saturate(130%);
+  backdrop-filter: blur(16px) saturate(130%);
+  pointer-events: none;
+}
+.map-atlas-title .la-eyebrow { color: var(--location-muted); }
+.map-atlas-title .la-eyebrow-rule { background: rgba(var(--theme-rgb), 0.28); }
+.map-atlas-name {
+  margin: 6px 0 0;
+  color: var(--location-text);
+  font-size: clamp(30px, 3.2vw, 44px);
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.map-atlas-sub {
+  margin: 8px 0 0;
+  color: var(--location-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
 .location-insight-panel {
   border-color: rgba(var(--theme-rgb), 0.2);
   color: var(--location-text);
-  background: var(--location-panel);
+  background:
+    radial-gradient(120% 46% at 100% 0%, rgba(var(--theme-rgb), 0.12), transparent 62%),
+    var(--location-panel);
   box-shadow: -18px 0 46px var(--location-shadow), inset 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .sheet-mobile-header {
-  min-height: 36px;
+  min-height: 42px;
   align-items: center;
   justify-content: space-between;
   padding: 0 16px 8px;
 }
-.sheet-mobile-header h2 { color: var(--location-text); font-size: 16px; font-weight: 700; }
-.sheet-mobile-header span { display: inline-flex; align-items: center; gap: 6px; color: var(--location-muted); font-size: 11px; }
-.sheet-mobile-header i { width: 7px; height: 7px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.35); }
+.sheet-mobile-header h2 {
+  color: var(--location-text);
+  font-family: var(--lm-font-display, "Songti SC", "SimSun", Georgia, serif);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.sheet-mobile-header span { display: inline-flex; align-items: center; gap: 6px; color: var(--location-muted); font-size: 10px; letter-spacing: 0.06em; }
+.sheet-mobile-header i { width: 6px; height: 6px; border-radius: 999px; background: var(--theme-primary); box-shadow: 0 0 8px rgba(var(--theme-rgb), 0.45); }
 
 .location-insight-panel :deep(.text-gray-900),
 .location-insight-panel :deep(.text-gray-800),
@@ -553,13 +629,24 @@ onUnmounted(() => {
   box-shadow: 0 8px 24px var(--location-shadow);
   backdrop-filter: blur(14px);
 }
-.map-legend { position: absolute; z-index: 12; bottom: 116px; left: 28px; display: flex; gap: 14px; padding: 8px 11px; border-radius: 10px; color: var(--location-muted); font-size: 10px; }
+.map-legend {
+  position: absolute;
+  z-index: 12;
+  bottom: 138px;
+  left: 28px;
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: var(--location-muted);
+  font-size: 10px;
+}
 .map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .legend-dot { width: 7px; height: 7px; border-radius: 999px; box-shadow: 0 0 8px currentColor; }
-.legend-dot--place { color: #35b7ff; background: #35b7ff; }
-.legend-dot--unvisited { color: #b9dfff; background: #b9dfff; }
+.legend-dot--place { color: var(--theme-primary); background: var(--theme-primary); }
+.legend-dot--unvisited { color: #b9dfff; background: #b9dfff; opacity: 0.8; }
 .legend-route-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 1px 3px; border: 0; border-radius: 4px; background: transparent; color: var(--location-muted); font-size: 10px; cursor: pointer; white-space: nowrap; }
-.legend-route-toggle:hover, .legend-route-toggle:focus-visible, .legend-route-toggle--active { color: #ffb454; }
+.legend-route-toggle:hover, .legend-route-toggle:focus-visible, .legend-route-toggle--active { color: var(--theme-primary); }
 .legend-route-toggle:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
 
 .journey-timeline {
@@ -571,26 +658,31 @@ onUnmounted(() => {
   align-items: center;
   gap: 18px;
   min-height: 96px;
-  padding: 15px 18px;
-  border: 1px solid rgba(var(--theme-rgb), 0.2);
-  border-radius: 16px;
-  background: var(--location-panel);
-  box-shadow: 0 16px 50px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(18px);
+  padding: 14px 18px;
+  border: 1px solid rgba(var(--theme-rgb), 0.22);
+  border-radius: 22px;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.5), transparent 42%),
+    var(--location-panel);
+  box-shadow: 0 20px 54px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.5);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  backdrop-filter: blur(18px) saturate(130%);
 }
 
 .timeline-play {
   display: grid;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgba(var(--theme-rgb), 0.5);
+  border: 1px solid rgba(var(--theme-rgb), 0.42);
   border-radius: 999px;
-  color: var(--theme-primary);
-  background: rgba(var(--theme-rgb), 0.12);
-  box-shadow: 0 0 24px rgba(var(--theme-rgb), 0.18);
+  color: #fff;
+  background: var(--ts-journal-action);
+  box-shadow: 0 8px 22px -10px rgba(var(--theme-rgb), 0.75), inset 0 1px rgba(255, 255, 255, 0.18);
+  transition: transform 180ms var(--lm-ease), filter 180ms ease;
 }
+.timeline-play:hover { filter: brightness(1.06); transform: translateY(-1px); }
 
 .timeline-rail {
   position: relative;
@@ -607,7 +699,7 @@ onUnmounted(() => {
   right: 1%;
   top: 12px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(var(--theme-rgb), 0.65), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--theme-rgb), 0.55), transparent);
 }
 
 .timeline-node {
@@ -623,11 +715,12 @@ onUnmounted(() => {
 
 .timeline-dot {
   z-index: 1;
-  width: calc(7px + 5px * var(--node-weight));
-  height: calc(7px + 5px * var(--node-weight));
+  width: calc(6px + 5px * var(--node-weight));
+  height: calc(6px + 5px * var(--node-weight));
   border: 2px solid var(--location-bg);
   border-radius: 999px;
-  background: #5b7894;
+  background: rgba(var(--theme-rgb), 0.35);
+  transition: background-color 180ms ease, box-shadow 180ms ease, transform 180ms var(--lm-ease);
 }
 
 .timeline-node:hover,
@@ -635,18 +728,26 @@ onUnmounted(() => {
 .timeline-node:hover .timeline-dot,
 .timeline-node.active .timeline-dot {
   background: var(--theme-primary);
+  transform: scale(1.08);
   box-shadow: 0 0 0 4px rgba(var(--theme-rgb), 0.14), 0 0 16px rgba(var(--theme-rgb), 0.75);
 }
 
-.timeline-label { font-size: 10px; }
+.timeline-label {
+  font-family: var(--lm-font-display, "Songti SC", "SimSun", Georgia, serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
 .timeline-summary {
   display: flex;
   gap: 14px;
   color: var(--location-muted);
-  font-size: 11px;
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
 }
-.timeline-summary span:first-child { display: flex; align-items: center; gap: 5px; color: var(--location-text); }
-.timeline-summary button { color: var(--theme-primary); }
+.timeline-summary span:first-child { display: flex; align-items: center; gap: 5px; color: var(--location-text); font-weight: 600; }
+.timeline-summary button { color: var(--ts-journal-accent-text); font-weight: 600; }
 
 @keyframes radar-wave {
   0% { inset: 50%; opacity: 0.9; }
@@ -657,6 +758,8 @@ onUnmounted(() => {
   .map-radar span { animation: none; opacity: 0.2; inset: 15%; }
 }
 @media (max-width: 767px) {
+  .map-atlas-title { display: none; }
+  .map-top-veil { height: 84px; }
   .location-insight-panel.sheet-collapsed .sheet-scroll { display: none; }
   .location-insight-panel.sheet-half :deep(.overview-extra),
   .location-insight-panel.sheet-half :deep(.overview-metrics) { display: none; }

@@ -4,9 +4,12 @@
     <div>
       <div class="flex items-center gap-2 mb-1">
         <BackButton v-if="scope === 'province'" label="返回全国" @click="emit('drill-up')" />
-        <h2 class="text-xl font-bold text-gray-800 dark:text-white">
-          {{ scope === 'nation' ? '全国照片拼图' : activeProvince }}
-        </h2>
+        <div class="min-w-0">
+          <p class="la-eyebrow"><span class="la-eyebrow-dot" aria-hidden="true"></span>位置图鉴 · ATLAS PUZZLE</p>
+          <h2 class="la-title mt-1 truncate">
+            {{ scope === 'nation' ? '全国照片拼图' : activeProvince }}
+          </h2>
+        </div>
       </div>
       <p class="text-xs text-gray-500 dark:text-gray-400">
         {{
@@ -17,22 +20,22 @@
       </p>
     </div>
 
-    <!-- 统计卡片 -->
-    <div class="grid grid-cols-2 gap-3">
-      <div class="bg-primary-50 dark:bg-primary-900/20 p-3 rounded-xl border border-primary-100 dark:border-primary-800/30">
-        <div class="text-xs text-primary-600 dark:text-primary-400 mb-1">拼图格子</div>
-        <div class="text-2xl font-bold text-primary-700 dark:text-primary-300">{{ cellCount }}</div>
+    <!-- 统计 -->
+    <div class="puzzle-stats grid grid-cols-2">
+      <div class="puzzle-stat">
+        <div class="la-stat-label">拼图格子</div>
+        <div class="la-stat-value">{{ cellCount.toLocaleString() }}</div>
       </div>
-      <div class="bg-primary-50 dark:bg-primary-900/20 p-3 rounded-xl border border-primary-100 dark:border-primary-800/30">
-        <div class="text-xs text-primary-600 dark:text-primary-400 mb-1">使用照片</div>
-        <div class="text-2xl font-bold text-primary-700 dark:text-primary-300">{{ usedPhotoCount }}</div>
+      <div class="puzzle-stat">
+        <div class="la-stat-label">使用照片</div>
+        <div class="la-stat-value">{{ usedPhotoCount.toLocaleString() }}</div>
       </div>
     </div>
 
     <!-- 选片策略 -->
     <div>
-      <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
-        <Sparkles class="w-4 h-4 text-primary-500" /> 选片策略
+      <h3 class="la-panel-kicker mb-2 flex items-center gap-1.5">
+        <Sparkles class="w-3.5 h-3.5 text-primary-500" /> 选片策略
       </h3>
       <el-select
         :model-value="config.strategy"
@@ -58,8 +61,8 @@
     <!-- 数量 -->
     <div>
       <div class="flex items-center justify-between mb-1">
-        <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">拼图精细度</h3>
-        <span class="text-xs font-medium text-primary-600 dark:text-primary-400">
+        <h3 class="la-panel-kicker">拼图精细度</h3>
+        <span class="text-xs font-medium text-primary-600 dark:text-primary-400 tabular-nums">
           {{ config.targetCount }}
         </span>
       </div>
@@ -85,7 +88,7 @@
       <label
         class="flex items-center justify-between cursor-pointer group"
       >
-        <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">显示区域名称</span>
+        <span class="la-panel-kicker">显示区域名称</span>
         <el-switch
           :model-value="config.showLabel"
           @update:model-value="(v: string | number | boolean) => update('showLabel', Boolean(v))"
@@ -105,8 +108,8 @@
 
     <!-- Top 省份快捷入口（仅全国图） -->
     <div v-if="scope === 'nation' && topRegions.length">
-      <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-1.5">
-        <Trophy class="w-4 h-4 text-yellow-500" /> 照片最多的省份
+      <h3 class="la-panel-kicker mb-3 flex items-center gap-1.5">
+        <Trophy class="w-3.5 h-3.5 text-primary-500" /> 照片最多的省份
       </h3>
       <div class="space-y-2">
         <button
@@ -116,16 +119,9 @@
           @click="emit('drill-down', item.name)"
         >
           <span
-            class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-            :class="
-              index === 0
-                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500'
-                : index === 1
-                  ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                  : 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400'
-            "
+            class="puzzle-rank shrink-0"
           >
-            {{ index + 1 }}
+            {{ String(index + 1).padStart(2, '0') }}
           </span>
           <span class="flex-1 text-sm text-gray-700 dark:text-gray-200 truncate">{{ item.name }}</span>
           <span class="text-xs text-gray-500 dark:text-gray-400 shrink-0">{{ item.count }} 张</span>
@@ -183,3 +179,26 @@ const update = <K extends keyof PuzzleConfig>(key: K, value: PuzzleConfig[K]) =>
   emit('update-config', { [key]: value } as Partial<PuzzleConfig>)
 }
 </script>
+
+<style scoped>
+.puzzle-stats {
+  border-top: 1px solid var(--ts-color-border);
+  border-bottom: 1px solid var(--ts-color-border);
+}
+.puzzle-stat {
+  min-width: 0;
+  padding: 12px 10px 13px;
+  border-left: 1px solid var(--ts-color-border);
+}
+.puzzle-stat:first-child { border-left: 0; padding-left: 0; }
+.puzzle-stat:last-child { padding-right: 0; }
+.puzzle-rank {
+  width: 22px;
+  color: var(--ts-color-text-tertiary);
+  font-family: var(--lm-font-display);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+</style>

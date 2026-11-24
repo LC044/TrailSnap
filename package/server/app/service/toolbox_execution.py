@@ -64,8 +64,9 @@ def start_plan(db, user, plan_id, request):
                 if not remaining:
                     raise ValueError("重复组必须至少保留一项")
         for row in candidates:
-            row.status = "ready" if row.id in selected else "skipped"
-            row.reason = "" if row.id in selected else "未勾选，保留"
+            if row.id in selected:
+                row.status = "ready"
+                row.reason = ""
     items = db.query(ToolboxPlanItem).filter(ToolboxPlanItem.plan_id == plan.id, ToolboxPlanItem.status == "ready").all()
     if not items:
         raise ValueError("没有需要执行的变更")
@@ -376,6 +377,8 @@ async def execute_plan(worker, task, db):
         ToolboxPlanItem.plan_id == plan.id).group_by(ToolboxPlanItem.status).all())
     plan.status = "stopped" if plan.stop_requested else (
         ("partial" if counts.get("success") else "failed") if counts.get("failed") else "completed")
+    if plan.kind == "cleanup" and counts.get("candidate") and not plan.stop_requested:
+        plan.status = "preview"
     plan.finished_at = datetime.utcnow()
     plan.summary = {**plan.summary, "ready": 0, "running": 0, **counts}
     db.commit()

@@ -795,6 +795,7 @@ import { useRouter } from 'vue-router'
 
 
 interface Props {
+  initialDetails?: boolean
     visible: boolean
     image: AlbumImage | null
     images?: AlbumImage[]
@@ -1461,6 +1462,7 @@ watch(() => props.visible, async (newVal) => {
         pushLightboxHistoryEntry()
         resetZoom()
         controlsVisible.value = true
+        if (props.initialDetails) openDetails()
 
         if (props.image.file_type === 'live_photo') {
              isPlayingLive.value = !showFaces.value

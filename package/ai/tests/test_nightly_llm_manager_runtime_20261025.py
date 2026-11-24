@@ -240,6 +240,29 @@ def test_llama_executable_prefers_the_desktop_runtime(monkeypatch, tmp_path):
     assert llm_mod.LLMProcessManager._llama_server_executable() == str(server)
 
 
+def test_llama_executable_waits_for_the_current_managed_build(monkeypatch, tmp_path):
+    executable = "llama-server.exe" if llm_mod.sys.platform == "win32" else "llama-server"
+    runtime = tmp_path / "runtime" / "llama.cpp"
+    old = runtime / "b9354" / executable
+    old.parent.mkdir(parents=True)
+    old.touch()
+    current = runtime / "b12651" / "bin" / executable
+    monkeypatch.delenv("LLAMA_SERVER_PATH", raising=False)
+    monkeypatch.setenv("TS_DESKTOP_ROOT", str(tmp_path))
+    monkeypatch.setenv("TS_LLAMA_RUNTIME_DIR", str(current.parent.parent))
+    monkeypatch.setattr(llm_mod.shutil, "which", lambda _: str(old))
+
+    with pytest.raises(RuntimeError, match="本地推理环境尚未准备完成"):
+        llm_mod.LLMProcessManager._llama_server_executable()
+
+    current.parent.mkdir(parents=True)
+    current.touch()
+    assert llm_mod.LLMProcessManager._llama_server_executable() == str(current)
+
+    monkeypatch.setenv("LLAMA_SERVER_PATH", str(old))
+    assert llm_mod.LLMProcessManager._llama_server_executable() == str(old)
+
+
 def test_llama_executable_falls_back_to_path(monkeypatch):
     """Without a desktop runtime the executable is taken from PATH."""
     monkeypatch.setattr(llm_mod.shutil, "which", lambda _name: "/usr/bin/llama-server")

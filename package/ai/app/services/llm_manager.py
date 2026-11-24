@@ -8,6 +8,8 @@ import shutil
 from pathlib import Path
 import httpx
 from app.config import settings
+from app.services.desktop_device import record_session
+from app.services.onnx_providers import desktop_npu_device
 from app.services.unified_model_manager import ai_model_manager
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,7 @@ class LLMProcessManager:
         self.port = settings.LLM_SERVER_PORT
         self.lock = asyncio.Lock()
         self.active_model_id = None
+        self.startup_attempts = 60
 
     def _get_resolved_model_path(self) -> tuple[str, str]:
         # If user explicitly set LLM_MODEL_PATH in env, use it directly
@@ -115,7 +118,27 @@ class LLMProcessManager:
             # Docker resolves llama-server from PATH; desktop passes the path
             # detected or installed by the Tauri shell.
             threads = _llama_thread_count()
-            command = [self._llama_server_executable(), "-m", resolved_path, "--threads", str(threads)]
+            selected_npu = desktop_npu_device()
+            # The V4.6 projector/decoder combination resets the NPU on the
+            # current OpenVINO llama.cpp runtime. Keep multimodal GGUF on its
+            # existing runtime while allowing the text-only model on NPU.
+            if selected_npu and mmproj:
+                record_session(resolved_path, [], "当前 llama.cpp OpenVINO NPU 运行时未通过 MiniCPM-V 多模态推理验证")
+            npu = selected_npu if not mmproj else None
+            if npu:
+                env = dict(os.environ, GGML_OPENVINO_DEVICE=npu, GGML_OPENVINO_ENABLE_FALLBACK="0")
+                try:
+                    executable = self._llama_npu_executable()
+                    device = await asyncio.to_thread(self._llama_npu_backend, executable, env)
+                except Exception as error:
+                    record_session(resolved_path, [], str(error))
+                    raise
+                accelerator_args = ["--device", device, "--gpu-layers", "all", "--parallel", "1"]
+            else:
+                executable = self._llama_server_executable()
+                env = None
+                accelerator_args = []
+            command = [executable, "-m", resolved_path, "--threads", str(threads), *accelerator_args]
             logger.info("llama.cpp CPU threads: %s (available: %s)", threads, _available_cpu_count())
             if mmproj:
                 command.extend(["--mmproj", mmproj])
@@ -133,10 +156,46 @@ class LLMProcessManager:
                 stdin=subprocess.DEVNULL,
                 stdout=sys.stdout,
                 stderr=sys.stderr,
+                **({"env": env} if env is not None else {}),
                 **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
             )
             self.active_model_id = selected_model_id
-            await self._wait_for_ready()
+            self.startup_attempts = 240 if npu else 60
+            try:
+                await self._wait_for_ready()
+            except Exception as error:
+                if npu:
+                    record_session(resolved_path, [], str(error))
+                raise
+            if npu:
+                record_session(resolved_path, ["llama.cpp OpenVINO NPU"])
+
+    @classmethod
+    def _llama_npu_executable(cls):
+        managed_dir = os.getenv("TS_LLAMA_RUNTIME_DIR")
+        if managed_dir:
+            folder = Path(managed_dir)
+            executable = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+            alternate = folder.with_name(f"{folder.name}-openvino-npu")
+            for candidate in alternate.rglob(executable):
+                if candidate.is_file():
+                    return str(candidate)
+        return cls._llama_server_executable()
+
+    @staticmethod
+    def _llama_npu_backend(executable, env):
+        result = subprocess.run(
+            [executable, "--list-devices"],
+            env=env, capture_output=True, timeout=25, text=True, encoding="utf-8", errors="replace",
+            **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
+        )
+        if result.returncode == 0:
+            selected = f"GGML_OPENVINO_DEVICE={env['GGML_OPENVINO_DEVICE']} (selected)"
+            for line in (result.stdout + "\n" + result.stderr).splitlines():
+                name, _, description = line.strip().partition(":")
+                if name.startswith("OPENVINO") and description.strip().startswith(selected):
+                    return name
+        raise RuntimeError("llama.cpp 未检测到所选 NPU，请安装支持 OpenVINO NPU 的运行时")
 
     @staticmethod
     def _llama_server_executable():
@@ -145,16 +204,22 @@ class LLMProcessManager:
             return configured
         # The desktop may prepare its private runtime after this AI process has
         # started. Resolve it on each inference instead of requiring a restart.
+        managed_dir = os.getenv("TS_LLAMA_RUNTIME_DIR")
         desktop_root = os.getenv("TS_DESKTOP_ROOT")
-        if desktop_root:
-            runtime = Path(desktop_root) / "runtime" / "llama.cpp"
+        if managed_dir or desktop_root:
             executable = "llama-server.exe" if sys.platform == "win32" else "llama-server"
-            for candidate in sorted(runtime.glob(f"*/**/{executable}"), reverse=True):
+            if managed_dir:
+                candidates = sorted(Path(managed_dir).rglob(executable))
+            else:
+                runtime = Path(desktop_root) / "runtime" / "llama.cpp"
+                candidates = sorted(runtime.glob(f"*/**/{executable}"), reverse=True)
+            for candidate in candidates:
                 if candidate.is_file():
                     return str(candidate)
-        discovered = shutil.which("llama-server")
-        if discovered:
-            return discovered
+        if not managed_dir:
+            discovered = shutil.which("llama-server")
+            if discovered:
+                return discovered
         raise RuntimeError(
             "本地推理环境尚未准备完成，请重试；独立部署请按照 AI 服务文档安装 llama.cpp。"
         )
@@ -162,7 +227,7 @@ class LLMProcessManager:
     async def _wait_for_ready(self):
         # Wait until the server is responsive
         async with httpx.AsyncClient() as client:
-            for i in range(60): # Wait up to 60 seconds for the model to load into memory
+            for _ in range(self.startup_attempts):
                 try:
                     resp = await client.get(f"http://127.0.0.1:{self.port}/v1/models")
                     if resp.status_code == 200:
@@ -170,6 +235,10 @@ class LLMProcessManager:
                         return
                 except httpx.RequestError:
                     pass
+                if self.startup_attempts > 60 and self.process is not None and self.process.poll() is not None:
+                    exit_code = self.process.returncode
+                    await self._stop_unlocked()
+                    raise RuntimeError(f"llama.cpp NPU 进程在模型启动时退出，退出码 {exit_code}")
                 await asyncio.sleep(1)
                 
         logger.error("Timeout waiting for llama.cpp server to start.")

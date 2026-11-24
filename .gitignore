@@ -50,3 +50,4 @@ output/
 .uv-cache
 # Retired feedback checkout: preserve local databases, uploads and credentials.
 /package/requirement-platform/
+marketing/

@@ -6,18 +6,20 @@
       <div class="map-vignette pointer-events-none absolute inset-0" aria-hidden="true" />
 
       <div v-if="timelineNodes.length" class="journey-hud hidden md:block">
-        <div class="hud-kicker">{{ selectedJourney ? 'SELECTED JOURNEY' : 'ALL JOURNEYS' }}</div>
-        <div class="trajectory-title mt-1 text-base font-semibold">{{ selectedJourney?.title || '全部足迹总览' }}</div>
-        <div class="trajectory-muted mt-1 flex items-center gap-3 text-xs">
+        <div class="la-eyebrow"><span class="la-eyebrow-dot" aria-hidden="true"></span>{{ selectedJourney ? 'SELECTED JOURNEY' : '位置图鉴 · ALL JOURNEYS' }}</div>
+        <div class="la-title trajectory-hud-title mt-1">{{ selectedJourney?.title || '全部足迹总览' }}</div>
+        <div class="trajectory-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <template v-if="selectedJourney">
             <span>{{ selectedJourney.dateRange }}</span>
             <span>{{ selectedJourney.nodes.length }} 个停留点</span>
             <span>{{ selectedJourney.photoCount }} 张照片</span>
+            <span>{{ journeyDistanceKm.toLocaleString() }} 公里</span>
             <span class="route-mode-badge">{{ routeModeLabel }}</span>
           </template>
           <template v-else>
             <span>{{ journeyGroups.length }} 段旅程</span>
             <span>{{ timelineNodes.length }} 个地点节点</span>
+            <span>{{ journeyDistanceKm.toLocaleString() }} 公里</span>
             <span>点击左侧旅程查看 GPS 细节</span>
           </template>
         </div>
@@ -33,11 +35,22 @@
           <Play v-else class="h-4 w-4 fill-current" />
         </button>
         <div class="min-w-0 flex-1">
-          <div class="flex items-center justify-between text-[11px] text-[#8ca4ba]">
+          <div class="trajectory-muted flex items-center justify-between text-[11px]">
             <span>{{ playbackLabel }}</span>
-            <span>{{ playbackIndex }}/{{ selectedJourney.nodes.length }}</span>
+            <span class="tabular-nums">{{ playbackIndex }}/{{ selectedJourney.nodes.length }}</span>
           </div>
-          <div class="playback-track mt-2">
+          <div
+            class="playback-track mt-2"
+            role="slider"
+            tabindex="0"
+            :aria-valuenow="playbackProgress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-label="拖动或点击跳转回放进度"
+            @click="seekPlayback"
+            @keydown.left.prevent="nudgePlayback(-1)"
+            @keydown.right.prevent="nudgePlayback(1)"
+          >
             <div :style="{ width: `${playbackProgress}%` }" />
           </div>
         </div>
@@ -66,17 +79,34 @@
         <span class="h-1 w-11 rounded-full bg-[#587087]" />
       </button>
 
+      <button
+        v-if="isMobile"
+        class="journey-mobile-summary"
+        :aria-expanded="showMobileList"
+        aria-label="展开或收起旅行轨迹列表"
+        @click="toggleMobileList"
+      >
+        <span class="min-w-0 text-left">
+          <span class="la-eyebrow"><span class="la-eyebrow-dot" aria-hidden="true"></span>旅行轨迹</span>
+          <span class="journey-mobile-meta">{{ journeyGroups.length }} 段旅程 · {{ timelineNodes.length }} 个节点</span>
+        </span>
+        <span class="journey-mobile-action">
+          {{ showMobileList ? '收起' : '展开' }}
+          <ChevronDown :class="{ 'rotate-180': showMobileList }" />
+        </span>
+      </button>
+
       <div v-show="!isMobile || showMobileList" class="custom-scrollbar flex-1 overflow-y-auto px-4 pb-5 pt-1 md:px-5 md:pt-24">
         <header class="mb-5">
-          <div class="panel-kicker">JOURNEY ARCHIVE</div>
-          <div class="mt-1 flex items-end justify-between">
+          <div class="la-eyebrow"><span class="la-eyebrow-dot" aria-hidden="true"></span>位置图鉴 · JOURNEY ARCHIVE</div>
+          <div class="mt-1 flex items-end justify-between gap-3">
             <div>
-              <h2 class="trajectory-title text-lg font-bold">旅行轨迹</h2>
+              <h2 class="la-title trajectory-title">旅行轨迹</h2>
               <p class="trajectory-muted mt-1 text-xs">按连续旅行时间自动整理</p>
             </div>
             <div class="text-right">
-              <div class="text-lg font-semibold text-primary-500">{{ journeyGroups.length }}</div>
-              <div class="text-[10px] text-[#617b93]">段旅程</div>
+              <div class="trajectory-journey-count">{{ journeyGroups.length }}</div>
+              <div class="la-stat-label">段旅程</div>
             </div>
           </div>
         </header>
@@ -111,8 +141,8 @@
               @click="selectJourney(journey.key)"
             >
               <div class="flex items-start gap-3">
-                <img v-if="journey.coverId" :src="getThumbnailUrl(journey.coverId)" class="h-14 w-14 shrink-0 rounded-xl object-cover" loading="lazy" />
-                <div v-else class="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-[#132b42] text-primary-500"><Route class="h-5 w-5" /></div>
+                <img v-if="journey.coverId" :src="getThumbnailUrl(journey.coverId)" class="h-16 w-16 shrink-0 rounded-2xl object-cover" loading="lazy" />
+                <div v-else class="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-[#132b42] text-primary-500"><Route class="h-5 w-5" /></div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-start justify-between gap-2">
                     <h3 class="trajectory-title truncate text-sm font-semibold">{{ journey.title }}</h3>
@@ -314,6 +344,39 @@ const gpsExtentKm = computed(() => {
   )
 })
 
+const journeyDistanceKm = computed(() => {
+  const nodes = selectedJourney.value?.nodes || overviewNodes.value
+  let total = 0
+  for (let index = 1; index < nodes.length; index += 1) {
+    if (nodes[index].lat == null || nodes[index].lng == null) continue
+    if (nodes[index - 1].lat == null || nodes[index - 1].lng == null) continue
+    total += haversineKm(nodes[index - 1], nodes[index])
+  }
+  return Math.round(total)
+})
+
+const seekPlayback = (event: MouseEvent) => {
+  if (!selectedJourney.value) return
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(rect.width, 1)))
+  if (playbackTimer) clearInterval(playbackTimer)
+  playbackTimer = null
+  isPlaying.value = false
+  playbackIndex.value = Math.round(ratio * selectedJourney.value.nodes.length)
+  drawTrajectory()
+}
+
+const nudgePlayback = (delta: number) => {
+  if (!selectedJourney.value || isPlaying.value) return
+  playbackIndex.value = Math.min(
+    selectedJourney.value.nodes.length,
+    Math.max(0, playbackIndex.value + delta),
+  )
+  drawTrajectory()
+}
+
 const isLocalJourney = computed(() => Boolean(selectedJourney.value) && (
   selectedJourney.value!.locations.length === 1 || gpsExtentKm.value <= 80
 ))
@@ -326,7 +389,14 @@ const routeModeLabel = computed(() => {
 
 const visibleJourneyNodes = computed(() => {
   const nodes = selectedJourney.value?.nodes || []
-  return isPlaying.value ? nodes.slice(0, playbackIndex.value) : nodes
+  // While paused the scrubber is a preview: show the route up to the chosen
+  // stop. At 0/total it behaves like the full route.
+  if (!isPlaying.value) {
+    return playbackIndex.value > 0 && playbackIndex.value < nodes.length
+      ? nodes.slice(0, playbackIndex.value)
+      : nodes
+  }
+  return nodes.slice(0, playbackIndex.value)
 })
 
 const playbackProgress = computed(() => {
@@ -499,7 +569,8 @@ const drawTrajectory = (fitViewport = false) => {
   map.value.clearOverLays()
 
   const points: any[] = []
-  const summaryNodes = selectedJourney.value ? visibleJourneyNodes.value : overviewNodes.value
+  const overview = !selectedJourney.value
+  const summaryNodes = overview ? overviewNodes.value : visibleJourneyNodes.value
   const detailedRoute = selectedJourney.value && !isPlaying.value ? gpsRouteNodes.value : []
   const routeNodes = detailedRoute.length > 1 ? detailedRoute : summaryNodes
   const representativeGpsNodes = (() => {
@@ -511,10 +582,18 @@ const drawTrajectory = (fitViewport = false) => {
     }
     return [...new Set(result)]
   })()
-  // 区域内旅行显示有限数量的 GPS 照片节点；跨区域旅行保留行政区停留点。
-  const markerNodes = isLocalJourney.value && representativeGpsNodes.length
-    ? representativeGpsNodes
-    : summaryNodes
+  // The overview is a field of photo-dots. Rendering 300+ labelled stops at
+  // once turned the map into unreadable confetti; labels and the route line
+  // belong to the selected journey.
+  const overviewMarkers = (() => {
+    if (!overview) return summaryNodes
+    if (summaryNodes.length <= 140) return summaryNodes
+    const step = Math.ceil(summaryNodes.length / 140)
+    return summaryNodes.filter((_, index) => index % step === 0 || index === summaryNodes.length - 1)
+  })()
+  const markerNodes = overview
+    ? overviewMarkers
+    : (isLocalJourney.value && representativeGpsNodes.length ? representativeGpsNodes : summaryNodes)
 
   markerNodes.forEach((node, index) => {
      const lat = (node as any).lat;
@@ -523,9 +602,11 @@ const drawTrajectory = (fitViewport = false) => {
 
      const point = new T.LngLat(lng, lat);
      const photoCount = (node as any).photoCount || 1;
-     const size = isLocalJourney.value
-       ? Math.min(42, Math.max(28, 24 + Math.sqrt(photoCount) * 2.2))
-       : Math.min(52, Math.max(34, 27 + Math.sqrt(photoCount) * 2.8));
+     const size = overview
+       ? Math.min(26, Math.max(18, 15 + Math.sqrt(photoCount) * 1.4))
+       : isLocalJourney.value
+         ? Math.min(42, Math.max(28, 24 + Math.sqrt(photoCount) * 2.2))
+         : Math.min(52, Math.max(34, 27 + Math.sqrt(photoCount) * 2.8));
      const coverId = (node as any).coverId;
      const coverUrl = coverId ? getThumbnailUrl(coverId) : '';
      
@@ -536,14 +617,25 @@ const drawTrajectory = (fitViewport = false) => {
      const markerRing = isDarkMode.value ? 'rgba(7,17,31,.72)' : 'rgba(255,255,255,.88)'
      const markerLabel = isDarkMode.value ? 'rgba(7,17,31,.92)' : 'rgba(255,255,255,.94)'
      const markerText = isDarkMode.value ? '#dcecff' : '#0f172a'
-     const html = `
+     // On a regional route several stops can sit within a few pixels. Only the
+     // endpoints (and the current playback stop) keep the caption so the map
+     // does not turn into stacked labels.
+     const showCaption = !overview && (index === 0 || index === markerNodes.length - 1)
+     const html = overview
+       ? `
+       <div style="position:relative;width:${size}px;height:${size}px;cursor:pointer;filter:drop-shadow(0 5px 10px rgba(0,0,0,.28));">
+         <div style="width:100%;height:100%;overflow:hidden;border:2px solid ${markerSurface};border-radius:999px;background:${markerSurface};box-shadow:0 0 0 2px ${accent}66;">
+           <img src="${coverUrl}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'" />
+         </div>
+       </div>`
+       : `
        <div style="position:relative;width:${size}px;height:${size}px;cursor:pointer;filter:drop-shadow(0 8px 14px rgba(0,0,0,.38));">
          <div style="width:100%;height:100%;overflow:hidden;border:2px solid ${accent};border-radius:999px;background:${markerSurface};box-shadow:0 0 0 4px ${markerRing},0 0 22px ${accent}55;">
            <img src="${coverUrl}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'" />
          </div>
          <div style="position:absolute;left:-5px;top:-6px;display:grid;width:20px;height:20px;place-items:center;border:2px solid ${markerSurface};border-radius:999px;background:${accent};color:white;font:700 10px/1 sans-serif;">${index + 1}</div>
          <div style="position:absolute;right:-7px;bottom:-5px;min-width:22px;height:18px;padding:0 5px;border:1px solid ${accent}88;border-radius:9px;background:${markerLabel};color:${markerText};font:600 10px/16px sans-serif;text-align:center;">${photoCount}</div>
-         <div style="position:absolute;left:50%;bottom:-29px;transform:translateX(-50%);padding:3px 7px;border:1px solid ${accent}55;border-radius:7px;background:${markerLabel};color:${markerText};font:600 10px/1.2 sans-serif;white-space:nowrap;">${dateLabel} · ${node.locationName}</div>
+         ${showCaption ? `<div style="position:absolute;left:50%;bottom:-29px;transform:translateX(-50%);padding:3px 7px;border:1px solid ${accent}55;border-radius:7px;background:${markerLabel};color:${markerText};font:600 10px/1.2 sans-serif;white-space:nowrap;">${dateLabel} · ${node.locationName}</div>` : ''}
        </div>`;
 
      const label = new T.Label({
@@ -562,12 +654,12 @@ const drawTrajectory = (fitViewport = false) => {
   })
 
   routeNodes.forEach((node) => {
-    if (node.lat == null || node.lng == null) return
+    if (overview || node.lat == null || node.lng == null) return
     points.push(new T.LngLat(node.lng, node.lat))
   })
 
   // 一次只绘制选中旅程，避免跨年份节点被强行连接成蜘蛛网。
-  if (points.length > 1) {
+  if (!overview && points.length > 1) {
      const line = new T.Polyline(points, {
        color: currentTheme.value.primary,
        weight: 4,
@@ -578,6 +670,11 @@ const drawTrajectory = (fitViewport = false) => {
      if (fitViewport) map.value.setViewport(points)
   } else if (points.length === 1) {
      if (fitViewport) map.value.centerAndZoom(points[0], 10)
+  } else if (overview && fitViewport) {
+     const fitPoints = markerNodes
+       .filter(node => node.lat != null && node.lng != null)
+       .map(node => new T.LngLat(node.lng!, node.lat!))
+     if (fitPoints.length) map.value.setViewport(fitPoints)
   }
 }
 
@@ -670,17 +767,32 @@ onUnmounted(() => {
   box-shadow: inset 0 0 90px rgba(0, 0, 0, 0.25);
 }
 .journey-panel {
-  z-index: 1000;
+  z-index: 40;
   border-color: rgba(var(--theme-rgb), 0.18);
-  background: var(--location-panel);
+  background:
+    radial-gradient(120% 46% at 0% 0%, rgba(var(--theme-rgb), 0.1), transparent 60%),
+    var(--location-panel);
   box-shadow: 16px 0 48px var(--location-shadow), inset -1px 0 rgba(255, 255, 255, 0.08);
 }
 .panel-kicker,
 .hud-kicker {
-  color: var(--theme-primary);
+  color: var(--location-muted);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.16em;
+}
+.trajectory-hud-title {
+  font-size: clamp(22px, 2.2vw, 30px);
+  color: var(--location-text);
+}
+.trajectory-journey-count {
+  color: var(--ts-journal-accent-text);
+  font-family: var(--lm-font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
 }
 .journey-card {
   overflow: hidden;
@@ -767,19 +879,23 @@ onUnmounted(() => {
   z-index: 1000;
   left: 24px;
   top: 84px;
-  min-width: 280px;
-  padding: 14px 16px;
+  min-width: 300px;
+  max-width: min(440px, 46vw);
+  padding: 15px 18px;
   border: 1px solid rgba(var(--theme-rgb), 0.2);
-  border-radius: 14px;
-  background: var(--location-panel);
-  box-shadow: 0 14px 42px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgba(var(--theme-rgb), 0.12), transparent 62%),
+    var(--location-panel);
+  box-shadow: 0 18px 48px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
 }
 .route-mode-badge {
   padding: 2px 7px;
   border: 1px solid rgba(var(--theme-rgb), 0.28);
   border-radius: 999px;
-  color: var(--theme-primary);
+  color: var(--ts-journal-accent-text);
   background: rgba(var(--theme-rgb), 0.09);
 }
 .playback-dock {
@@ -791,40 +907,57 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 13px;
-  max-width: 620px;
-  min-height: 66px;
-  padding: 12px 14px;
+  max-width: 640px;
+  min-height: 68px;
+  padding: 12px 15px;
   border: 1px solid rgba(var(--theme-rgb), 0.24);
-  border-radius: 15px;
+  border-radius: 20px;
   background: var(--location-panel);
-  box-shadow: 0 16px 48px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 48px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 .play-button {
   display: grid;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid rgba(var(--theme-rgb), 0.5);
   border-radius: 999px;
-  color: var(--theme-primary);
-  background: rgba(var(--theme-rgb), 0.12);
-  box-shadow: 0 0 20px rgba(var(--theme-rgb), 0.16);
+  color: #fff;
+  background: var(--ts-journal-action);
+  box-shadow: 0 8px 20px -10px rgba(var(--theme-rgb), 0.8), inset 0 1px rgba(255, 255, 255, 0.16);
+  transition: filter 180ms ease, transform 180ms var(--lm-ease);
 }
+.play-button:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .playback-track {
-  height: 3px;
-  overflow: hidden;
+  position: relative;
+  height: 16px;
+  cursor: pointer;
+  outline: none;
+}
+.playback-track::before {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  left: 0;
+  height: 4px;
   border-radius: 999px;
   background: rgba(var(--theme-rgb), 0.14);
+  content: '';
 }
-.playback-track div {
-  height: 100%;
-  border-radius: inherit;
+.playback-track > div {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  height: 4px;
+  border-radius: 999px;
   background: var(--theme-primary);
   box-shadow: 0 0 12px rgba(var(--theme-rgb), 0.7);
   transition: width 300ms ease;
 }
+.playback-track:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: 3px; border-radius: 8px; }
 .speed-button {
   min-width: 38px;
   padding: 5px 7px;
@@ -864,8 +997,42 @@ onUnmounted(() => {
 
 @media (max-width: 767px) {
   .journey-panel-mobile {
-    bottom: 0;
+    bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom));
+    max-height: min(62vh, calc(100dvh - var(--ts-tabbar-h) - 120px));
     box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.36);
+  }
+  .journey-mobile-summary {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 18px 14px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+  }
+  .journey-mobile-meta {
+    display: block;
+    margin-top: 4px;
+    color: var(--location-muted);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .journey-mobile-action {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 4px;
+    color: var(--ts-journal-accent-text);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .journey-mobile-action svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 220ms var(--lm-ease);
   }
   .playback-dock {
     left: 12px;

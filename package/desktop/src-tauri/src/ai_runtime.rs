@@ -116,6 +116,81 @@ pub async fn desktop_ai_runtime_download(app: tauri::AppHandle, backend: String)
     result
 }
 
+#[tauri::command]
+pub async fn desktop_ai_runtime_auto(app: tauri::AppHandle) -> Result<(), String> {
+    let _activity = crate::begin_activity(&app)?;
+    let state = app.state::<RuntimeState>();
+    let _lock = state.operation.try_lock().map_err(|_| "正在下载或切换 AI 运行时")?;
+    let gateway = app.state::<AIGateway>().inner().clone();
+    let root = gateway.runtime_root();
+    progress(&app, "cpu", "detecting", 0, 0, None);
+    let mut failures = Vec::new();
+    let mut failed_download = None;
+    for (backend, device) in runtime_candidates().await {
+        if failed_download == Some(backend) {
+            continue;
+        }
+        if backend != "cpu" && validate_runtime(&installed_path(&root, backend), backend).is_err() {
+            progress(&app, backend, "checking", 0, 0, None);
+            if let Err(error) = download(&app, &root, backend).await {
+                failed_download = Some(backend);
+                failures.push(format!("{backend}：{error}"));
+                continue;
+            }
+        }
+        progress(&app, backend, "switching", 0, 0, None);
+        let result = gateway.switch_runtime(Selection { backend: backend.into(), device: device.into(), error: None }).await;
+        match result {
+            Ok(()) => {
+                let fallback = (!failures.is_empty() && backend == "cpu")
+                    .then(|| format!("已使用内置 CPU（{}）", failures.join("；")));
+                progress(&app, backend, "ready", 0, 0, fallback.as_deref());
+                return Ok(());
+            }
+            Err(error) => failures.push(format!("{backend} {device}：{error}")),
+        }
+    }
+    let error = failures.join("；");
+    progress(&app, "cpu", "error", 0, 0, Some(&error));
+    Err(error)
+}
+
+async fn runtime_candidates() -> Vec<(&'static str, &'static str)> {
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    {
+        let (nvidia, devices) = tokio::join!(
+            crate::hardware::cuda_devices(),
+            crate::hardware::display_devices(),
+        );
+        let value = serde_json::from_str::<Value>(&devices).unwrap_or(Value::Null);
+        let devices = value.as_array().map(Vec::as_slice).unwrap_or_else(|| std::slice::from_ref(&value));
+        let cuda = nvidia.as_deref().is_some_and(|info| crate::hardware::cuda_compatible(info, 528, (6, 0)));
+        windows_runtime_candidates(cuda, devices)
+    }
+    #[cfg(not(all(windows, target_arch = "x86_64")))]
+    vec![("cpu", "CPU")]
+}
+
+#[cfg(any(all(windows, target_arch = "x86_64"), test))]
+fn windows_runtime_candidates(cuda: bool, devices: &[Value]) -> Vec<(&'static str, &'static str)> {
+    let mut candidates = Vec::new();
+    if cuda {
+        candidates.push(("cuda", "0"));
+    }
+    let intel = |device: &&Value| device["PNPDeviceID"].as_str().is_some_and(|id| id.contains("VEN_8086"));
+    if devices.iter().filter(intel).any(|device| device["PNPClass"] == "Display") {
+        candidates.push(("openvino", "GPU"));
+    }
+    if devices.iter().filter(intel).any(|device| {
+        let name = device["Name"].as_str().unwrap_or_default().to_ascii_lowercase();
+        device["PNPClass"] == "ComputeAccelerator" || name.contains("ai boost") || name.contains("npu")
+    }) {
+        candidates.push(("openvino", "NPU"));
+    }
+    candidates.push(("cpu", "CPU"));
+    candidates
+}
+
 async fn download(app: &tauri::AppHandle, root: &Path, backend: &str) -> Result<(), String> {
     let base = format!("https://github.com/LC044/TrailSnap/releases/download/v{VERSION}/");
     let sources = update_network::candidates(&format!("{base}ai-runtimes.json"));
@@ -256,6 +331,19 @@ pub async fn desktop_ai_runtime_select(app: tauri::AppHandle, backend: String, d
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn automatic_selection_only_offers_matching_hardware() {
+        let devices = [
+            json!({"PNPDeviceID": "PCI\\VEN_1002", "PNPClass": "Display"}),
+            json!({"PNPDeviceID": "PCI\\VEN_8086", "PNPClass": "Display"}),
+            json!({"PNPDeviceID": "PCI\\VEN_8086", "Name": "Intel(R) AI Boost"}),
+        ];
+        assert_eq!(windows_runtime_candidates(true, &devices), [
+            ("cuda", "0"), ("openvino", "GPU"), ("openvino", "NPU"), ("cpu", "CPU")
+        ]);
+        assert_eq!(windows_runtime_candidates(false, &devices[..1]), [("cpu", "CPU")]);
+    }
+
     #[test]
     fn selection_rejects_unknown_backends_and_invalid_devices() {
         assert!(validate_selection("openvino", "GPU.1").is_ok());

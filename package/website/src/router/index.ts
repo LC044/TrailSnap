@@ -2,6 +2,7 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
 import { hasConfiguredServer, isNativeApp } from '@/config/server';
 import { installNavigationFeedback } from './navigationFeedback';
+import { installPageDirection } from '@/composables/usePageDirection';
 import { HomePage, PhotosPage, AlbumList, TicketPage } from './commonPages';
 import { loginLocation, safeAuthRedirect } from './authRedirect';
 import { authService } from '@/api/auth';
@@ -174,6 +175,7 @@ const router = createRouter({
 import { useUserStore } from '@/stores/user';
 
 installNavigationFeedback(router);
+installPageDirection(router);
 
 // 可选：路由守卫 - 动态设置页面标题
 router.beforeEach(async (to, from, next) => {

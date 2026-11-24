@@ -8,7 +8,13 @@ export interface TimeBucket {
   days: number
 }
 export function statsYears(data: HeatmapItem[]): number[] {
-  return [...new Set(data.map(d => Number(d.date.slice(0, 4))))].sort((a, b) => b - a)
+  const nowYear = new Date().getFullYear()
+  return [...new Set(data.map(d => Number(d.date.slice(0, 4))))]
+    // A camera with a broken clock can write years such as 2555. Keeping them
+    // would stretch the trend axis into the far future and hide every real year
+    // behind a data-zoom window, so the report only accepts plausible dates.
+    .filter(year => Number.isFinite(year) && year >= 1900 && year <= nowYear + 1)
+    .sort((a, b) => b - a)
 }
 /** Calendar strings stay local; avoid shifting dates through UTC. */
 export function timeBuckets(data: HeatmapItem[], grain: 'year' | 'month', year: number): TimeBucket[] {

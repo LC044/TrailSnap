@@ -4382,6 +4382,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
@@ -4621,7 +4622,7 @@ dependencies = [
 
 [[package]]
 name = "trailsnap-desktop"
-version = "0.21.1"
+version = "0.21.2"
 dependencies = [
  "axum",
  "base64 0.22.1",

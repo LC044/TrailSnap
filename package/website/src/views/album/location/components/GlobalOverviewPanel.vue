@@ -15,8 +15,8 @@
       <div>
         <div class="overview-header mb-4 flex items-center justify-between">
           <div>
-            <div class="cockpit-kicker">TRAVEL INTELLIGENCE</div>
-            <h2 class="overview-title text-xl font-bold">足迹概览</h2>
+            <div class="cockpit-kicker"><span class="cockpit-dot" />位置图鉴 · MAP OVERVIEW</div>
+            <h2 class="la-title overview-title">足迹概览</h2>
           </div>
           <div class="live-indicator"><span /> 数据已同步</div>
         </div>
@@ -63,19 +63,15 @@
       </h3>
       <div v-if="topRegions.length > 0" class="space-y-3">
         <div v-for="(item, index) in topRegions" :key="item.name" class="ranking-row flex items-center gap-3 cursor-pointer group rounded-xl p-2 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" role="button" tabindex="0" @click="emit('select-region', item.name, item.count)" @keydown.enter="emit('select-region', item.name, item.count)">
-          <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" 
-               :class="index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500' : 
-                       index === 1 ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' : 
-                       index === 2 ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-500' : 
-                       'bg-gray-50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-500'">
-            {{ index + 1 }}
+          <div class="ranking-index shrink-0">
+            {{ String(index + 1).padStart(2, '0') }}
           </div>
           <div class="flex-1">
             <div class="flex justify-between text-sm mb-1">
               <span class="overview-title group-hover:text-primary-500 transition-colors">{{ item.name }}</span>
-              <span class="overview-muted">{{ item.count }} 张</span>
+              <span class="overview-muted tabular-nums">{{ item.count }} 张</span>
             </div>
-            <div class="h-1 w-full bg-[#152a40] rounded-full overflow-hidden">
+            <div class="ranking-bar-track">
               <div class="h-full rounded-full transition-all duration-1000" 
                    :style="{ 
                      width: `${(item.count / topRegions[0].count) * 100}%`,
@@ -254,11 +250,22 @@ onUnmounted(() => {
 .overview-title { color: var(--location-text); }
 .overview-muted { color: var(--location-muted); }
 .cockpit-kicker {
-  margin-bottom: 3px;
-  color: var(--theme-primary);
-  font-size: 9px;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+  color: var(--location-muted);
+  font-size: 9.5px;
+  font-weight: 650;
   letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.cockpit-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--theme-primary);
+  box-shadow: 0 0 0 4px rgba(var(--theme-rgb), 0.12);
 }
 .live-indicator {
   display: flex;
@@ -266,6 +273,7 @@ onUnmounted(() => {
   gap: 6px;
   color: var(--location-muted);
   font-size: 10px;
+  letter-spacing: 0.04em;
 }
 .live-indicator span {
   width: 6px;
@@ -278,26 +286,29 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+  margin-top: 14px;
   padding: 15px;
-  border: 1px solid rgba(var(--theme-rgb), 0.24);
-  border-radius: 16px;
-  background: linear-gradient(135deg, rgba(var(--theme-rgb), 0.11), var(--location-control));
+  border: 1px solid rgba(var(--theme-rgb), 0.22);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgba(var(--theme-rgb), 0.12), transparent 62%),
+    var(--location-control);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.035);
 }
 .progress-orbit {
   display: grid;
-  width: 78px;
-  height: 78px;
+  width: 76px;
+  height: 76px;
   flex: 0 0 auto;
   place-items: center;
   border-radius: 999px;
   background: conic-gradient(var(--theme-primary) var(--progress), rgba(var(--theme-rgb), 0.12) 0);
-  box-shadow: 0 0 28px rgba(var(--theme-rgb), 0.18);
+  box-shadow: 0 0 28px rgba(var(--theme-rgb), 0.16);
 }
 .progress-orbit__inner {
   display: flex;
-  width: 64px;
-  height: 64px;
+  width: 62px;
+  height: 62px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -305,23 +316,55 @@ onUnmounted(() => {
   border-radius: 999px;
   background: var(--location-bg);
 }
-.progress-orbit__inner strong { color: var(--location-text); font-size: 20px; line-height: 1; }
+.progress-orbit__inner strong { color: var(--location-text); font-family: var(--lm-font-display); font-size: 20px; line-height: 1; letter-spacing: -0.03em; }
 .progress-orbit__inner span { margin-top: 4px; color: var(--location-muted); font-size: 9px; }
 .progress-track { height: 4px; overflow: hidden; border-radius: 999px; background: rgba(var(--theme-rgb), 0.14); }
 .progress-track div { height: 100%; border-radius: inherit; box-shadow: 0 0 10px rgba(var(--theme-rgb), 0.6); }
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 14px;
+  border-top: 1px solid rgba(var(--theme-rgb), 0.14);
+  border-bottom: 1px solid rgba(var(--theme-rgb), 0.14);
+}
 .metric-card {
   min-width: 0;
-  padding: 11px;
-  border: 1px solid rgba(var(--theme-rgb), 0.16);
-  border-radius: 12px;
-  background: var(--location-control);
+  padding: 12px 10px 13px;
+  border: 0;
+  border-left: 1px solid rgba(var(--theme-rgb), 0.12);
+  border-radius: 0;
+  background: transparent;
 }
+.metric-card:first-child { border-left: 0; padding-left: 0; }
+.metric-card:last-child { padding-right: 0; }
 .metric-label { overflow: hidden; color: var(--location-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.metric-value { margin-top: 4px; color: var(--location-text); font-size: 22px; font-weight: 700; }
-.metric-value--small { font-size: 17px; line-height: 28px; }
-.section-heading { display: flex; align-items: center; gap: 6px; color: var(--location-text); font-size: 13px; font-weight: 600; }
+.metric-value {
+  margin-top: 5px;
+  color: var(--location-text);
+  font-family: var(--lm-font-display);
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+.metric-value--small { font-size: 24px; }
+.section-heading { display: flex; align-items: center; gap: 6px; color: var(--location-muted); font-size: 11px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; }
+.section-heading svg { color: var(--theme-primary); }
+.overview-extra { padding-top: 18px; border-top: 1px solid rgba(var(--theme-rgb), 0.12); }
+.overview-extra.pt-2 { padding-top: 18px; }
 .ranking-row { transition: background-color 180ms ease; }
 .ranking-row:hover { background: rgba(var(--theme-rgb), 0.07); }
+.ranking-index {
+  width: 22px;
+  color: var(--location-muted);
+  font-family: var(--lm-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.ranking-bar-track { height: 2px; width: 100%; overflow: hidden; border-radius: 999px; background: rgba(var(--theme-rgb), 0.12); }
 .dimension-toggle { display: flex; padding: 2px; border: 1px solid rgba(var(--theme-rgb), 0.14); border-radius: 8px; background: var(--location-bg); }
 .dimension-toggle button { padding: 3px 8px; border-radius: 6px; color: var(--location-muted); font-size: 10px; }
 .dimension-toggle button.active { color: var(--location-text); background: rgba(var(--theme-rgb), 0.18); }

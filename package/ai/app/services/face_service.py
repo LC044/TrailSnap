@@ -10,7 +10,9 @@ import cv2
 from app.config import settings
 from app.services.model_manager import model_manager
 from app.services.unified_model_manager import ai_model_manager
-from app.services.onnx_providers import get_onnx_providers
+from app.services.onnx_providers import desktop_npu_device, get_onnx_providers
+
+_FACE_DET_SIZE = (640, 640)
 
 def load_insightface_model():
     try:
@@ -24,6 +26,11 @@ def load_insightface_model():
         providers, provider_options = get_onnx_providers()
         model_path = str(Path(settings.MODEL_PATH).expanduser().resolve().parent)
         desktop = "TS_AI_BACKEND" in os.environ
+        npu = desktop_npu_device()
+        if npu:
+            # InsightFace reads shape metadata from an ORT session during
+            # construction. Replace those sessions before any model runs.
+            providers, provider_options = ["CPUExecutionProvider"], [{}]
         try:
             app = FaceAnalysis(name=model_name, root=model_path, providers=providers,
                                provider_options=provider_options)
@@ -37,8 +44,12 @@ def load_insightface_model():
             # InsightFace builds its own ORT sessions. Replace them with the
             # desktop factory for consistent fallback and per-model diagnostics.
             for model in app.models.values():
-                model.session = create_inference_session(model.model_file)
-        app.prepare(ctx_id=0, det_size=(640, 640))
+                if npu and model is app.det_model:
+                    width, height = _FACE_DET_SIZE
+                    model.session = create_inference_session(model.model_file, fixed_dimensions={2: height, 3: width})
+                else:
+                    model.session = create_inference_session(model.model_file)
+        app.prepare(ctx_id=0, det_size=_FACE_DET_SIZE)
         logging.info("InsightFace model initialized successfully.")
         return app
     except Exception as e:
@@ -141,6 +152,8 @@ class FaceRecognitionService:
         recognition = app.models.get("recognition")
         if recognition is None:
             raise ValueError("Face recognition model is missing")
+        if desktop_npu_device():
+            raise ValueError("Face recognition returned invalid features on NPU")
         if recognition.session.get_providers() == ["CPUExecutionProvider"]:
             raise ValueError("Face recognition returned invalid features on CPU")
         # Keep the shared accelerated session intact while batch threads run.

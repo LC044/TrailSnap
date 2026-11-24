@@ -1,7 +1,21 @@
 <template>
-  <div class="photo-gallery min-h-screen relative" ref="galleryEl">
+  <div class="photo-gallery min-h-screen relative" :class="{ 'ts-photo-selecting': isSelectionMode }" ref="galleryEl" @click.capture="handleGridClickCapture">
     <!-- Skeleton Loader (Initial Load) -->
     <GalleryChrome :loading="loading" :error="error" :photos="photos" @retry="$emit('retry')" />
+
+    <PhotoContextMenu
+      ref="contextMenu"
+      :selected-ids="selectable && (showActionBar || recycleBin) ? localSelectedIds : undefined"
+      :selected-count="contextSelectedCount" :is-downloading="isDownloading"
+      :allow-viewing="contextViewing" :allow-add-to-album="selectable && contextAddToAlbum"
+      :recycle-bin="recycleBin" :busy="contextBusy"
+      :delete-label="selectable && (showActionBar || recycleBin) ? (deleteLabel === '删除' ? '移到回收站' : deleteLabel) : ''"
+      @view="(photo, details) => emit('click-photo', photo, details)"
+      @download="downloadPhotos"
+      @add-to-album="(ids, preserve) => emit('add-to-album', ids, preserve)"
+      @restore="(ids, preserve) => emit('context-restore', ids, preserve)"
+      @delete="(ids, preserve) => emit(recycleBin ? 'context-delete' : deleteLabel.includes('移除') ? 'remove-from-album' : 'batch-delete', ids, preserve)"
+    />
 
     <PhotoBatchActionBar
       :visible="isSelectionMode && showActionBar" :selected-ids="localSelectedIds"
@@ -37,13 +51,14 @@
             <div
                 v-for="img in visiblePhotos"
                 :key="img.id"
+                :data-photo-id="img.id"
                 class="relative group rounded-lg overflow-hidden cursor-pointer transform transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:z-10 flex items-center justify-center aspect-square bg-gray-100 dark:bg-gray-800"
                 :class="{
                   'shrink-animation grayscale opacity-70': pendingRemoveIds.has(img.id)
                 }"
-                @click="handlePhotoClick(img)"
-                @touchstart.passive="handlePhotoTouchStart(img, $event)"
-                @contextmenu="isSelectionMode && $event.preventDefault()"
+                @click="handlePhotoClick(img, $event)"
+                @touchstart.passive="startSwipeSelect"
+                @contextmenu="contextMenu?.open($event, img, selectable || $event.button === 2)"
                 @vue:mounted="loadImage(img)"
                 @vue:unmounted="cancelImageLoad(img.id)"
             >
@@ -61,7 +76,7 @@
                     @click.stop="toggleSelection(img)"
                 >
                     <div
-                    class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
+                    class="ts-photo-selection-indicator w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
                     :class="localSelectedIds.has(img.id) ? 'bg-primary-500 border-primary-500' : 'bg-black/10 border-white/70 hover:bg-black/40'"
                     >
                     <Check v-if="localSelectedIds.has(img.id)" class="w-3.5 h-3.5 text-white" />
@@ -120,10 +135,11 @@ import { format } from 'date-fns'
 import { usePhotoStore } from '@/stores/photoStore'
 import type { AlbumImage } from '@/types/album'
 import { useSelection } from '@/composables/useSelection'
-import { useLongPress } from '@/composables/useLongPress'
+import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useWindowScroll, useScroll } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
 import PhotoBatchActionBar from './PhotoBatchActionBar.vue'
+import PhotoContextMenu from './PhotoContextMenu.vue'
 import { usePhotoBatchActions } from '@/composables/usePhotoBatchActions'
 import GalleryChrome from './GalleryChrome.vue'
 
@@ -139,6 +155,11 @@ interface Props {
   scrollContainer?: HTMLElement | null,
   showActionBar?: boolean
   selectable?: boolean
+  contextViewing?: boolean
+  contextAddToAlbum?: boolean
+  recycleBin?: boolean
+  contextBusy?: boolean
+  contextSelectedCount?: number
   relativeScroll?: boolean
 }
 
@@ -150,19 +171,22 @@ const props = withDefaults(defineProps<Props>(), {
   error: null,
   showActionBar: true,
   selectable: true,
+  contextViewing: true,
   relativeScroll: false,
 })
 
-const emit = defineEmits(['click-photo', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'batch-edit-time', 'batch-edit-location'])
+const emit = defineEmits(['click-photo', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'batch-edit-time', 'batch-edit-location', 'context-restore', 'context-delete'])
 
 // --- Selection State ---
-const { 
-  isSelectionMode, 
-  selectedIds: localSelectedIds, 
-  enterSelectionMode, 
-  exitSelectionMode, 
+const {
+  isSelectionMode,
+  selectedIds: localSelectedIds,
+  selectionAnchorId,
+  enterSelectionMode,
+  exitSelectionMode,
   toggleSelect: toggleSelectionId,
   selectAll: selectAllIds,
+  selectRange: selectRangeIds,
   isSelected
 } = useSelection()
 
@@ -190,6 +214,8 @@ const cancelImageLoad = (imageId: string) => {
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     if (resizeObserver) resizeObserver.disconnect()
+    cancelSwipeSelect()
+    if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
 })
 
 // --- Virtual Scroll & Layout ---
@@ -322,43 +348,75 @@ const formatTime = (ts: number) => format(new Date(ts), 'yyyy-MM-dd HH:mm')
 
 const toggleSelection = (photo: AlbumImage) => {
   toggleSelectionId(photo.id)
+  // 普通点击移动 Shift 范围选择的锚点
+  selectionAnchorId.value = photo.id
   if (localSelectedIds.size > 0) {
       if (!isSelectionMode.value) enterSelectionMode()
   }
 }
 
-let pressedPhoto: AlbumImage | null = null
-let suppressNextPhotoClick = false
-const { onTouchstart: startLongPress } = useLongPress({
-  onLongPress: () => {
-    if (!pressedPhoto) return
-    enterSelectionMode()
-    if (!localSelectedIds.has(pressedPhoto.id)) toggleSelectionId(pressedPhoto.id)
-    // Ignore the click synthesized on release, which would deselect the photo.
-    suppressNextPhotoClick = true
-  }
-})
-const handlePhotoTouchStart = (photo: AlbumImage, event: TouchEvent) => {
-  if (!props.selectable) return
-  suppressNextPhotoClick = false
-  if (isSelectionMode.value || event.touches.length !== 1) return
-  pressedPhoto = photo
-  startLongPress(event)
+// PC 端 Shift 点击范围选择/取消选择：整段置为与目标端相反的单一状态。
+// Shift 点击不移动锚点（与 macOS Finder 一致），普通点击才移动。
+const orderedPhotoIds = computed(() => props.photos.map(p => p.id))
+const handleRangeClick = (photo: AlbumImage) => {
+  const targetSelected = localSelectedIds.has(photo.id)
+  if (!isSelectionMode.value && !targetSelected) enterSelectionMode()
+  selectRangeIds(orderedPhotoIds.value, photo.id)
 }
 
-const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload } = usePhotoBatchActions({
+// 移动端滑选：长按进入选择模式，不松手拖动按视觉顺序整段选择/取消。
+const suppressGridClick = ref(false)
+let suppressGridClickTimer: ReturnType<typeof setTimeout> | null = null
+const suppressClickAfterGesture = () => {
+  suppressGridClick.value = true
+  if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
+  suppressGridClickTimer = setTimeout(() => {
+    suppressGridClick.value = false
+    suppressGridClickTimer = null
+  }, 350)
+}
+
+const {
+  onTouchstart: startSwipeSelect,
+  cancel: cancelSwipeSelect,
+} = useSwipeSelect({
+  canStart: () => props.selectable && containerWidth.value < 768,
+  canSweep: () => true,
+  isSelected: (id) => localSelectedIds.has(id),
+  onLongPressActivate: (photoId) => {
+    if (!props.photos.some(photo => photo.id === photoId)) return
+    enterSelectionMode()
+    toggleSelectionId(photoId)
+    selectionAnchorId.value = photoId
+    navigator.vibrate?.(10)
+  },
+  onSwipePhoto: (photoId, shouldSelect) => {
+    if (shouldSelect) localSelectedIds.add(photoId)
+    else localSelectedIds.delete(photoId)
+  },
+  onSuppressClick: suppressClickAfterGesture,
+})
+
+const handleGridClickCapture = (event: MouseEvent) => {
+  if (!suppressGridClick.value) return
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+const contextMenu = ref<InstanceType<typeof PhotoContextMenu> | null>(null)
+const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload, downloadPhotos } = usePhotoBatchActions({
   selectedIds: () => localSelectedIds,
   photos: () => props.photos,
   clearSelection: () => exitSelectionMode(),
   exitAfterDownload: false,
 })
 
-const handlePhotoClick = (photo: AlbumImage) => {
-  if (suppressNextPhotoClick) {
-    suppressNextPhotoClick = false
+const handlePhotoClick = (photo: AlbumImage, event?: MouseEvent) => {
+  if (props.selectable && event?.shiftKey) {
+    handleRangeClick(photo)
     return
   }
-  if (isSelectionMode.value) {
+  if (props.selectable && isSelectionMode.value) {
     toggleSelection(photo)
   } else {
     emit('click-photo', photo)

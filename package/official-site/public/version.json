@@ -243,5 +243,10 @@
         "version": "0.21.1",
         "update_info": "- 桌面端新增按需 AI 加速包：Windows x64 可下载 NVIDIA CUDA 或 Intel OpenVINO 运行时，识别任务用上显卡或 NPU<br>- 新增模型 Token 用量统计，照片可批量分析<br>- 全站手账风与液态玻璃界面改版，筛选面板与分类胶囊重构<br>- 官网首页、下载页与 CLI 页全新设计<br>- 修复已删除标签被重新匹配、筛选选项查询报错等问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.21.1"
+    },
+    {
+        "version": "0.21.2",
+        "update_info": "- 首页「影像手记」杂志式改版，照片墙新增虚拟瀑布流与按月分块加载<br>- 位置相册全视图图鉴化改版，新增暖色调主题与照片右键、滑动/范围选择<br>- 默认本地多模态模型升级为 MiniCPM-V 4.7，文字识别默认改用 PP-OCRv6 tiny<br>- 桌面端按硬件自动配置 CUDA / OpenVINO，NPU 可运行 MiniCPM 文本推理<br>- 修复 Chinese-CLIP 在 NPU 上批量生成向量超时、月迹页加载缓慢等问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.21.2"
     }
 ]

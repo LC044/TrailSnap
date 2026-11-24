@@ -1,13 +1,26 @@
 <template>
   <div
     class="photo-gallery min-h-screen relative"
-    :class="{ 'photo-gallery--pinching': isGridPinching }"
+    :class="{ 'photo-gallery--pinching': isGridPinching, 'ts-photo-selecting': isSelectionMode }"
     ref="galleryEl"
     @touchstart="handleGridTouchStart"
     @click.capture="handleGridClickCapture"
   >
     <!-- Skeleton Loader (Initial Load) -->
     <GalleryChrome :loading="loading" :error="error" :photos="photos" @retry="$emit('retry')" />
+
+    <PhotoContextMenu
+      ref="contextMenu" :selected-ids="localSelectedIds" :is-downloading="isDownloading"
+      allow-add-to-album :album-context="!!removeLabel && store?.currentContext?.type === 'album'"
+      :remove-label="removeLabel"
+      :delete-label="deleteLabel === '删除' ? '移到回收站' : deleteLabel"
+      @view="(photo, details) => emit('click-photo', photo, details)"
+      @download="downloadPhotos"
+      @add-to-album="(ids, preserve) => emit('add-to-album', ids, preserve)"
+      @set-cover="ids => emit('set-album-cover', ids)"
+      @remove="(ids, preserve) => emit('remove-association', ids, preserve)"
+      @delete="(ids, preserve) => emit('batch-delete', ids, preserve)"
+    />
 
     <PhotoBatchActionBar
       :visible="isSelectionMode && showActionBar" :selected-ids="localSelectedIds"
@@ -65,44 +78,47 @@
                 :data-day-key="day.key"
             >
                 <template v-if="visibleDayRanges.has(day.key)">
-                    <!-- Day Header -->
+                    <!-- Day Header：杂志式日期标尺 -->
                     <div
                       v-if="layoutMode !== 'moments' && shouldShowDateHeader(day, dayIdx)"
                       data-testid="photo-date-header"
                       :data-date-mode="mobileDateHeaderMode"
-                      class="flex items-center mb-0 sticky top-[calc(var(--photo-page-header-height,80px)_+_8px)] z-20 transition-opacity duration-300 pointer-events-none"
+                      class="lm-day-head sticky top-[calc(var(--photo-page-header-height,80px)_+_6px)] z-20 pointer-events-none"
                       :class="dateHeaderContainerClass"
                     >
                         <div
-                          v-glass-refraction.rim
-                          class="ts-liquid-glass ts-photo-date flex items-center font-semibold pointer-events-auto"
-                          :class="dateHeaderContentClass"
+                          v-glass-refraction.rim="!isSelectionMode"
+                          class="lm-day-date ts-liquid-glass ts-photo-date pointer-events-auto"
+                          :class="[dateHeaderContentClass, { 'is-selectable': mobileDateHeaderMode === 'day' && isSelectionMode }]"
                           @click="mobileDateHeaderMode === 'day' && isSelectionMode && toggleDaySelection(day)"
                         >
-                             <span v-if="day.year === 0">时间未知</span>
+                             <span v-if="day.year === 0" class="lm-day-unknown">时间未知</span>
                              <template v-else-if="mobileDateHeaderMode === 'day'">
-                             <div
-                                v-if="isSelectionMode"
-                                data-testid="photo-date-checkbox"
-                                class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200"
-                                :class="isDaySelected(day) ? 'bg-primary-500 border-primary-500' : 'border-gray-300 dark:border-gray-600 group-hover:border-primary-400'"
-                             >
-                                <Check v-if="isDaySelected(day)" class="w-3 h-3 text-white" />
-                             </div>
-                             <span class="">
-                                {{ day.year }}-{{ String(day.month).padStart(2, '0') }}-{{ String(day.day).padStart(2, '0') }}
-                             </span>
-                            <CalendarDays class="w-4 h-4 text-primary-500" />
+                               <div
+                                  v-if="isSelectionMode"
+                                  data-testid="photo-date-checkbox"
+                                  class="lm-day-check"
+                                  :class="isDaySelected(day) ? 'is-checked' : ''"
+                                  aria-hidden="true"
+                               >
+                                  <Check v-if="isDaySelected(day)" class="h-3 w-3 text-white" />
+                               </div>
+                               <span class="lm-day-num lm-num">{{ String(day.day).padStart(2, '0') }}</span>
+                               <span class="lm-day-copy">
+                                 <span class="lm-day-month">{{ day.year }} 年 {{ day.month }} 月<template v-if="weekdayText(day)"> · {{ weekdayText(day) }}</template></span>
+                                 <span class="lm-day-sub">{{ day.count }} 帧<template v-if="dayPlace(day)"> · {{ dayPlace(day) }}</template></span>
+                               </span>
                              </template>
-                             <span v-else-if="mobileDateHeaderMode === 'month'">
-                               {{ day.year }}年{{ String(day.month).padStart(2, '0') }}月
+                             <span v-else-if="mobileDateHeaderMode === 'month'" class="lm-day-month lm-num">
+                               {{ day.year }} 年 {{ String(day.month).padStart(2, '0') }} 月
                              </span>
-                             <span v-else>{{ day.year }}年</span>
+                             <span v-else class="lm-day-month lm-num">{{ day.year }} 年</span>
                              <el-popover v-if="isYearStart(day) && chapterLinks[String(day.year)]?.length" placement="bottom" :width="230" trigger="click">
-                               <template #reference><button class="pointer-events-auto rounded-md px-2 py-1 text-xs text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/30" @click.stop>查看这一阶段</button></template>
-                               <RouterLink v-for="chapter in chapterLinks[String(day.year)]" :key="chapter.id" :to="`/chapters/${chapter.id}`" class="block rounded p-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">{{ chapter.title }}</RouterLink>
+                               <template #reference><button class="lm-day-chapter pointer-events-auto" @click.stop>这一阶段</button></template>
+                               <RouterLink v-for="chapter in chapterLinks[String(day.year)]" :key="chapter.id" :to="`/chapters/${chapter.id}`" class="lm-day-chapter-link">{{ chapter.title }}</RouterLink>
                              </el-popover>
                         </div>
+                        <span class="lm-day-rule" aria-hidden="true"></span>
                     </div>
 
                     <!-- Moments Layout Block -->
@@ -232,15 +248,15 @@
                                              'flex justify-start': (expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1
                                          }"
                                          :style="(expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1 ? singlePhotoBoxStyle(img) : {}"
-                                         @click="handlePhotoClick(img)"
-                                         @contextmenu.prevent
+                                         @click="handlePhotoClick(img, $event)"
+                                         @contextmenu="openContextMenu(img, $event)"
                                          @vue:mounted="loadImage(img)"
                                          @vue:unmounted="cancelImageLoad(img.id)"
                                      >
                                          <img
                                               :src="loadedImages[img.id] || placeholderSrc"
                                               class="w-full h-full transition-opacity duration-300"
-                                              :class="(expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1 ? 'object-contain object-left' : 'object-cover'"
+                                              :class="[(expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1 ? 'object-contain object-left' : 'object-cover', loadedImages[img.id] ? 'is-developed' : '']"
                                               :alt="img.filename"
                                           />
                                           
@@ -263,7 +279,7 @@
                                                @click.stop="toggleSelection(img)"
                                            >
                                                <div
-                                               class="w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
+                                               class="ts-photo-selection-indicator w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
                                                :class="localSelectedIds.has(img.id) ? 'bg-primary-500 border-primary-500' : 'bg-black/10 border-white/70 hover:bg-black/40'"
                                                >
                                                <Check v-if="localSelectedIds.has(img.id)" class="w-3 h-3 text-white" />
@@ -318,7 +334,7 @@
                         data-testid="photo-grid"
                         :class="layoutMode === 'waterfall' ? 'flex flex-wrap' : 'grid w-full'" 
                         :style="layoutMode === 'waterfall' ? { gap: gap + 'px' } : {
-                            gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
+                            gridTemplateColumns: `repeat(${dayColumns(day)}, minmax(0, 1fr))`,
                             gap: gap + 'px'
                         }"
                     >
@@ -333,7 +349,7 @@
                                 v-for="img in getPhotos(day.key).slice(getRange(day.key).start, getRange(day.key).end)"
                                 :key="img.id"
                                 :data-photo-id="img.id"
-                                class="relative group overflow-hidden cursor-pointer transform transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:z-10 flex items-center justify-center"
+                                class="lm-photo relative group overflow-hidden cursor-pointer flex items-center justify-center"
                                 :class="{
                                   'rounded-lg': !useSquareMobileThumbnails,
                                   'rounded-none': useSquareMobileThumbnails,
@@ -347,26 +363,27 @@
                                     width: (img.width && img.height ? (img.width / img.height * rowHeight) : (rowHeight * 1.5)) + 'px',
                                     minWidth: '50px',maxWidth: '400px'
                                 } : {}"
-                                @click="handlePhotoClick(img)"
-                                @contextmenu.prevent
+                                @click="handlePhotoClick(img, $event)"
+                                @contextmenu="openContextMenu(img, $event)"
                                 @vue:mounted="loadImage(img)"
                                 @vue:unmounted="cancelImageLoad(img.id)"
                             >
                                 <img
                                     :src="loadedImages[img.id] || placeholderSrc"
-                                    class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                    class="lm-photo-img w-full h-full object-cover"
+                                    :class="loadedImages[img.id] ? 'is-developed' : ''"
                                     :alt="img.filename"
                                 />
                                 
                                 <!-- Selection Checkbox (Top Left) -->
                                 <div
-                                    class="absolute top-2 left-2 z-30 transition-opacity duration-200 cursor-pointer"
+                                    class="lm-photo-check absolute top-2 left-2 z-30 cursor-pointer"
                                     :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto'"
                                     @click.stop="toggleSelection(img)"
                                 >
                                     <div
-                                    class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
-                                    :class="localSelectedIds.has(img.id) ? 'bg-primary-500 border-primary-500' : 'bg-black/10 border-white/70 hover:bg-black/40'"
+                                    class="lm-photo-check-dot ts-photo-selection-indicator"
+                                    :class="localSelectedIds.has(img.id) ? 'is-checked' : ''"
                                     >
                                     <Check v-if="localSelectedIds.has(img.id)" class="w-3.5 h-3.5 text-white" />
                                     </div>
@@ -378,20 +395,17 @@
                                     class="absolute inset-0 bg-black/10 z-10 pointer-events-none"
                                 ></div>
                                 <!-- Video Indicator (List View) -->
-                                <span v-if="img.panorama_projection" class="absolute top-2 left-10 z-10 rounded bg-black/70 px-2 py-1 text-xs text-white pointer-events-none">360°</span>
-                                <div v-if="img.file_type === 'video'" class="flex mb-1 absolute top-1 right-2 justify-center pointer-events-none z-10 items-center">
-                                  <div class="text-white text-sm">
-                                    {{ img.duration}}
-                                  </div>
-                                  <PlayCircle class="w-4 h-4 text-white drop-shadow-md opacity-90" />
+                                <span v-if="img.panorama_projection" class="lm-photo-badge absolute top-2 left-10 z-10">360°</span>
+                                <div v-if="img.file_type === 'video'" class="lm-photo-badge absolute top-2 right-2 z-10">
+                                  <span class="text-[11px]">{{ img.duration }}</span>
+                                  <PlayCircle class="w-3.5 h-3.5" />
                                 </div>
-                                <div v-else-if="img.file_type === 'live_photo'" class="flex mb-1 absolute top-2 right-2 justify-center pointer-events-none z-10 items-center">
+                                <div v-else-if="img.file_type === 'live_photo'" class="absolute top-2 right-2 z-10 pointer-events-none">
                                     <span class="icon-[tabler--live-photo] w-4 h-4 text-white drop-shadow-md opacity-90"></span>
                                 </div>
-                                <!-- Info Overlay -->
-                                <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 flex justify-between items-end">
-                                    <p class="text-white text-xs font-medium truncate flex items-center gap-1">
-                                      <MapPin v-if="img.filename" class="w-3 h-3 text-white/80" />
+                                <!-- Info Overlay：指针停留时浮现的一条说明 -->
+                                <div class="lm-photo-info absolute inset-x-0 bottom-0 z-20">
+                                    <p class="lm-photo-name">
                                       {{ img.filename || formatTime(img.timestamp) }}
                                     </p>
                                     <slot name="overlay-actions" :photo="img"></slot>
@@ -407,7 +421,7 @@
                                 class="aspect-[3/2] bg-gray-50 dark:bg-gray-900/50 rounded-lg animate-pulse"
                             ></div>
                          </template>
-                         
+
                          <!-- Bottom Spacer -->
                         <div v-if="getRange(day.key).bottomH > 0" 
                              :style="{ gridColumn: '1 / -1', height: getRange(day.key).bottomH + 'px' }">
@@ -440,6 +454,7 @@ import {
 import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, Loader2, MoreHorizontal, Sparkles, Pencil, RotateCcw, Brain, ChevronDown } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import { timelineParts } from '@/utils/photoTimeline'
+import { aspectOf, flyPhotoIntoViewer } from '@/utils/photoFlight'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useUserStore } from '@/stores/user'
@@ -448,9 +463,11 @@ import type { TimelineStats, AlbumImage } from '@/types/album'
 import { useVirtualLayout, type MonthBlock, type DayBlock } from '@/composables/useVirtualLayout'
 import { getMomentPhotos as selectMomentPhotos, getMomentSinglePhotoSize } from '@/utils/momentLayout'
 import { useSelection } from '@/composables/useSelection'
-import { useWindowScroll, useScroll, useDebounceFn } from '@vueuse/core'
+import { useSwipeSelect } from '@/composables/useSwipeSelect'
+import { useScroll } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
 import PhotoBatchActionBar from './PhotoBatchActionBar.vue'
+import PhotoContextMenu from './PhotoContextMenu.vue'
 import { usePhotoBatchActions } from '@/composables/usePhotoBatchActions'
 import GalleryChrome from './GalleryChrome.vue'
 import { chapterApi } from '@/api/chapter'
@@ -516,14 +533,16 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'remove-association', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-time', 'batch-edit-location', 'generate-caption', 'save-caption', 'clear-caption', 'visible-months-change'])
 
-    // --- Selection State ---
-const { 
-  isSelectionMode, 
-  selectedIds: localSelectedIds, 
-  enterSelectionMode, 
-  exitSelectionMode, 
+// --- Selection State ---
+const {
+  isSelectionMode,
+  selectedIds: localSelectedIds,
+  selectionAnchorId,
+  enterSelectionMode,
+  exitSelectionMode,
   toggleSelect: toggleSelectionId,
   selectAll: selectAllIds,
+  selectRange: selectRangeIds,
   isSelected
 } = useSelection()
 
@@ -561,8 +580,9 @@ watch(() => props.photos, photos => {
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     if (resizeObserver) resizeObserver.disconnect()
+    if (scrollFrame) cancelAnimationFrame(scrollFrame)
     stopGridPinch()
-    clearLongPress()
+    cancelSwipeSelect()
     if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
 })
 // --- End Image Loading Logic ---
@@ -599,11 +619,12 @@ const handleResize = () => {
   updateVisibleBlocks()
 }
 
-watch(scrollContainerRef, (container) => {
+watch(scrollContainerRef, (container, _, onCleanup) => {
   if (container && container !== window) {
     viewportHeight.value = (container as HTMLElement).clientHeight
     const ro = new ResizeObserver(handleResize)
     ro.observe(container as HTMLElement)
+    onCleanup(() => ro.disconnect())
   } else {
     viewportHeight.value = window.innerHeight
   }
@@ -671,8 +692,6 @@ const mobileGridColumns = ref<number | null>(
 )
 const isGridPinching = ref(false)
 const suppressGridClick = ref(false)
-const LONG_PRESS_DELAY = 450
-const LONG_PRESS_MOVE_TOLERANCE = 10
 let pinchStartDistance = 0
 let pinchStartColumns = 3
 let pinchAnchorId = ''
@@ -682,27 +701,6 @@ let pinchAnchorIndex = 0
 let pinchAnchorCenterY = 0
 let pinchFrame = 0
 let suppressGridClickTimer: ReturnType<typeof setTimeout> | null = null
-let longPressTimer: ReturnType<typeof setTimeout> | null = null
-let longPressPhotoId = ''
-let longPressStartX = 0
-let longPressStartY = 0
-let longPressActivated = false
-
-const clearLongPress = () => {
-  if (longPressTimer) clearTimeout(longPressTimer)
-  longPressTimer = null
-  longPressPhotoId = ''
-  longPressActivated = false
-  window.removeEventListener('touchmove', handleLongPressMove)
-  window.removeEventListener('touchend', finishLongPressGesture)
-  window.removeEventListener('touchcancel', finishLongPressGesture)
-}
-
-function finishLongPressGesture() {
-  const shouldSuppressClick = longPressActivated
-  clearLongPress()
-  if (shouldSuppressClick) suppressClickAfterGesture()
-}
 
 const suppressClickAfterGesture = () => {
   suppressGridClick.value = true
@@ -713,44 +711,31 @@ const suppressClickAfterGesture = () => {
   }, 350)
 }
 
-function handleLongPressMove(event: TouchEvent) {
-  if (longPressActivated) return
-  if (event.touches.length !== 1) {
-    clearLongPress()
-    return
-  }
-  const touch = event.touches[0]
-  if (
-    Math.abs(touch.clientX - longPressStartX) > LONG_PRESS_MOVE_TOLERANCE
-    || Math.abs(touch.clientY - longPressStartY) > LONG_PRESS_MOVE_TOLERANCE
-  ) clearLongPress()
+// 移动端滑选：长按进入选择模式（沿用原语义），不松手继续拖动即按视觉顺序
+// 整段选择/取消；选择模式内再次长按已选中照片拖动则整段取消。
+const applySwipeSelection = (photoId: string, shouldSelect: boolean) => {
+  if (shouldSelect) localSelectedIds.add(photoId)
+  else localSelectedIds.delete(photoId)
+  if (localSelectedIds.size > 0 && !isSelectionMode.value) enterSelectionMode()
 }
 
-const startPhotoLongPress = (event: TouchEvent) => {
-  if (containerWidth.value >= 768 || isSelectionMode.value || event.touches.length !== 1) return
-  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-photo-id]')
-  const photoId = target?.dataset.photoId
-  if (!photoId) return
-
-  const touch = event.touches[0]
-  clearLongPress()
-  longPressPhotoId = photoId
-  longPressActivated = false
-  longPressStartX = touch.clientX
-  longPressStartY = touch.clientY
-  longPressTimer = setTimeout(() => {
-    const photo = props.photos.find(item => item.id === longPressPhotoId)
-    if (!photo) return clearLongPress()
-    longPressTimer = null
-    longPressActivated = true
+const {
+  onTouchstart: startSwipeSelect,
+  cancel: cancelSwipeSelect,
+} = useSwipeSelect({
+  // 仅移动端（<768px）启用；PhotoSelector 弹窗内单选场景只保留长按，不滑选。
+  canStart: () => containerWidth.value < 768,
+  canSweep: () => !props.singleSelect,
+  isSelected: (id) => localSelectedIds.has(id),
+  onLongPressActivate: (photoId) => {
+    const photo = props.photos.find(item => item.id === photoId)
+    if (!photo) return
     toggleSelection(photo)
     navigator.vibrate?.(10)
-    window.removeEventListener('touchmove', handleLongPressMove)
-  }, LONG_PRESS_DELAY)
-  window.addEventListener('touchmove', handleLongPressMove, { passive: true })
-  window.addEventListener('touchend', finishLongPressGesture)
-  window.addEventListener('touchcancel', finishLongPressGesture)
-}
+  },
+  onSwipePhoto: (photoId, shouldSelect) => applySwipeSelection(photoId, shouldSelect),
+  onSuppressClick: suppressClickAfterGesture,
+})
 
 const effectiveGridColumns = computed(() => {
   if (containerWidth.value >= 768 || !['grid', 'masonry'].includes(props.layoutMode)) return null
@@ -773,21 +758,28 @@ const useSquareMobileThumbnails = computed(() =>
   containerWidth.value < 768 && (effectiveGridColumns.value ?? colCount.value) >= 6,
 )
 const dateHeaderContainerClass = computed(() => {
-  if (mobileDateHeaderMode.value === 'day') return 'h-[50px] py-2'
-  if (mobileDateHeaderMode.value === 'month') return 'h-[34px] py-1'
-  return 'h-[38px] py-1'
+  if (mobileDateHeaderMode.value === 'day') return 'lm-day-head--day'
+  if (mobileDateHeaderMode.value === 'month') return 'lm-day-head--month'
+  return 'lm-day-head--year'
 })
-const dateHeaderContentClass = computed(() => {
-  if (mobileDateHeaderMode.value === 'day') {
-    return [
-      'gap-3 group text-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800',
-      isSelectionMode.value ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800' : '',
-    ]
-  }
-  return mobileDateHeaderMode.value === 'month'
-    ? 'text-xs px-2 py-1 rounded-md'
-    : 'text-sm px-2 py-1 rounded-md'
-})
+const dateHeaderContentClass = computed(() => (mobileDateHeaderMode.value === 'day' ? '' : 'lm-day-date--compact'))
+
+const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+function weekdayText(day: DayBlock) {
+  if (!day.year || !day.month || !day.day) return ''
+  const date = new Date(day.year, day.month - 1, day.day)
+  return Number.isNaN(date.getTime()) ? '' : WEEKDAY_LABELS[date.getDay()]
+}
+
+function dayPlace(day: DayBlock) {
+  const names = props.dayLocations?.[day.key]?.locations?.map(item => item.name).filter(Boolean) ?? []
+  return names.slice(0, 2).join(' · ')
+}
+
+/* 正方形/自适应布局始终按列数排版，保证画框尺寸一致。 */
+function dayColumns(_day: DayBlock) {
+  return colCount.value || 1
+}
 
 const shouldShowDateHeader = (day: DayBlock, dayIndex: number) => {
   if (day.year === 0) return Boolean(props.timelineStats?.timeline?.some(item => item.year === 0))
@@ -912,10 +904,10 @@ const stopGridPinch = () => {
 
 const handleGridTouchStart = (event: TouchEvent) => {
   if (event.touches.length === 1) {
-    startPhotoLongPress(event)
+    startSwipeSelect(event)
     return
   }
-  finishLongPressGesture()
+  cancelSwipeSelect()
   if (event.touches.length !== 2 || containerWidth.value >= 768) return
   if (!['grid', 'masonry'].includes(props.layoutMode) || isSelectionMode.value) return
 
@@ -985,7 +977,7 @@ const getRange = (key: string) => {
 }
 
 const updateVisibleBlocks = () => {
-    if (!props.active) return
+    if (!props.active || !galleryEl.value?.isConnected || !galleryEl.value.clientWidth) return
     const buffer = 1000 // Month Buffer
     const relativeScrollTop = scrollTop.value - virtualContentTop()
     const visibleMonths = getVisibleBlocks(relativeScrollTop, viewportHeight.value, buffer)
@@ -1048,12 +1040,22 @@ const updateVisibleBlocks = () => {
         })
     })
 
-    visibleBlockKeys.value = newMonthKeys
-    visibleDayRanges.value = newDayRanges
+    if (newMonthKeys.size !== visibleBlockKeys.value.size || visibleMonths.some(month => !visibleBlockKeys.value.has(month.key))) {
+        visibleBlockKeys.value = newMonthKeys
+    }
+    const previousRanges = visibleDayRanges.value
+    if (newDayRanges.size !== previousRanges.size || Array.from(newDayRanges).some(([key, range]) => {
+        const previous = previousRanges.get(key)
+        return !previous || previous.start !== range.start || previous.end !== range.end
+            || previous.topH !== range.topH || previous.bottomH !== range.bottomH
+    })) {
+        visibleDayRanges.value = newDayRanges
+    }
 }
 
-// Throttle scroll updates
-const handleScroll = useDebounceFn(() => {
+let scrollFrame = 0
+const updateScrollViewport = () => {
+    scrollFrame = 0
     if (!props.active) return
     updateVisibleBlocks()
     // Update active date based on first visible block
@@ -1067,15 +1069,15 @@ const handleScroll = useDebounceFn(() => {
             emit('update:activeDate', dateStr)
         }
     }
-}, 50, { maxWait: 100 }) // More aggressive update for row virtualization
+}
 
-watch(scrollTop, handleScroll)
+// Keep the virtual window current during continuous wheel and touch scrolling.
+watch(scrollTop, () => {
+    if (!scrollFrame && props.active) scrollFrame = requestAnimationFrame(updateScrollViewport)
+})
 
 // Watch for layout changes to update visibility immediately
-watch(monthBlocks, () => {
-    updateVisibleBlocks()
-    checkAndLoadVisibleMonths()
-}, { deep: true })
+watch(monthBlocks, updateVisibleBlocks, { flush: 'post' })
 
 // Resize Observer for Container Width
 let resizeObserver: ResizeObserver | null = null
@@ -1083,7 +1085,7 @@ onMounted(() => {
     if (props.scrollContainer) {
       scrollContainerRef.value = props.scrollContainer
     } else {
-      const mainEl = document.querySelector('main')
+      const mainEl = galleryEl.value?.closest('main')
       if (mainEl && window.getComputedStyle(mainEl).overflowY === 'auto') {
         scrollContainerRef.value = mainEl
       } else {
@@ -1104,10 +1106,8 @@ onMounted(() => {
         })
         resizeObserver.observe(galleryEl.value)
     }
-    updateVisibleBlocks()
-    setTimeout(() => {
-      updateVisibleBlocks()
-    }, 1000);
+    // The scroll target and its viewport height are committed by the time this runs.
+    void nextTick(handleResize)
 })
 
 // --- Data Fetching Logic ---
@@ -1120,13 +1120,13 @@ const checkAndLoadVisibleMonths = (refresh = false) => {
         // Check if we have photos for this month
         // store uses "YYYY-MM" format in loadPhotosByMonth
         // Note: hasPhotos(key) checks props.photos. 
-        if (!hasPhotosForMonth(key) || refresh) {
+        if (!hasPhotosForMonth(key) || store.value.isPartialPhotoMonth?.(block.year, block.month) || refresh) {
              store.value.loadPhotosByMonth(block.year, block.month, albumId, refresh)
         }
     })
 }
 
-watch(visibleBlockKeys, () => {
+watch([visibleBlockKeys, () => props.layoutMode, () => props.showMomentCaption], () => {
     checkAndLoadVisibleMonths()
     // 广播当前可见月份，用于外部按月批量拉取附加数据（如朋友圈日文案）
     if (props.layoutMode === 'moments' && props.showMomentCaption) {
@@ -1276,11 +1276,35 @@ const exitSelectionMode = () => {
 const toggleSelection = (photo: AlbumImage) => {
   if (props.singleSelect && !localSelectedIds.has(photo.id)) localSelectedIds.clear()
   toggleSelectionId(photo.id)
+  // 普通点击移动 Shift 范围选择的锚点
+  selectionAnchorId.value = photo.id
   if (localSelectedIds.size > 0) {
       if (!isSelectionMode.value) enterSelectionMode()
   } else {
       // exitSelectionMode() // Don't auto exit usually
   }
+}
+
+// 按各日期实际展示的卡片顺序取范围，包含虚拟滚动视口之外的卡片。
+const orderedPhotoIds = computed(() => monthBlocks.value.flatMap(block =>
+  block.days.flatMap(day => {
+    const photos = props.layoutMode === 'moments' && !expandedDays.value.has(day.key)
+      ? getMomentPhotos(day.key)
+      : getPhotos(day.key)
+    return photos.map(photo => photo.id)
+  }),
+))
+
+// PC 端 Shift 点击范围选择/取消选择：从锚点到点击照片整段置为单一状态。
+// 未进入选择模式时同样可用（整段直接置为选中并进入选择模式）。
+// Shift 点击本身不移动锚点（与 macOS Finder 一致）：连续 Shift 点击同一段
+// 会在「整段选中/整段取消」间切换；普通点击才移动锚点。
+const handleRangeClick = (photo: AlbumImage) => {
+  if (props.singleSelect) return false
+  const targetSelected = localSelectedIds.has(photo.id)
+  if (!isSelectionMode.value && !targetSelected) enterSelectionMode()
+  selectRangeIds(orderedPhotoIds.value, photo.id)
+  return true
 }
 
 const isDaySelected = (day: DayBlock) => {
@@ -1305,19 +1329,35 @@ const toggleDaySelection = (day: DayBlock) => {
     }
 }
 
-const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload } = usePhotoBatchActions({
+const contextMenu = ref<InstanceType<typeof PhotoContextMenu> | null>(null)
+const openContextMenu = (photo: AlbumImage, event: MouseEvent) => {
+  if (props.showActionBar && !props.singleSelect) void contextMenu.value?.open(event, photo)
+  else event.preventDefault()
+}
+
+const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload, downloadPhotos } = usePhotoBatchActions({
   selectedIds: () => localSelectedIds,
   photos: () => props.photos,
   clearSelection: () => exitSelectionMode(),
   exitAfterDownload: true,
 })
 
-const handlePhotoClick = (photo: AlbumImage) => {
+const handlePhotoClick = (photo: AlbumImage, event?: MouseEvent) => {
   if (isSelectionMode.value) {
+    // PC 端 Shift 点击走范围选择（整段置为同一状态），普通点击仍是单张 toggle
+    if (event?.shiftKey && handleRangeClick(photo)) return
     toggleSelection(photo)
-  } else {
-    emit('click-photo', photo)
+    return
   }
+  // Shift 点击快速范围选择：无需先进入选择模式
+  if (event?.shiftKey && handleRangeClick(photo)) return
+  // Only still images can be carried across the screen; videos keep their
+  // player's own entrance.
+  if (photo.file_type && photo.file_type !== 'image' && photo.file_type !== 'live_photo') {
+    emit('click-photo', photo)
+    return
+  }
+  flyPhotoIntoViewer(event?.currentTarget as HTMLElement | null, aspectOf(photo.width, photo.height), () => emit('click-photo', photo))
 }
 
 const isAllSelected = computed(() => {
@@ -1433,7 +1473,7 @@ defineExpose({
     user-select: none;
   }
 
-  /* Existing styles */
+  /* 已显影动画 */
   .shrink-animation {
     animation: shrink 0.25s forwards ease-in-out;
   }
@@ -1441,5 +1481,188 @@ defineExpose({
   @keyframes shrink {
     0% { transform: scale(1); }
     100% { transform: scale(0.8); opacity: 0.5; }
+  }
+
+  /* ======================================================================
+   * Lumen 照片墙
+   *
+   * 日期：不做成胶囊，而是一把「日期标尺」——大号日号 + 月份星期 + 帧数地点。
+   * 画框：圆角、薄投影、指针进入时缓慢推近；说明条从底部浮起。
+   * 空白：稀疏的一天用一张日期卡补齐整行。
+   * ==================================================================== */
+  .lm-day-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 0 0 8px;
+    transition: opacity 200ms ease;
+  }
+  .lm-day-head--day { height: 50px; }
+  .lm-day-head--month { height: 34px; }
+  .lm-day-head--year { height: 38px; }
+
+  .lm-day-date {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 10px;
+    border-radius: 12px;
+    padding: 2px 10px 2px 2px;
+    color: var(--ts-color-text);
+    transition: background-color 160ms ease;
+  }
+  .lm-day-date.is-selectable { cursor: pointer; }
+  .lm-day-date.is-selectable:hover { background: var(--ts-color-surface-muted); }
+
+  .lm-day-num {
+    color: var(--ts-color-text);
+    font-family: var(--lm-font-display);
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -.05em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .lm-day-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+  .lm-day-month {
+    color: var(--ts-color-text-secondary);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: .12em;
+    white-space: nowrap;
+  }
+  .lm-day-sub {
+    overflow: hidden;
+    color: var(--ts-color-text-tertiary);
+    font-size: 11px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lm-day-unknown { font-size: 13px; font-weight: 650; letter-spacing: .06em; }
+  .lm-day-date--compact { padding: 2px 12px; }
+  .lm-day-date--compact .lm-day-month { font-size: 12px; color: var(--ts-color-text); }
+
+  /* 标尺：从日期延伸出去的一条极淡的线 */
+  .lm-day-rule {
+    height: 1px;
+    flex: 1;
+    background: linear-gradient(to right, var(--ts-color-border), transparent 88%);
+  }
+
+  .lm-day-check {
+    display: flex;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    border: 1.5px solid var(--ts-color-border);
+    border-radius: 999px;
+    transition: background-color 160ms ease, border-color 160ms ease;
+  }
+  .lm-day-check.is-checked { background: var(--theme-primary); border-color: var(--theme-primary); }
+
+  .lm-day-chapter {
+    align-self: center;
+    border-radius: 999px;
+    border: 1px solid var(--ts-color-border);
+    padding: 2px 9px;
+    color: var(--ts-color-text-secondary);
+    font-size: 10.5px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .lm-day-chapter:hover { background: var(--ts-color-surface-muted); color: var(--ts-color-text); }
+  .lm-day-chapter-link { display: block; border-radius: 10px; padding: 8px 10px; font-size: 13px; color: var(--ts-color-text); }
+  .lm-day-chapter-link:hover { background: var(--ts-color-surface-muted); }
+
+  /* ——— 画框 ——— */
+  /* 圆角由模板的 rounded-lg / rounded-none（高密度方形模式）控制，这里不再覆写。 */
+  .lm-photo {
+    background: var(--ts-color-surface-muted);
+    box-shadow: var(--ts-shadow-photo);
+    transition: transform 320ms var(--ts-ease-paper), box-shadow 320ms var(--ts-ease-paper);
+    contain: paint;
+  }
+  .lm-photo-img { transition: transform 760ms var(--ts-ease-paper); }
+  @media (hover: hover) and (pointer: fine) {
+    .lm-photo:hover { transform: translate3d(0, -2px, 0); box-shadow: var(--ts-shadow-floating); z-index: 5; }
+    .lm-photo:hover .lm-photo-img { transform: scale(1.045); }
+  }
+  .lm-photo:active { transform: scale(.994); }
+
+  .lm-photo-check { transition: opacity 180ms ease; }
+  .lm-photo-check-dot {
+    display: flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid rgb(255 255 255 / 78%);
+    border-radius: 999px;
+    background: rgb(10 12 16 / 18%);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 22%);
+    -webkit-backdrop-filter: var(--ts-photo-check-filter, blur(6px));
+    backdrop-filter: var(--ts-photo-check-filter, blur(6px));
+    transition: background-color 160ms ease, border-color 160ms ease, transform 160ms var(--ts-ease-spring);
+  }
+  .lm-photo-check:hover .lm-photo-check-dot { transform: scale(1.08); background: rgb(10 12 16 / 34%); }
+  .lm-photo-check-dot.is-checked { background: var(--theme-primary); border-color: var(--theme-primary); }
+
+  .lm-photo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 999px;
+    padding: 3px 8px;
+    background: rgb(10 12 16 / 52%);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 650;
+    line-height: 1.2;
+    pointer-events: none;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+
+  .lm-photo-info {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 22px 10px 9px;
+    background: linear-gradient(to top, rgb(6 8 12 / 70%), transparent);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 240ms ease, transform 300ms var(--ts-ease-paper);
+    pointer-events: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .lm-photo:hover .lm-photo-info { opacity: 1; transform: translateY(0); }
+    .lm-photo:focus-within .lm-photo-info { opacity: 1; transform: none; }
+  }
+  .lm-photo-name {
+    overflow: hidden;
+    color: rgb(255 255 255 / 92%);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 767px) {
+    .lm-day-head { margin-bottom: 6px; gap: 8px; }
+    .lm-day-head--day { height: 46px; }
+    .lm-day-date { gap: 8px; padding-right: 8px; }
+    .lm-day-num { font-size: 23px; }
+    .lm-day-sub { display: none; }
+    .lm-photo-info { opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lm-photo, .lm-photo-img, .lm-photo-info, .lm-day-date { transition: none !important; }
   }
 </style>

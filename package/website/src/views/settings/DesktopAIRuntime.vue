@@ -8,7 +8,10 @@
           <span v-if="store.status?.runtime.backend"> · {{ labels[store.status.runtime.backend] }}</span>
         </p>
       </div>
-      <button class="ts-button ts-button-secondary" :disabled="store.busy" @click="store.refresh()">刷新设备</button>
+      <div class="flex flex-wrap gap-2">
+        <button class="ts-button ts-button-secondary" :disabled="store.busy" @click="store.refresh()">刷新设备</button>
+        <button v-if="store.status?.supported" class="ts-button ts-button-primary" :disabled="store.busy" @click="store.autoSelect()">自动配置</button>
+      </div>
     </div>
     <p class="text-sm ts-muted">CPU 已内置。可按需下载加速包，用于人脸、文字识别、分类和图片特征计算。</p>
     <p v-if="store.status && !store.status.supported" class="text-sm ts-muted">加速包目前支持 Windows x64，当前平台使用内置运行时。</p>
@@ -32,7 +35,7 @@
       </article>
     </div>
     <div v-if="store.busy && store.progress" class="space-y-2" role="status" aria-live="polite">
-      <p class="text-sm ts-muted">{{ labels[store.progress.backend] }} · {{ phases[store.progress.phase] }}</p>
+      <p class="text-sm ts-muted">{{ store.progress.phase === 'detecting' ? phases.detecting : labels[store.progress.backend] + ' · ' + phases[store.progress.phase] }}</p>
       <template v-if="store.progress.size">
         <progress class="w-full accent-[var(--theme-primary)]" :value="store.progress.downloaded" :max="store.progress.size" aria-label="加速包下载进度" />
         <p class="text-xs ts-muted">{{ bytes(store.progress.downloaded) }} / {{ bytes(store.progress.size) }}</p>
@@ -48,17 +51,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { isTauriApp } from '@/config/server'
 import { useDesktopAIRuntimeStore } from '@/stores/desktopAIRuntime'
 import type { AIBackend } from '@/api/desktopAIRuntime'
 
 const store = useDesktopAIRuntimeStore()
 const device = ref('CPU')
+watch(() => store.status?.device, value => { if (value) device.value = value })
 const backends: AIBackend[] = ['cpu', 'cuda', 'openvino']
 const labels = { cpu: 'CPU', cuda: 'NVIDIA CUDA', openvino: 'Intel OpenVINO' }
 const hints = { cpu: '无需下载，适用于所有设备', cuda: '需要兼容的 NVIDIA 显卡和驱动', openvino: '支持 Intel CPU、核显和 NPU，依设备与驱动而定' }
-const phases = { checking: '正在检查加速包…', downloading: '正在下载…', verifying: '正在校验…', installing: '正在安装…', switching: '正在切换设备…', ready: '已准备好', error: '操作失败，可重试' }
+const phases = { detecting: '正在检测本机推理设备…', checking: '正在检查加速包…', downloading: '正在下载…', verifying: '正在校验…', installing: '正在安装…', switching: '正在切换设备…', ready: '已准备好', error: '操作失败，可重试' }
 const message = computed(() => store.error || store.readError || store.status?.error || store.status?.runtime.error || store.progress?.error)
 const devices = computed(() => {
   const detected = store.status?.runtime.devices || []
@@ -70,7 +74,6 @@ let timer: ReturnType<typeof setInterval> | undefined
 onMounted(async () => {
   if (!isTauriApp()) return
   try { await store.subscribe() } catch (cause) { store.error = String(cause) }
-  device.value = store.status?.device || 'CPU'
   timer = setInterval(() => void store.refresh(), 2500)
 })
 onUnmounted(() => { if (timer) clearInterval(timer) })

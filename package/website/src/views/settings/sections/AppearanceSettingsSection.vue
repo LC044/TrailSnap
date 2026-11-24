@@ -29,6 +29,13 @@
           </div>
         </SettingsFormRow>
 
+        <SettingsFormRow label="浅色皮肤" inline>
+          <el-select class="!w-36" :model-value="currentSkin" aria-label="浅色皮肤" @change="setSkin">
+            <el-option label="经典灰白" value="classic" />
+            <el-option label="手记米白" value="warm" />
+          </el-select>
+        </SettingsFormRow>
+
         <SettingsFormRow label="主题颜色" inline>
           <el-select class="md:!hidden !w-36" :model-value="currentTheme.name" aria-label="主题颜色" @change="selectTheme">
             <template #prefix><span class="h-3 w-3 rounded-full" :style="{ backgroundColor: currentTheme.primary }" /></template>
@@ -57,7 +64,7 @@ import SettingsFormRow from '@/components/ui/SettingsFormRow.vue'
 import SettingsSection from '@/components/ui/SettingsSection.vue'
 import { useBasicSettingsContext } from '@/composables/settings/useBasicSettings'
 import { Sun, Moon, Palette, Check } from 'lucide-vue-next'
-const { activeNames, currentMode, currentTheme, setMode, setTheme, themeColors } = useBasicSettingsContext()
+const { activeNames, currentMode, currentSkin, currentTheme, setMode, setSkin, setTheme, themeColors } = useBasicSettingsContext()
 function selectTheme(name: string) {
   const theme = themeColors.find(color => color.name === name)
   if (theme) setTheme(theme)

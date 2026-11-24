@@ -15,7 +15,7 @@ def test_builtin_catalog_exposes_only_three_ppocrv6_models():
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     ocr_models = [item for item in catalog["models"] if "ocr" in item["tasks"]]
 
-    assert catalog["tasks"]["ocr"]["default"] == "ocr-ppocrv6-small"
+    assert catalog["tasks"]["ocr"]["default"] == "ocr-ppocrv6-tiny"
     assert [item["id"] for item in ocr_models] == [
         "ocr-ppocrv6-tiny",
         "ocr-ppocrv6-small",
@@ -43,7 +43,12 @@ def test_builtin_catalog_contains_complete_buffalo_m_package():
 def test_builtin_visual_llm_is_downloaded_on_first_start():
     catalog_path = Path(__file__).resolve().parents[1] / "app" / "model_catalog.json"
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-    visual_llm = next(item for item in catalog["models"] if item["id"] == "llm-minicpm-v-4.6")
+    assert catalog["tasks"]["llm"]["default"] == "llm-minicpm-v-4.7"
+    visual_llm = next(item for item in catalog["models"] if item["id"] == catalog["tasks"]["llm"]["default"])
+    assert visual_llm["repoId"] == "SiYuan044/MiniCPM-V-4_7-Q4_K_M"
+    assert visual_llm["runtimeName"] == "MiniCPM-V-4_7-Q4_K_M"
+    assert visual_llm["requiredFiles"] == ["MiniCPM-V-4_7-1B-Q4_K_M.gguf", "mmproj-model-f16.gguf"]
+    assert any(item["id"] == "llm-minicpm-v-4.6" for item in catalog["models"])
 
     assert visual_llm["autoDownload"] is True
 

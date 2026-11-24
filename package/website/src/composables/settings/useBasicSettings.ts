@@ -9,7 +9,7 @@ import { faceRecognitionPresets } from './faceRecognitionPresets';
 export function useBasicSettings() {
   const mapSettings = useMapSettings();
   const indexMaintenance = useIndexMaintenance();
-  const { currentMode, currentTheme, themeColors, setMode, setTheme } = injectTheme();
+  const { currentMode, currentSkin, currentTheme, themeColors, setMode, setSkin, setTheme } = injectTheme();
   const activeNames = ref<string[]>([]);
   const managedAI = ref(true);
   const aiActiveNames = ref<string[]>([]);
@@ -327,7 +327,7 @@ export function useBasicSettings() {
   onMounted(() => {
     loadData();
   });
-  return { managedAI, activeNames, aiActiveNames, storageForm, aiForm, aiServiceTest, resetAIServiceTest, testAIServiceConnection, imageForm, scanScheduleForm, momentCaptionScheduleForm, recycleBinForm, securityForm, taskForm, taskPerformanceModes, savingTaskSettings, taskApplyMessage, saveScanScheduleSettings, saveMomentCaptionScheduleSettings, saveRecycleBinSettings, saveSecuritySettings, saveTaskSettings, pathValid, pathStatusText, pathStatusClass, loadData, saveAISettings, saveAIServiceSettings, saveImageSettings, validatePath, handleExport, handleImportFile, currentMode, currentTheme, themeColors, setMode, setTheme, ...mapSettings, ...indexMaintenance };
+  return { managedAI, activeNames, aiActiveNames, storageForm, aiForm, aiServiceTest, resetAIServiceTest, testAIServiceConnection, imageForm, scanScheduleForm, momentCaptionScheduleForm, recycleBinForm, securityForm, taskForm, taskPerformanceModes, savingTaskSettings, taskApplyMessage, saveScanScheduleSettings, saveMomentCaptionScheduleSettings, saveRecycleBinSettings, saveSecuritySettings, saveTaskSettings, pathValid, pathStatusText, pathStatusClass, loadData, saveAISettings, saveAIServiceSettings, saveImageSettings, validatePath, handleExport, handleImportFile, currentMode, currentSkin, currentTheme, themeColors, setMode, setSkin, setTheme, ...mapSettings, ...indexMaintenance };
 }
 export type BasicSettingsContext = ReturnType<typeof useBasicSettings>;
 const settingsKey: InjectionKey<BasicSettingsContext> = Symbol('basic-settings');

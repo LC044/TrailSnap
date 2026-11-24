@@ -32,6 +32,7 @@
             :photos="photos" 
             :loading="loading" 
             :show-action-bar="true"
+            context-add-to-album
             @click-photo="handleGalleryClick"
             @batch-delete="handleBatchDelete"
             @add-to-album="handleAddToAlbum"
@@ -51,6 +52,7 @@
     <!-- Lightbox -->
     <PhotoLightbox
       :visible="showLightbox"
+      :initial-details="lightboxInitialDetails"
       :image="photos[lightboxIndex] ?? null"
       :images="photos"
       :current-index="lightboxIndex"
@@ -124,15 +126,18 @@ const organizeActions = ref<InstanceType<typeof PhotoOrganizeActions> | null>(nu
 const { visible: showLightbox, index: lightboxIndex, open: openLightbox, close: closeLightbox, prev: prevPhoto, next: nextPhoto } = usePhotoViewer(photos)
 const showAlbumSelectModal = ref(false)
 const tempSelectedIds = ref<string[]>([])
+const preserveAlbumSelection = ref(false)
+const lightboxInitialDetails = ref(false)
 
-const handleGalleryClick = (photo: AlbumImage) => {
+const handleGalleryClick = (photo: AlbumImage, details = false) => {
   const index = photos.value.findIndex(p => p.id === photo.id)
   if (index !== -1) {
+    lightboxInitialDetails.value = details
     openLightbox(index)
   }
 }
 
-const handleBatchDelete = async (ids: string[]) => {
+const handleBatchDelete = async (ids: string[], preserveSelection = false) => {
   try {
     await ElMessageBox.confirm(`确定要删除选中的 ${ids.length} 张照片吗？`, '批量删除', {
       confirmButtonText: '删除',
@@ -146,7 +151,7 @@ const handleBatchDelete = async (ids: string[]) => {
     })
     
     photos.value = photos.value.filter(p => !ids.includes(p.id))
-    galleryRef.value?.exitSelectionMode()
+    if (!preserveSelection) galleryRef.value?.exitSelectionMode()
     ElMessage.success('批量删除成功')
   } catch (e) {
     if (e !== 'cancel') {
@@ -156,18 +161,19 @@ const handleBatchDelete = async (ids: string[]) => {
   }
 }
 
-const handleAddToAlbum = (ids: string[]) => {
+const handleAddToAlbum = (ids: string[], preserveSelection = false) => {
     if (ids.length === 0) return
+    preserveAlbumSelection.value = preserveSelection
     tempSelectedIds.value = ids
     showAlbumSelectModal.value = true
-    galleryRef.value?.exitSelectionMode()
+    if (!preserveSelection) galleryRef.value?.exitSelectionMode()
 }
 
 const closeAlbumSelectModal = () => {
     showAlbumSelectModal.value = false
     tempSelectedIds.value = []
-    // Exit selection mode in gallery
-    galleryRef.value?.exitSelectionMode()
+    if (!preserveAlbumSelection.value) galleryRef.value?.exitSelectionMode()
+    preserveAlbumSelection.value = false
 }
 
 const handlePhotoDelete = async (id: string) => {

@@ -71,7 +71,7 @@ export interface ToolPlanItem {
   status: string
   reason: string
   selected?: boolean
-  detail: { group_id?: number; label?: string; targets?: string[]; related_ids?: string[]; time?: string; make?: string; model?: string }
+  detail: { quality_score?: number | null; memory_score?: number | null; group_id?: number; label?: string; targets?: string[]; related_ids?: string[]; time?: string; make?: string; model?: string }
 }
 export interface ScopeItem { id: string; filename: string; photo_time: string | null; file_type: string }
 export interface PageResult<T> { total: number; items: T[] }
@@ -131,7 +131,7 @@ export const workflowApi = {
     })).data
   },
   async members(id: string, groupId: number, offset = 0) {
-    return (await request.get<PageResult<{ photo_id: string; in_scope: boolean }> & { representative_id: string }>(`${base}/plans/${id}/groups/${groupId}/members`, { params: { offset } })).data
+    return (await request.get<PageResult<{ photo_id: string; in_scope: boolean; source?: string; item?: ToolPlanItem | null }> & { representative_id: string }>(`${base}/plans/${id}/groups/${groupId}/members`, { params: { offset } })).data
   },
   async execute(plan: ToolPlan, selectedItems?: number[]) {
     return (await request.post<ToolPlan>(`${base}/plans/${plan.id}/execute`, {

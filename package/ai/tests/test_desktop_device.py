@@ -135,7 +135,9 @@ def test_accelerator_packaging_and_catalog_validate_versions(tmp_path, monkeypat
     assert not list(failed_output.iterdir())
 
 
-def test_desktop_ocr_injects_selected_sessions(monkeypatch, tmp_path):
+@pytest.mark.parametrize("device", ["GPU", "NPU.0"])
+@pytest.mark.parametrize("model_type", ["TINY", "SMALL", "MEDIUM"])
+def test_desktop_ocr_injects_selected_sessions(monkeypatch, tmp_path, device, model_type):
     import rapidocr
     from app.services import ocr_service
     from omegaconf import OmegaConf
@@ -149,9 +151,130 @@ def test_desktop_ocr_injects_selected_sessions(monkeypatch, tmp_path):
 
     monkeypatch.setattr(rapidocr, "RapidOCR", FakeRapidOCR)
     monkeypatch.setenv("TS_AI_BACKEND", "openvino")
-    monkeypatch.setattr(ocr_service.ai_model_manager, "get_selected_spec", lambda _: {"runtime": {"modelType": "MOBILE", "ocrVersion": "PPOCRV4", "clsOcrVersion": "PPOCRV4", "detFile": "det.onnx", "clsFile": "cls.onnx", "recFile": "rec.onnx"}})
+    monkeypatch.setattr(desktop_device, "desktop_device", lambda: {
+        "backend": "openvino", "device": device, "provider": "OpenVINOExecutionProvider",
+    })
+    monkeypatch.setattr(ocr_service.ai_model_manager, "get_selected_spec", lambda _: {"runtime": {"modelType": model_type, "ocrVersion": "PPOCRV6", "clsOcrVersion": "PPOCRV4", "detFile": "det.onnx", "clsFile": "cls.onnx", "recFile": "rec.onnx"}})
     monkeypatch.setattr(ocr_service.ai_model_manager, "get_model_dir", lambda *_, **__: tmp_path)
-    monkeypatch.setattr(onnx_providers, "create_inference_session", lambda path: SimpleNamespace(path=path))
+    monkeypatch.setattr(onnx_providers, "_make_session", lambda path, *_: SimpleNamespace(path=path, stage=None))
+    from app.services import openvino_npu
+    monkeypatch.setattr(openvino_npu, "OpenVINONPUSession",
+                        lambda path, device, *, ocr_stage, fixed_dimensions: SimpleNamespace(
+                            path=path, stage=ocr_stage, device=device,
+                        ))
     result = ocr_service.load_paddleocr_model()
     assert result.cfg.Det.session.path.endswith("det.onnx")
     assert result.cfg.Rec.session.path.endswith("rec.onnx")
+    for stage in ("Det", "Cls", "Rec"):
+        session = result.cfg[stage].session
+        assert session.stage == (stage if device.startswith("NPU") else None)
+
+
+@pytest.mark.parametrize(("stage", "shape", "canvas", "output_shape", "cropped"), [
+    ("Det", (1, 3, 510, 3000), (1, 3, 768, 3840), (1, 1, 768, 3840), (1, 1, 510, 3000)),
+    ("Cls", (2, 3, 48, 192), (6, 3, 48, 192), (6, 2), (2, 2)),
+    ("Rec", (3, 3, 48, 325), (6, 3, 48, 480), (6, 60, 4), (3, 41, 4)),
+])
+def test_npu_ocr_pads_and_crops(stage, shape, canvas, output_shape, cropped):
+    import numpy as np
+    from app.services.openvino_npu import OpenVINONPUSession
+
+    session = OpenVINONPUSession.__new__(OpenVINONPUSession)
+    session._stage = stage
+
+    def infer(shapes, feeds, indices):
+        padded, = feeds
+        assert shapes == (canvas,)
+        assert padded.shape == canvas
+        np.testing.assert_array_equal(padded[:shape[0], :, :shape[2], :shape[3]], 1)
+        assert np.count_nonzero(padded) == np.prod(shape)
+        assert indices == [0]
+        return [np.ones(output_shape)]
+
+    session._infer = infer
+    assert session._run_ocr(np.ones(shape, dtype=np.float32), [0])[0].shape == cropped
+
+
+def test_npu_ocr_fits_panorama_outside_canvases():
+    import numpy as np
+    from app.services.openvino_npu import OpenVINONPUSession
+
+    session = OpenVINONPUSession.__new__(OpenVINONPUSession)
+    session._stage = "Det"
+
+    def infer(shapes, feeds, indices):
+        assert shapes == ((1, 3, 768, 3840),)
+        assert feeds[0].shape == shapes[0]
+        return [np.ones((1, 1, 768, 3840), dtype=np.float32)]
+
+    session._infer = infer
+    output, = session._run_ocr(np.ones((1, 3, 512, 4256), dtype=np.float32), [0])
+    np.testing.assert_array_equal(output, np.ones((1, 1, 512, 4256), dtype=np.float32))
+
+
+def test_npu_image_batch_uses_one_static_shape_and_keeps_order():
+    import numpy as np
+    from app.services.openvino_npu import OpenVINONPUSession
+
+    session = OpenVINONPUSession.__new__(OpenVINONPUSession)
+    session._stage = None
+    session._inputs = [SimpleNamespace(name="input", shape=[None, 2])]
+    session._outputs = [SimpleNamespace(name="output")]
+    session._shapes = ((1, 2),)
+
+    def infer(shapes, feeds, indices):
+        assert shapes == session._shapes
+        assert feeds[0].shape == (1, 2)
+        assert list(indices) == [0]
+        return feeds
+
+    session._infer = infer
+    inputs = np.arange(6).reshape(3, 2)
+    np.testing.assert_array_equal(session.run(["output"], {"input": inputs})[0], inputs)
+
+
+def test_npu_rejects_non_npu_execution_and_remembers_failed_shape(monkeypatch):
+    import threading
+
+    from app.services import openvino_npu
+
+    attempts = []
+    graph = SimpleNamespace(reshape=lambda _: None)
+
+    def compile_model(graph, device, config):
+        attempts.append(device)
+        return SimpleNamespace(get_property=lambda _: ["CPU"])
+
+    monkeypatch.setattr(openvino_npu, "_core", lambda: SimpleNamespace(compile_model=compile_model))
+    monkeypatch.setattr(openvino_npu, "record_session", lambda *args: None)
+    session = openvino_npu.OpenVINONPUSession.__new__(openvino_npu.OpenVINONPUSession)
+    session._path = "model.onnx"
+    session._device = "NPU"
+    session._graph = SimpleNamespace(clone=lambda: graph)
+    session._requests, session._failures = {}, {}
+    session._lock = threading.Lock()
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match="Expected NPU execution"):
+            session._infer(((1, 3),), [], [0])
+    assert attempts == ["NPU"]
+
+
+def test_llama_uses_the_selected_openvino_npu_backend(monkeypatch):
+    from app.services import llm_manager
+
+    listing = """Available devices:
+  OPENVINO0: GGML_OPENVINO_DEVICE=CPU - CPU
+  OPENVINO1: GGML_OPENVINO_DEVICE=GPU - Intel Graphics
+  OPENVINO2: GGML_OPENVINO_DEVICE=NPU (selected) - Intel AI Boost
+"""
+    def probe(command, **kwargs):
+        assert command == ["llama-server", "--list-devices"]
+        assert kwargs["env"]["GGML_OPENVINO_DEVICE"] == "NPU"
+        return SimpleNamespace(returncode=0, stdout=listing, stderr="")
+
+    monkeypatch.setattr(llm_manager.subprocess, "run", probe)
+    env = {"GGML_OPENVINO_DEVICE": "NPU"}
+    assert llm_manager.LLMProcessManager._llama_npu_backend("llama-server", env) == "OPENVINO2"
+    listing = listing.replace("NPU (selected)", "NPU")
+    with pytest.raises(RuntimeError, match="未检测到所选 NPU"):
+        llm_manager.LLMProcessManager._llama_npu_backend("llama-server", env)

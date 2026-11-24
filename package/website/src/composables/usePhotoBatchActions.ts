@@ -26,19 +26,21 @@ export function usePhotoBatchActions(options: {
     } catch { ElMessage.error('添加失败') }
     finally { isAddingPerson.value = false }
   }
-  const handleDownload = async () => {
-    const ids = Array.from(options.selectedIds())
+  const downloadPhotos = async (ids: string[], target?: AlbumImage) => {
     if (!ids.length || isDownloading.value) return
     isDownloading.value = true
     try {
       if (ids.length === 1) {
-        const photo = options.photos().find(item => item.id === ids[0])
+        const photo = target?.id === ids[0] ? target : options.photos().find(item => item.id === ids[0])
         if (!photo) return
         await photoApi.downloadPhoto(photo)
       } else await photoApi.batchDownload(ids)
-      if (options.exitAfterDownload) options.clearSelection()
+      return true
     } catch { ElMessage.error('下载失败，请重试') }
     finally { isDownloading.value = false }
   }
-  return { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload }
+  const handleDownload = async () => {
+    if (await downloadPhotos(Array.from(options.selectedIds())) && options.exitAfterDownload) options.clearSelection()
+  }
+  return { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload, downloadPhotos }
 }

@@ -1,346 +1,317 @@
 <template>
   <aside
-    :class="[
-      'ts-sidebar journal-sidebar flex flex-col border-r shrink-0 z-40',
-      isCollapsed ? 'w-16' : 'w-56'
-    ]"
+    ref="sidebarRef"
+    class="lm-rail shrink-0 z-40"
+    :class="{ 'is-open': pinned }"
   >
-    <!-- 顶部 Logo 区域 (可折叠) -->
-    <div
-      class="journal-sidebar-brand h-20 flex items-center shrink-0"
-      :class="isCollapsed ? 'justify-center px-2' : 'justify-between px-4'"
-    >
-      <RouterLink v-if="!isCollapsed" to="/" class="flex items-center gap-2.5 whitespace-nowrap" aria-label="行影集首页">
-        <img src="@/assets/logo.svg" alt="" class="w-8 h-8 shrink-0 rounded-lg" />
-        <span>行影集</span>
-      </RouterLink>
-      <!-- 折叠按钮 (仅在非手机端显示？也可以手机端隐藏侧边栏) -->
-      <button
-        @click="toggleCollapse"
-        :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
-        :aria-label="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
-        class="ts-icon-button ts-button-sm ts-button-ghost hidden md:inline-flex"
-      >
-        <PanelLeftOpen v-if="isCollapsed" class="w-5 h-5" />
-        <ChevronLeft v-else class="w-5 h-5" />
-      </button>
-    </div>
+    <div class="lm-rail-shell">
+      <div class="lm-rail-brand">
+        <RouterLink to="/" class="lm-rail-logo" aria-label="行影集首页">
+          <img src="@/assets/logo.svg" alt="" />
+        </RouterLink>
+        <span class="lm-rail-word">行影集</span>
+      </div>
 
-    <!-- 主要导航菜单 -->
-    <nav class="flex-1 overflow-y-auto px-2.5 py-3 custom-scrollbar">
-      <!-- 搜索功能 -->
-      <div class="mb-2">
-        <div v-if="!isCollapsed" class="relative">
-          <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      <div class="lm-rail-handle">
+        <button
+          type="button"
+          class="lm-rail-toggle"
+          :class="{ 'is-hinting': showExploreHint }"
+          :aria-expanded="pinned"
+          :aria-label="pinned ? '收起导航' : '展开导航'"
+          :title="pinned ? '收起导航' : '展开导航'"
+          @click="togglePin"
+        >
+          <ChevronRight class="lm-rail-toggle-icon h-[18px] w-[18px] shrink-0" />
+          <span class="lm-rail-label" aria-hidden="true">收起导航</span>
+          </button>
+      </div>
+
+      <!-- 搜索：收起时是一枚图标，展开后即为输入框 -->
+      <div class="lm-rail-search">
+        <button
+          type="button"
+          class="lm-rail-search-icon"
+          aria-label="搜索"
+          :title="pinned ? undefined : '搜索'"
+          :disabled="pinned"
+          :aria-hidden="pinned"
+          @click="openSearch"
+        >
+          <Search class="h-[18px] w-[18px] shrink-0" />
+        </button>
+        <div
+          ref="searchFieldRef"
+          class="lm-rail-search-field"
+          :inert="!pinned"
+          @focusout="handleSearchFocusOut"
+          @keydown.esc.stop.prevent="closeSearchFromKeyboard"
+        >
           <input
             ref="searchInputRef"
             v-model="searchText"
             @input="onInput"
             @keydown.enter="handleSearch"
-            @blur="handleBlur"
+            @keydown.down.prevent="focusFirstSuggestion"
             @focus="handleFocus"
             type="text"
-            placeholder="搜索或描述画面..."
-            class="ts-input w-full !pl-9 !pr-20"
+            aria-label="搜索或描述画面"
+            placeholder="搜索或描述画面…"
+            class="ts-input lm-rail-input w-full !pl-11 !pr-16"
           />
           <button
             v-if="searchText"
             @click="clearSearch"
-            class="absolute bg-transparent right-12 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            class="absolute right-11 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--ts-color-text-tertiary)] transition-colors hover:text-[var(--ts-color-text)]"
             aria-label="清空搜索"
           >
-            <X class="w-3 h-3" />
+            <X class="h-3 w-3" />
           </button>
           <button
             type="button"
             @click="showDropdown = false; router.push('/search/image')"
-            class="ts-icon-button ts-button-ghost absolute right-0 top-1/2 -translate-y-1/2 text-primary-600 dark:text-primary-400"
+            class="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-[var(--ts-color-text-secondary)] transition-colors hover:bg-[var(--ts-color-surface-muted)] hover:text-[var(--ts-color-text)]"
             aria-label="以图搜图"
             title="以图搜图"
           >
-            <Images class="w-4 h-4" />
+            <Images class="h-4 w-4" />
           </button>
+        </div>
 
-          <!-- 搜索建议下拉框 -->
+        <el-popover
+          :visible="pinned && showDropdown && searchFieldWidth > 0"
+          :virtual-ref="searchFieldRef ?? undefined"
+          virtual-triggering
+          teleported
+          role="group"
+          :placement="searchPopupAbove ? 'top-start' : 'bottom-start'"
+          :offset="8"
+          :show-arrow="false"
+          width="min(320px, calc(100vw - 24px))"
+          popper-class="lm-rail-search-popper"
+          :popper-style="{ padding: 0, minWidth: 0 }"
+        >
           <div
-            v-if="showDropdown"
-            class="absolute top-full left-0 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg mt-2 overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar"
+            ref="searchDropdownRef"
+            class="lm-rail-dropdown"
+            role="region"
+            aria-label="搜索建议"
+            :style="{ maxHeight: searchPopupMaxHeight }"
+            @focusout="handleSearchFocusOut"
+            @keydown.esc.stop.prevent="closeSearchFromKeyboard"
           >
-            <!-- 空输入时：AI 搜索提示 -->
-            <div
-              v-if="!searchText && suggestions.length === 0"
-              class="px-4 py-3"
-            >
-              <div class="flex items-center gap-2 text-primary-500 mb-2">
-                <Sparkles class="w-4 h-4" />
-                <span class="text-sm font-medium">AI 语义搜索</span>
+            <div v-if="!searchText && suggestions.length === 0" class="px-4 py-3">
+              <div class="mb-2 flex items-center gap-2 text-[var(--ts-journal-focus)]">
+                <Sparkles class="h-4 w-4" />
+                <span class="text-sm font-medium">语义搜索</span>
               </div>
-              <p class="text-xs text-slate-500 dark:text-slate-400">描述画面内容，即可找到对应照片</p>
-              <div class="flex flex-wrap gap-1.5 mt-2">
-                <span
+              <p class="text-xs text-[var(--ts-color-text-secondary)]">描述画面内容，就能找到那一张</p>
+              <div class="mt-2.5 flex flex-wrap gap-1.5">
+                <button
                   v-for="tag in searchHints"
                   :key="tag"
-                  @mousedown.prevent="quickSearch(tag)"
-                  class="px-2 py-0.5 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full cursor-pointer hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/20 dark:hover:text-primary-400 transition-colors"
-                >{{ tag }}</span>
+                  type="button"
+                  @mousedown.prevent
+                  @click="quickSearch(tag)"
+                  class="lm-rail-hint"
+                >{{ tag }}</button>
               </div>
             </div>
 
-            <!-- 语义搜索选项 -->
             <button
               v-if="searchText.trim()" type="button"
               @mousedown.prevent @click="openModelSearch"
-              class="w-full px-4 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700 text-sm border-b border-slate-100 dark:border-slate-700 flex items-center gap-2"
+              class="lm-rail-suggest"
             >
-              <Bot class="w-4 h-4 text-primary-500 shrink-0" />
+              <Bot class="h-4 w-4 shrink-0 text-[var(--ts-journal-focus)]" />
               <span class="flex min-w-0 flex-col">
-                <span class="text-slate-800 dark:text-slate-200 font-medium">使用大模型搜索</span>
-                <span class="text-xs text-slate-500 dark:text-slate-400">理解时间、地点和人物等组合条件</span>
+                <span class="font-medium text-[var(--ts-color-text)]">用大模型搜索</span>
+                <span class="text-xs text-[var(--ts-color-text-secondary)]">理解时间、地点与人物等组合条件</span>
               </span>
             </button>
-            <div
+            <button
               v-if="searchText"
+              type="button"
               @mousedown.prevent="handleSearch"
-              class="px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-sm border-b last:border-0 border-slate-100 dark:border-slate-700 flex items-center gap-2"
+              class="lm-rail-suggest"
             >
-              <Sparkles class="w-4 h-4 text-primary-500" />
-              <div class="flex flex-col">
-                <span class="text-slate-800 dark:text-slate-200 font-medium">画面识别: "{{ searchText }}"</span>
-                <span class="text-xs text-slate-500">使用AI进行语义搜索</span>
-              </div>
-            </div>
+              <Sparkles class="h-4 w-4 shrink-0 text-[var(--ts-journal-focus)]" />
+              <span class="flex min-w-0 flex-col text-left [overflow-wrap:anywhere]">
+                <span class="font-medium text-[var(--ts-color-text)]">画面识别 “{{ searchText }}”</span>
+                <span class="text-xs text-[var(--ts-color-text-secondary)]">按画面语义检索</span>
+              </span>
+            </button>
 
-            <!-- 其他建议 -->
-            <div
+            <button
               v-for="(item, index) in suggestions"
               :key="index"
-              @mousedown.prevent="selectSuggestion(item)"
-              class="px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-sm border-b last:border-0 border-slate-100 dark:border-slate-700 flex items-center gap-2"
+              type="button"
+              @mousedown.prevent
+              @click="selectSuggestion(item)"
+              class="lm-rail-suggest"
             >
-              <component :is="getIcon(item.type)" class="w-4 h-4 text-slate-500 dark:text-slate-400" />
-
-              <div class="flex-1 min-w-0">
-                 <div class="flex items-center justify-between">
-                   <span class="text-slate-800 dark:text-slate-200 font-medium truncate">
-                     {{ item.type === 'ocr' ? item.label : item.value }}
-                   </span>
-                   <span class="text-xs text-slate-500 dark:text-slate-400 ml-2 whitespace-nowrap bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">{{ getLabel(item.type) }}</span>
-                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <button
-          v-else
-          @click="openSearch"
-          class="sidebar-icon-button text-slate-700 dark:text-slate-200"
-          title="搜索"
-        >
-          <Search class="w-5 h-5 shrink-0" />
-        </button>
-      </div>
-
-      <button
-        type="button"
-        :class="[
-          'ai-assistant-button mb-3 flex w-full items-center text-left text-slate-800 dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
-          isCollapsed ? 'h-10 justify-center rounded-xl' : 'min-h-14 rounded-xl px-2.5 py-2',
-        ]"
-        :title="isCollapsed ? 'AI 助手' : undefined"
-        @click="uiStore.openAgent()"
-      >
-        <span :class="['relative flex shrink-0 items-center justify-center', isCollapsed ? '' : 'h-8 w-8 rounded-lg bg-white/70 shadow-sm dark:bg-slate-800/70']">
-          <Bot class="h-5 w-5" />
-          <span
-            v-if="proactiveUnread > 0"
-            class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"
-            aria-hidden="true"
-          />
-        </span>
-        <span v-if="!isCollapsed" class="ml-2.5 min-w-0">
-          <span class="block truncate text-sm font-semibold">AI 助手</span>
-        </span>
-        <Sparkles v-if="!isCollapsed" class="ml-auto h-4 w-4 shrink-0 text-primary-500/70" />
-      </button>
-
-      <section v-for="(section, sectionIndex) in desktopNavSections" :key="section.label">
-        <div v-if="sectionIndex" class="h-4" />
-        <button
-          v-if="!isCollapsed && section.collapsible"
-          type="button"
-          class="mb-1 flex h-7 w-full items-center justify-between rounded-lg px-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-          :aria-expanded="isSectionExpanded(section)"
-          @click="toggleSection(section.label)"
-        >
-          <span>{{ section.label }}</span>
-          <ChevronDown
-            class="h-3.5 w-3.5 transition-transform duration-200"
-            :class="{ '-rotate-90': !isSectionExpanded(section) }"
-          />
-        </button>
-        <h2 v-else-if="!isCollapsed" class="mb-1 flex h-7 items-center px-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-400">
-          {{ section.label }}
-        </h2>
-        <div v-show="isSectionExpanded(section)" class="space-y-0.5">
-          <RouterLink
-            v-for="item in section.items"
-            :key="item.href"
-            :to="item.href"
-            :title="isCollapsed ? item.label : undefined"
-            class="sidebar-nav-button text-slate-700 dark:text-slate-200"
-            :class="{ 'sidebar-nav-active': isDesktopNavActive(item) }"
-            :aria-current="isDesktopNavActive(item) ? 'page' : undefined"
-          >
-            <component :is="item.icon" class="w-5 h-5 shrink-0" />
-            <transition name="fade">
-              <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
-            </transition>
-          </RouterLink>
-        </div>
-      </section>
-      <div class="h-5"></div>
-      <!-- 快捷访问 -->
-      <div v-if="!isCollapsed" class="px-1">
-        <div class="flex items-center justify-between px-2 mb-1">
-          <span class="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">快捷访问</span>
-          <button
-            @click="openAddDialog"
-            class="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-800"
-            title="添加快捷导航"
-          >
-            <Plus class="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <div v-if="navItemsList.length > 0" class="space-y-0.5">
-          <div
-            v-for="item in navItemsList"
-            :key="`${item.entity_type}-${item.entity_id}`"
-            class="sidebar-quick-button group text-slate-700 dark:text-slate-200"
-            :class="{ 'sidebar-nav-active': isActiveRoute(item.route_path) }"
-            @click="router.push(item.route_path)"
-          >
-            <div class="w-7 h-7 rounded-md overflow-hidden shrink-0 bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
-              <img v-if="item.cover_photo_id" :src="getThumbnailUrl(item)" class="w-full h-full object-cover" loading="lazy" />
-              <component v-else :is="getNavIcon(item.entity_type)" class="w-3.5 h-3.5 text-slate-400" />
-            </div>
-            <span class="ml-2 text-sm truncate flex-1">{{ item.name }}</span>
-            <button
-              @click.stop="removeNavItem(item.entity_type, item.entity_id)"
-              class="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-500 transition-all"
-              title="移除"
-            >
-              <X class="w-3 h-3" />
+              <component :is="getIcon(item.type)" class="h-4 w-4 shrink-0 text-[var(--ts-color-text-tertiary)]" />
+              <span class="min-w-0 flex-1">
+                <span class="flex items-center justify-between gap-2">
+                  <span class="truncate font-medium text-[var(--ts-color-text)]">
+                    {{ item.type === 'ocr' ? item.label : item.value }}
+                  </span>
+                  <span class="lm-rail-tag">{{ getLabel(item.type) }}</span>
+                </span>
+              </span>
             </button>
           </div>
-        </div>
-        <div v-else class="px-2 py-3 text-center">
-          <button
-            @click="openAddDialog"
-            class="text-xs text-slate-400 hover:text-primary-500 transition-colors"
-          >
-            点击 + 添加常用项
-          </button>
-        </div>
+        </el-popover>
       </div>
-      <div v-else class="space-y-1 px-1">
-        <button
-          v-for="item in navItemsList"
-          :key="`${item.entity_type}-${item.entity_id}`"
-          type="button"
-          class="flex w-full items-center justify-center rounded-lg py-2 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-800"
-          :class="isActiveRoute(item.route_path) ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400' : 'text-slate-500 dark:text-slate-400'"
-          :title="item.name"
-          @click="router.push(item.route_path)"
-        >
-          <span class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-md bg-slate-200 dark:bg-slate-700">
-            <img v-if="item.cover_photo_id" :src="getThumbnailUrl(item)" :alt="item.name" class="h-full w-full object-cover" loading="lazy" />
-            <component v-else :is="getNavIcon(item.entity_type)" class="h-4 w-4" />
-          </span>
-        </button>
-        <button
-          type="button"
-          class="flex w-full items-center justify-center rounded-lg py-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-800"
-          title="添加快捷访问"
-          @click="openAddDialogFromCollapsed"
-        >
-          <Plus class="h-4 w-4" />
-        </button>
-      </div>
-    </nav>
 
-    <!-- 底部设置与回收站入口 -->
-    <div class="flex shrink-0 flex-col space-y-1 border-t border-[var(--ts-color-divider)] p-2.5">
-      <SidebarTaskManager :is-collapsed="isCollapsed" />
+      <nav class="lm-rail-nav">
+        <!-- One tinted pill travels between destinations instead of blinking. -->
+        <span ref="activeGlow" class="lm-rail-glow" aria-hidden="true" />
+        <section v-for="(section, sectionIndex) in desktopNavSections" :key="section.label" class="lm-rail-group">
+          <div class="lm-rail-group-heading" :class="{ 'has-divider': sectionIndex > 0 }">
+            <h2 class="lm-rail-label" :aria-hidden="!pinned">{{ section.label }}</h2>
+          </div>
+          <div class="lm-rail-list">
+            <RouterLink
+              v-for="item in section.items"
+              :key="item.href"
+              :to="item.href"
+              :aria-label="item.label"
+              :title="pinned ? undefined : item.label"
+              class="lm-rail-item sidebar-nav-button"
+              :class="{ 'is-active': isDesktopNavActive(item), 'sidebar-nav-active': isDesktopNavActive(item) }"
+              :aria-current="isDesktopNavActive(item) ? 'page' : undefined"
+            >
+              <component :is="item.icon" class="h-[18px] w-[18px] shrink-0" />
+              <span class="lm-rail-label">{{ item.label }}</span>
+            </RouterLink>
+          </div>
+        </section>
 
-      <RouterLink
-        v-for="item in desktopSystemNavItems"
-        :key="item.href"
-        :to="item.href"
-        :title="isCollapsed ? item.label : undefined"
-        class="sidebar-nav-button text-slate-700 dark:text-slate-200"
-        :class="{ 'sidebar-nav-active': route.path === item.href }"
-      >
-        <component :is="item.icon" class="w-5 h-5 shrink-0" />
-        <transition name="fade">
-          <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
-        </transition>
-      </RouterLink>
-
-      <el-dropdown trigger="click" placement="top-start" @command="handleAccountCommand">
-        <button
-          type="button"
-          :title="isCollapsed ? accountName : undefined"
-          class="flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-slate-700 transition-all hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          <span class="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-visible rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-            <img v-if="userStore.userInfo?.avatar" :src="toServerUrl(userStore.userInfo.avatar)" :alt="accountName" class="h-full w-full rounded-full object-cover" />
-            <span v-else>{{ accountInitial }}</span>
-            <!-- 未读通知红点（服务端通知 + 任务完成/失败） -->
-            <span
-              v-if="notificationStore.unreadCount > 0"
-              class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"
-              aria-label="有未读通知"
-            />
-          </span>
-          <span v-if="!isCollapsed" class="ml-3 min-w-0 flex-1">
-            <span class="block truncate text-sm font-medium">{{ accountName }}</span>
-            <span class="block truncate text-xs text-slate-400 dark:text-slate-500">{{ userStore.userInfo?.username }}</span>
-          </span>
-          <ChevronDown v-if="!isCollapsed" class="ml-2 h-4 w-4 shrink-0 text-slate-400" />
-        </button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="notifications">
-              <Bell class="mr-2 h-4 w-4" />
-              通知
+        <!-- 快捷访问 -->
+        <section class="lm-rail-quick">
+          <div class="lm-rail-group-heading has-divider">
+            <h2 class="lm-rail-label" :aria-hidden="!pinned">快捷访问</h2>
+          </div>
+          <div v-if="navItemsList.length" class="lm-rail-list">
+            <button
+              v-for="item in navItemsList"
+              :key="`${item.entity_type}-${item.entity_id}`"
+              type="button"
+              class="lm-rail-item lm-rail-item--quick"
+              :class="{ 'is-active': isActiveRoute(item.route_path) }"
+              :aria-label="item.name"
+              :title="pinned ? undefined : item.name"
+              @click="router.push(item.route_path)"
+            >
+              <span class="lm-rail-thumb">
+                <img v-if="item.cover_photo_id" :src="getThumbnailUrl(item)" alt="" loading="lazy" />
+                <component v-else :is="getNavIcon(item.entity_type)" class="h-3.5 w-3.5" />
+              </span>
+              <span class="lm-rail-label">{{ item.name }}</span>
               <span
-                v-if="notificationStore.unreadCount > 0"
-                class="ml-1.5 inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-semibold leading-4 text-white"
-              >{{ notificationStore.unreadCount > 99 ? '99+' : notificationStore.unreadCount }}</span>
-            </el-dropdown-item>
-            <el-dropdown-item command="profile"><UserCircle class="mr-2 h-4 w-4" />个人资料</el-dropdown-item>
-            <el-dropdown-item command="settings"><Settings class="mr-2 h-4 w-4" />设置</el-dropdown-item>
-            <el-dropdown-item v-if="!isTauriApp()" divided command="logout"><LogOut class="mr-2 h-4 w-4" />退出登录</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
+                class="lm-rail-remove"
+                role="button"
+                tabindex="0"
+                :aria-label="`移除 ${item.name}`"
+                @click.stop="removeNavItem(item.entity_type, item.entity_id)"
+                @keydown.enter.stop="removeNavItem(item.entity_type, item.entity_id)"
+              ><X class="h-3 w-3" /></span>
+            </button>
+          </div>
+          <!-- 快捷访问的添加入口：有入口时贴在列表末尾，没有时单独一行 -->
+          <div class="lm-rail-add" :class="{ 'is-hidden': !pinned && navItemsList.length > 0 }" :inert="!pinned && navItemsList.length > 0">
+            <button
+              type="button"
+              class="lm-rail-item lm-rail-item--add"
+              aria-label="添加快捷访问"
+              :title="pinned ? undefined : '添加快捷访问'"
+              @click="openAddDialog"
+            >
+              <Plus class="h-[18px] w-[18px] shrink-0" />
+              <span class="lm-rail-label">添加快捷访问</span>
+            </button>
+          </div>
+        </section>
+      </nav>
+
+      <div class="lm-rail-foot">
+        <button
+          type="button"
+          class="lm-rail-ai ai-assistant-button"
+          :aria-label="proactiveUnread > 0 ? `AI 助手，${proactiveUnread} 条新消息` : 'AI 助手'"
+          :title="pinned ? undefined : 'AI 助手'"
+          @click="uiStore.openAgent()"
+        >
+          <span class="lm-rail-ai-orb">
+            <Bot class="h-[15px] w-[15px]" />
+            <span v-if="proactiveUnread > 0" class="lm-rail-dot" aria-hidden="true" />
+          </span>
+          <span class="lm-rail-label">AI 助手</span>
+          <Sparkles class="lm-rail-ai-spark h-3.5 w-3.5" />
+        </button>
+
+        <SidebarTaskManager :is-collapsed="!pinned" />
+
+        <RouterLink
+          v-for="item in desktopSystemNavItems"
+          :key="item.href"
+          :to="item.href"
+          :aria-label="item.label"
+          :title="pinned ? undefined : item.label"
+          class="lm-rail-item"
+          :class="{ 'is-active': route.path === item.href }"
+        >
+          <component :is="item.icon" class="h-[18px] w-[18px] shrink-0" />
+          <span class="lm-rail-label">{{ item.label }}</span>
+        </RouterLink>
+
+        <el-dropdown trigger="click" placement="top-start" @command="handleAccountCommand">
+          <button
+            type="button"
+            class="lm-rail-account"
+            :aria-label="`账号：${accountName}`"
+            :title="pinned ? undefined : accountName"
+          >
+            <span class="lm-rail-avatar">
+              <img v-if="userStore.userInfo?.avatar" :src="toServerUrl(userStore.userInfo.avatar)" :alt="accountName" />
+              <span v-else>{{ accountInitial }}</span>
+              <span v-if="notificationStore.unreadCount > 0" class="lm-rail-dot" aria-label="有未读通知" />
+            </span>
+            <span class="lm-rail-label lm-rail-account-copy">
+              <span class="lm-rail-account-name">{{ accountName }}</span>
+              <span class="lm-rail-account-id">{{ userStore.userInfo?.username }}</span>
+            </span>
+            <ChevronDown class="lm-rail-account-caret h-3.5 w-3.5" />
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="notifications">
+                <Bell class="mr-2 h-4 w-4" />
+                通知
+                <span
+                  v-if="notificationStore.unreadCount > 0"
+                  class="ml-1.5 inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-semibold leading-4 text-white"
+                >{{ notificationStore.unreadCount > 99 ? '99+' : notificationStore.unreadCount }}</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="profile"><UserCircle class="mr-2 h-4 w-4" />个人资料</el-dropdown-item>
+              <el-dropdown-item command="settings"><Settings class="mr-2 h-4 w-4" />设置</el-dropdown-item>
+              <el-dropdown-item v-if="!isTauriApp()" divided command="logout"><LogOut class="mr-2 h-4 w-4" />退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
     </div>
 
-    <!-- 添加快捷导航对话框 -->
-    <NavAddDialog
-      ref="addDialogRef"
-      v-model:visible="showAddNavDialog"
-    />
+    <NavAddDialog ref="addDialogRef" v-model:visible="showAddNavDialog" />
   </aside>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Images,
-  ChevronLeft,
-  PanelLeftOpen,
   Search,
   X,
   User,
@@ -354,13 +325,14 @@ import {
   Plus,
   Calendar,
   ChevronDown,
+  ChevronRight,
   UserCircle,
   Settings,
   LogOut,
   Bot,
   Bell,
 } from 'lucide-vue-next'
-import { useDebounceFn, useMediaQuery } from '@vueuse/core'
+import { onClickOutside, useDebounceFn, useElementBounding, useWindowSize } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'
 import searchService, { type SearchSuggestion } from '@/api/search'
 import { injectNavItems, getNavIcon, getThumbnailUrl } from '@/composables/useNavItems'
@@ -369,7 +341,7 @@ import SidebarTaskManager from '@/components/SidebarTaskManager.vue'
 import { useNotificationStore } from '@/stores/notificationStore'
 import { parseDateRange } from '@/utils/date'
 import { desktopNavSections, systemNavItems } from '@/config/navigation'
-import type { AppNavItem, AppNavSection } from '@/config/navigation'
+import type { AppNavItem } from '@/config/navigation'
 import { useUserStore } from '@/stores/user'
 import { ElMessageBox } from 'element-plus'
 import { useUiStore } from '@/stores/uiStore'
@@ -434,38 +406,40 @@ const isDesktopNavActive = (item: AppNavItem) => {
   return route.meta.navGroup === item.navGroup
 }
 
-const SIDEBAR_SECTIONS_KEY = 'trailsnap_sidebar_sections'
-const loadExpandedSections = (): Record<string, boolean> => {
-  try {
-    return { 探索: true, ...JSON.parse(localStorage.getItem(SIDEBAR_SECTIONS_KEY) || '{}') }
-  } catch {
-    return { 探索: true }
-  }
-}
-const expandedSections = ref<Record<string, boolean>>(loadExpandedSections())
-const isSectionExpanded = (section: AppNavSection) =>
-  !section.collapsible || isCollapsed.value || Boolean(expandedSections.value[section.label])
+/*
+ * Sliding active indicator.
+ *
+ * The pill is one absolutely positioned element; its geometry is measured from
+ * the active link in the scroll container's coordinates.
+ */
+const sidebarRef = ref<HTMLElement | null>(null)
+const activeGlow = ref<HTMLElement | null>(null)
+let glowFrame = 0
 
-const toggleSection = (label: string) => {
-  expandedSections.value = {
-    ...expandedSections.value,
-    [label]: !expandedSections.value[label],
+function placeActiveGlow() {
+  const sidebar = sidebarRef.value
+  const glow = activeGlow.value
+  const nav = glow?.parentElement
+  if (!sidebar || !glow || !nav) return
+  const active = sidebar.querySelector<HTMLElement>('nav .sidebar-nav-button.sidebar-nav-active')
+  if (!active || !active.getClientRects().length) {
+    glow.style.opacity = '0'
+    return
   }
-  localStorage.setItem(SIDEBAR_SECTIONS_KEY, JSON.stringify(expandedSections.value))
+  const base = nav.getBoundingClientRect()
+  const rect = active.getBoundingClientRect()
+  glow.style.opacity = '1'
+  glow.style.height = `${Math.round(rect.height)}px`
+  glow.style.transform = `translate3d(0, ${Math.round(rect.top - base.top + nav.scrollTop)}px, 0)`
 }
 
-watch(
-  () => route.path,
-  () => {
-    const activeSection = desktopNavSections.find(section =>
-      section.collapsible && section.items.some(isDesktopNavActive)
-    )
-    if (activeSection && !expandedSections.value[activeSection.label]) {
-      expandedSections.value = { ...expandedSections.value, [activeSection.label]: true }
-    }
-  },
-  { immediate: true },
-)
+function scheduleActiveGlow() {
+  if (glowFrame) return
+  glowFrame = requestAnimationFrame(() => {
+    glowFrame = 0
+    placeActiveGlow()
+  })
+}
 
 // 路由激活状态判断：完全匹配，避免首页（/）一直处于激活状态
 const isActiveRoute = (path: string) => {
@@ -475,14 +449,41 @@ const isActiveRoute = (path: string) => {
   return route.path.startsWith(path)
 }
 
-// 平板横向空间有限，默认收起导航，仅保留可辨识的图标栏；用户仍可手动展开。
-const compactViewport = useMediaQuery('(min-width: 768px) and (max-width: 1199px)')
-const isCollapsed = ref(compactViewport.value)
-watch(compactViewport, compact => { isCollapsed.value = compact })
+/* ---------------------------------------------------------------------------
+ * Rail behaviour.
+ *
+ * 桌面导航默认是一条窄的玻璃轨道（只有图标）。顶部的「展开导航」把它展开成
+ * 带文字的完整面板，再次点击收起。开关固定在品牌下方，两种状态位置一致；
+ * 展开时内容整体让位，不做覆盖式弹层。
+ * ------------------------------------------------------------------------- */
+const PIN_KEY = 'trailsnap_expanded'
+const pinned = ref(false)
+try { pinned.value = localStorage.getItem(PIN_KEY) === '1' } catch { pinned.value = false }
 
-const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value
+/* 首次使用的一次性提示：只在从未展开过导航时出现几秒。 */
+const HINT_KEY = 'trailsnap_rail_hint'
+const showExploreHint = ref(false)
+let hintTimer: ReturnType<typeof setTimeout> | undefined
+function dismissHint() {
+  showExploreHint.value = false
+  if (hintTimer) clearTimeout(hintTimer)
+  hintTimer = undefined
+  try { localStorage.setItem(HINT_KEY, '1') } catch {}
 }
+
+function togglePin() {
+  pinned.value = !pinned.value
+  try { localStorage.setItem(PIN_KEY, pinned.value ? '1' : '0') } catch {}
+  if (pinned.value) dismissHint()
+}
+
+onMounted(() => {
+  let seen = false
+  try { seen = localStorage.getItem(HINT_KEY) === '1' || localStorage.getItem(PIN_KEY) === '1' } catch {}
+  if (seen || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  showExploreHint.value = true
+  hintTimer = setTimeout(dismissHint, 7000)
+})
 
 // 搜索相关状态和逻辑
 const searchText = ref('')
@@ -493,7 +494,18 @@ const openModelSearch = () => {
   showDropdown.value = false
 }
 const showDropdown = ref(false)
+const searchFieldRef = ref<HTMLElement | null>(null)
+const searchDropdownRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
+const { top: searchFieldTop, bottom: searchFieldBottom, width: searchFieldWidth } = useElementBounding(searchFieldRef)
+const { height: viewportHeight } = useWindowSize()
+const searchPopupBelow = computed(() => viewportHeight.value - searchFieldBottom.value)
+const searchPopupAbove = computed(() => searchPopupBelow.value < 310 && searchFieldTop.value > searchPopupBelow.value)
+const searchPopupMaxHeight = computed(() => {
+  const available = searchPopupAbove.value ? searchFieldTop.value : searchPopupBelow.value
+  // Allow for the anchor gap, panel border and breathing room at the viewport edge.
+  return `min(18rem, ${Math.max(0, available - 22)}px)`
+})
 const suggestions = ref<SearchSuggestion[]>([])
 const searchHints = ['海边日落', '猫咪', '雪景', '花园', '城市夜景']
 
@@ -524,13 +536,6 @@ const openAddDialog = () => {
   })
 }
 
-const openAddDialogFromCollapsed = () => {
-  isCollapsed.value = false
-  nextTick(() => {
-    openAddDialog()
-  })
-}
-
 watch(() => store.currentContext, (ctx) => {
   if (ctx.type === 'search' && ctx.id) {
     searchText.value = ctx.id
@@ -541,7 +546,7 @@ watch(() => store.currentContext, (ctx) => {
 })
 
 const openSearch = () => {
-  isCollapsed.value = false
+  pinned.value = true
   nextTick(() => {
     if (searchInputRef.value) {
       searchInputRef.value.focus()
@@ -549,12 +554,34 @@ const openSearch = () => {
   })
 }
 
-const handleBlur = () => {
-  setTimeout(() => {
-    showDropdown.value = false
-    suggestions.value = []
-  }, 200)
+const closeSearchDropdown = () => {
+  showDropdown.value = false
+  suggestions.value = []
 }
+
+const handleSearchFocusOut = (event: FocusEvent) => {
+  const next = event.relatedTarget
+  if (next instanceof Node && !searchFieldRef.value?.contains(next) && !searchDropdownRef.value?.contains(next)) {
+    closeSearchDropdown()
+  }
+}
+
+const closeSearchFromKeyboard = () => {
+  if (!showDropdown.value) return
+  searchInputRef.value?.focus()
+  closeSearchDropdown()
+}
+
+const focusFirstSuggestion = async () => {
+  if (!showDropdown.value) handleFocus()
+  await nextTick()
+  searchDropdownRef.value?.querySelector('button')?.focus()
+}
+
+onClickOutside(searchDropdownRef, closeSearchDropdown, { ignore: [searchFieldRef] })
+watch([pinned, searchFieldWidth], ([expanded, width]) => {
+  if (!expanded || !width) closeSearchDropdown()
+})
 
 const handleFocus = () => {
   showDropdown.value = true
@@ -600,6 +627,7 @@ const fetchSuggestions = useDebounceFn(async (q: string) => {
   }
   try {
     const res = await searchService.getSuggestions(q)
+    if (!showDropdown.value || searchText.value !== q) return
     const processedSuggestions: SearchSuggestion[] = []
     let hasOcr = false
     
@@ -682,122 +710,481 @@ const getIcon = (type: string) => {
   }
   return map[type] || Search
 }
+
+/* The indicator needs every nav list resolved, so it is wired at the end. */
+let sidebarObserver: ResizeObserver | undefined
+
+onMounted(() => {
+  void nextTick(scheduleActiveGlow)
+  const sidebar = sidebarRef.value
+  if (!sidebar) return
+  sidebarObserver = new ResizeObserver(scheduleActiveGlow)
+  sidebarObserver.observe(sidebar)
+})
+
+onBeforeUnmount(() => {
+  if (glowFrame) cancelAnimationFrame(glowFrame)
+  sidebarObserver?.disconnect()
+  if (hintTimer) clearTimeout(hintTimer)
+})
+
+watch(
+  [() => route.path, pinned, () => navItemsList.value.length],
+  () => void nextTick(scheduleActiveGlow),
+  { flush: 'post' },
+)
 </script>
 
 <style scoped>
-.journal-sidebar { background: var(--ts-journal-rail); border-color: var(--ts-color-divider); }
-.journal-sidebar-brand span { color: var(--ts-color-text); font-family: var(--ts-journal-serif); font-size: 22px; font-weight: 700; letter-spacing: -.05em; }
-.journal-sidebar-brand a:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: 4px; border-radius: 7px; }
-.journal-sidebar :deep(.ts-input) { border-color: var(--ts-color-border); }
-.journal-sidebar :deep(.ts-input:focus) { border-color: var(--ts-journal-focus); outline-color: var(--ts-journal-focus); }
-
-.sidebar-nav-button,
-.sidebar-icon-button {
+.lm-rail {
+  --rail-compact-width: 64px;
+  --rail-icon: 22px;
+  --rail-shell-pad: 8px;
+  --rail-inner-width: calc(var(--rail-compact-width) - 2 * (var(--rail-shell-pad) + 1px));
+  --rail-pad: calc((var(--rail-inner-width) - var(--rail-icon)) / 2);
+  --rail-gap: 12px;
+  --rail-transition: 320ms var(--lm-ease);
+  --rail-copy-opacity: 0;
   position: relative;
+  width: calc(var(--rail-compact-width) + 28px);
+  padding: 14px 0 14px 14px;
+  background: transparent;
+  transition: width var(--rail-transition);
+}
+
+.lm-rail.is-open { width: 228px; --rail-copy-opacity: 1; }
+
+.lm-rail-shell {
+  display: flex;
+  height: 100%;
+  width: var(--rail-compact-width);
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px var(--rail-shell-pad) 12px;
+  overflow: hidden;
+  border: 1px solid var(--ts-glass-border);
+  border-radius: 30px;
+  background: var(--ts-glass-bg);
+  box-shadow: var(--ts-shadow-glass);
+  -webkit-backdrop-filter: blur(26px) saturate(var(--ts-glass-saturation));
+  backdrop-filter: blur(26px) saturate(var(--ts-glass-saturation));
+  transition: width var(--rail-transition), box-shadow var(--rail-transition), border-radius var(--rail-transition), background-color var(--rail-transition);
+}
+
+/* 玻璃内侧的一束顶部光，让轨道不再像一块白板。 */
+.lm-rail-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--ts-glass-sheen);
+  opacity: .8;
+}
+
+.lm-rail-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(120px 64px at 50% 0%, rgba(var(--theme-rgb), .14), transparent 72%),
+    radial-gradient(140px 90px at 50% 100%, rgba(var(--theme-rgb), .08), transparent 76%);
+}
+
+.lm-rail.is-open .lm-rail-shell {
+  width: 212px;
+  border-radius: 28px;
+  background: var(--ts-glass-panel);
+  box-shadow: var(--ts-shadow-floating);
+}
+
+/* ——— 品牌 ——— */
+.lm-rail-brand {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 0 calc((var(--rail-inner-width) - 32px) / 2);
+}
+
+.lm-rail-logo {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 10px;
+  transition: transform 320ms var(--ts-ease-spring);
+}
+.lm-rail-logo img { width: 100%; height: 100%; border-radius: inherit; }
+.lm-rail-logo:hover { transform: rotate(-5deg) scale(1.05); }
+.lm-rail-logo:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: 3px; }
+
+.lm-rail-word {
+  overflow: hidden;
+  opacity: var(--rail-copy-opacity);
+  color: var(--ts-color-text);
+  font-family: var(--lm-font-display);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -.05em;
+  white-space: nowrap;
+  transition: opacity var(--rail-transition);
+}
+
+/* ——— 搜索 ——— */
+.lm-rail-search { position: relative; z-index: 3; display: flex; padding: 2px 0 4px; }
+.lm-rail-search-field {
+  position: relative;
+  width: 100%;
+  height: 38px;
+  min-width: 0;
+  opacity: var(--rail-copy-opacity);
+  transition: opacity var(--rail-transition);
+}
+.lm-rail-search-icon {
+  position: absolute;
+  z-index: 1;
+  inset: 2px auto auto 0;
+  display: grid;
+  width: var(--rail-inner-width);
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--ts-color-text-secondary);
+}
+.lm-rail-search-icon:disabled { pointer-events: none; }
+.lm-rail-search-icon:hover:enabled { background: var(--ts-color-surface-muted); }
+.lm-rail-search-icon:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
+.lm-rail-input { height: 38px; min-height: 38px; border-radius: 12px; background: color-mix(in srgb, var(--ts-color-surface) 72%, transparent); font-size: 13px; }
+
+:global(.el-popper.lm-rail-search-popper) {
+  border: 1px solid var(--ts-color-border);
+  border-radius: 18px;
+  background: var(--ts-color-surface);
+  box-shadow: var(--ts-shadow-floating);
+  overflow: hidden;
+}
+.lm-rail-dropdown {
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+}
+.lm-rail-hint {
+  border-radius: 999px;
+  background: var(--ts-color-surface-muted);
+  padding: 4px 10px;
+  color: var(--ts-color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.lm-rail-hint:hover { background: var(--ts-journal-active); color: var(--ts-color-text); }
+.lm-rail-suggest {
   display: flex;
   width: 100%;
-  height: var(--ts-control-md);
   align-items: center;
-  border-radius: var(--ts-radius-control);
-  padding-inline: 0.625rem;
-  font-size: 0.875rem;
-  transition:
-    color 160ms ease,
-    background-color 160ms ease,
-    box-shadow 180ms ease,
-    transform 120ms ease;
+  gap: 10px;
+  border-top: 1px solid var(--ts-color-divider);
+  padding: 9px 14px;
+  text-align: left;
+  font-size: 13px;
+  transition: background-color 140ms ease;
 }
-
-.sidebar-nav-button:hover,
-.sidebar-icon-button:hover,
-.sidebar-quick-button:hover {
-  color: var(--ts-color-text);
+.lm-rail-suggest:hover { background: var(--ts-color-surface-muted); }
+.lm-rail-tag {
+  flex-shrink: 0;
+  border-radius: 6px;
   background: var(--ts-color-surface-muted);
-}
-
-.sidebar-nav-button:active,
-.sidebar-icon-button:active,
-.sidebar-quick-button:active,
-.ai-assistant-button:active {
-  transform: scale(0.98);
-}
-
-.sidebar-nav-button:focus-visible,
-.sidebar-icon-button:focus-visible,
-.sidebar-quick-button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--ts-journal-focus);
-}
-
-.sidebar-nav-active {
-  color: var(--ts-journal-accent-text) !important;
+  padding: 1px 6px;
+  color: var(--ts-color-text-secondary);
+  font-size: 10px;
   font-weight: 600;
-  background: var(--ts-journal-active) !important;
 }
 
-.sidebar-nav-active::before {
-  content: "";
-  position: absolute;
-  inset: 12px auto 12px 0;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--ts-journal-focus);
-}
-
-.sidebar-quick-button {
+/* ——— 导航 ——— */
+.lm-rail-nav {
+  position: relative;
+  z-index: 1;
   display: flex;
-  min-height: var(--ts-control-md);
-  cursor: pointer;
-  align-items: center;
-  border-radius: var(--ts-radius-control);
-  padding: 0.375rem 0.5rem;
-  transition:
-    color 160ms ease,
-    background-color 160ms ease,
-    box-shadow 180ms ease,
-    transform 120ms ease;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
 }
+.lm-rail-nav::-webkit-scrollbar { display: none; }
+.lm-rail-nav > * { flex-shrink: 0; }
 
-.ai-assistant-button {
-  border: 1px solid var(--ts-color-border);
-  background: var(--ts-color-surface);
-  transition:
-    color 160ms ease,
-    border-color 160ms ease,
-    box-shadow 180ms ease,
-    transform 120ms ease;
-}
-
-.ai-assistant-button:hover {
-  border-color: var(--ts-color-text-tertiary);
-  color: var(--ts-color-text);
-  background: var(--ts-color-surface-muted);
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease, width 0.2s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
+/* 选中项背后的滑块：放在 nav 内，跟随列表一起滚动 */
+.lm-rail-glow {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 4px;
+  right: 4px;
+  border-radius: 13px;
+  background: var(--ts-journal-active);
   opacity: 0;
-  width: 0;
+  pointer-events: none;
+  will-change: transform;
+  transition: transform 420ms var(--ts-ease-spring), height 200ms var(--ts-ease-paper), opacity 200ms ease;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+.lm-rail-group-heading {
+  position: relative;
+  display: flex;
+  height: 20px;
+  align-items: center;
+  padding-inline: var(--rail-pad);
+  color: var(--ts-color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.custom-scrollbar::-webkit-scrollbar-track {
+.lm-rail-group-heading.has-divider::before {
+  position: absolute;
+  inset: 50% 10px auto;
+  height: 1px;
+  background: var(--ts-color-divider);
+  opacity: calc(1 - var(--rail-copy-opacity));
+  transition: opacity var(--rail-transition);
+  content: '';
+}
+
+.lm-rail-list { display: flex; flex-direction: column; gap: 1px; }
+
+/* 所有行共用的骨架：同样的高度、同样的左内边距、同样的图标槽 */
+.lm-rail-item,
+.lm-rail-ai,
+.lm-rail-account {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  align-items: center;
+  gap: var(--rail-gap);
+  border-radius: 13px;
+  padding: 0 var(--rail-pad);
+  color: var(--ts-color-text-secondary);
+  font-size: 13.5px;
+  font-weight: 550;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: color 180ms ease, background-color 180ms ease, transform 120ms ease;
+}
+
+.lm-rail-item:hover,
+.lm-rail-ai:hover,
+.lm-rail-account:hover { color: var(--ts-color-text); background: color-mix(in srgb, var(--ts-color-surface-muted) 72%, transparent); }
+.lm-rail-item:active,
+.lm-rail-ai:active,
+.lm-rail-account:active { transform: scale(.97); }
+.lm-rail-item:focus-visible,
+.lm-rail-ai:focus-visible,
+.lm-rail-account:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
+
+.lm-rail-item.is-active {
+  color: var(--ts-journal-accent-text);
+  font-weight: 650;
   background: transparent;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 4px;
+/* 激活项左侧的一枚光点，收起状态下也能看见当前位置 */
+.lm-rail-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  width: 3px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--ts-journal-focus);
+  box-shadow: 0 0 10px rgba(var(--theme-rgb), .55);
 }
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #475569;
+
+/* 图标统一占 22px 的槽位，与缩略图、AI 光球、头像落在同一条中轴线 */
+.lm-rail-item > svg { margin-inline: 2px; transition: transform 380ms var(--ts-ease-spring); }
+.lm-rail-item:hover > svg { transform: translate3d(0, -1px, 0) scale(1.07); }
+
+.lm-rail-label {
+  min-width: 0;
+  overflow: hidden;
+  opacity: var(--rail-copy-opacity);
+  text-overflow: ellipsis;
+  transition: opacity var(--rail-transition);
+}
+
+/* 快捷访问 */
+.lm-rail-thumb {
+  display: grid;
+  width: var(--rail-icon);
+  height: var(--rail-icon);
+  flex-shrink: 0;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--ts-color-surface-muted);
+  color: var(--ts-color-text-tertiary);
+}
+.lm-rail-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.lm-rail-remove {
+  position: absolute;
+  right: 8px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--ts-color-text-tertiary);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+.lm-rail:not(.is-open) .lm-rail-remove { display: none; }
+.lm-rail-item--quick:hover .lm-rail-remove { opacity: 1; }
+.lm-rail-remove:hover { background: var(--ts-color-surface-muted); color: var(--ts-color-danger); }
+
+.lm-rail-item--add { color: var(--ts-color-text-tertiary); font-size: 12.5px; font-weight: 550; }
+.lm-rail-item--add:hover { color: var(--ts-color-text); }
+.lm-rail-add { height: 38px; overflow: hidden; transition: height var(--rail-transition); }
+.lm-rail-add.is-hidden { height: 0; }
+
+/* ——— 底部 ——— */
+.lm-rail-foot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 4px;
+}
+.lm-rail-foot::before {
+  content: '';
+  height: 1px;
+  margin: 2px 10px 5px;
+  background: linear-gradient(to right, var(--ts-color-border), transparent);
+}
+
+/* ——— 展开 / 收起：贴在品牌下方 ——— */
+.lm-rail-handle {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-shrink: 0;
+  padding-bottom: 2px;
+}
+
+.lm-rail-toggle {
+  display: flex;
+  width: 100%;
+  height: 34px;
+  align-items: center;
+  gap: var(--rail-gap);
+  padding-inline: var(--rail-pad);
+  border-radius: 12px;
+  color: var(--ts-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color 180ms ease, background-color 180ms ease;
+}
+.lm-rail-toggle-icon { margin-inline: 2px; transition: transform var(--rail-transition); }
+.lm-rail.is-open .lm-rail-toggle-icon { transform: rotate(180deg); }
+.lm-rail-toggle:hover { color: var(--ts-color-text); background: color-mix(in srgb, var(--ts-color-surface-muted) 72%, transparent); }
+.lm-rail-toggle:focus-visible { outline: 2px solid var(--ts-journal-focus); outline-offset: -2px; }
+
+/* 首次使用提示：不弹气泡（会压住页面标题），改成让开关自己「呼吸」三下 */
+@keyframes lm-handle-nudge {
+  0%, 100% { transform: translateX(0); box-shadow: 0 0 0 0 rgba(var(--theme-rgb), 0); }
+  35% { transform: translateX(2px); box-shadow: 0 0 0 4px rgba(var(--theme-rgb), .16); }
+  70% { transform: translateX(0); box-shadow: 0 0 0 0 rgba(var(--theme-rgb), 0); }
+}
+.lm-rail-toggle.is-hinting {
+  border-color: color-mix(in srgb, var(--ts-color-border) 30%, var(--ts-journal-focus));
+  color: var(--ts-journal-accent-text);
+  animation: lm-handle-nudge 1.6s var(--ts-ease-breathe) 400ms 3;
 }
 @media (prefers-reduced-motion: reduce) {
-  .journal-sidebar, .journal-sidebar button, .journal-sidebar a, .journal-sidebar .fade-enter-active, .journal-sidebar .fade-leave-active { transition-duration: 0s; }
+  .lm-rail-toggle.is-hinting { animation: none; }
+}
+
+/* 展开时在开关下加一条发丝线，和搜索分开；用阴影画，不占高度 */
+.lm-rail-handle { box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ts-color-divider) calc(var(--rail-copy-opacity) * 100%), transparent); transition: box-shadow var(--rail-transition); }
+
+.lm-rail-ai { color: var(--ts-color-text); font-weight: 600; }
+
+.lm-rail-ai-orb {
+  position: relative;
+  display: grid;
+  width: var(--rail-icon);
+  height: var(--rail-icon);
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--ts-journal-focus);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(var(--theme-rgb), .34), transparent 70%),
+    color-mix(in srgb, var(--ts-color-surface) 70%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(var(--theme-rgb), .26);
+}
+.lm-rail-ai-spark { flex-shrink: 0; margin-left: auto; color: var(--ts-journal-focus); opacity: calc(var(--rail-copy-opacity) * .8); transition: opacity var(--rail-transition); }
+
+.lm-rail-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #f43f5e;
+  box-shadow: 0 0 0 2px var(--ts-color-page);
+}
+
+.lm-rail-account { text-align: left; }
+
+.lm-rail-avatar {
+  position: relative;
+  display: grid;
+  width: var(--rail-icon);
+  height: var(--rail-icon);
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(var(--theme-rgb), .16);
+  color: var(--ts-journal-accent-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+.lm-rail-avatar img { width: 100%; height: 100%; border-radius: 999px; object-fit: cover; }
+
+.lm-rail-account-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.2;
+}
+.lm-rail-account-name { overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 600; color: var(--ts-color-text); }
+.lm-rail-account-id { overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--ts-color-text-tertiary); }
+.lm-rail-account-caret { flex-shrink: 0; margin-left: auto; color: var(--ts-color-text-tertiary); opacity: var(--rail-copy-opacity); transition: opacity var(--rail-transition); }
+
+.lm-rail-foot :deep(.el-dropdown) { width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lm-rail, .lm-rail-shell, .lm-rail-word, .lm-rail-label,
+  .lm-rail-item, .lm-rail-glow, .lm-rail-ai-spark, .lm-rail-account-caret,
+  .lm-rail-toggle-icon, .lm-rail-search-field, .lm-rail-add,
+  .lm-rail-handle, .lm-rail-group-heading::before { transition-duration: 0s !important; animation: none !important; }
 }
 </style>

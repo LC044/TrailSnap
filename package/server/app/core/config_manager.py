@@ -188,10 +188,10 @@ class AnalysisRequestSettings(BaseModel):
 class AISettings(AnalysisRequestSettings):
     connections: List[LLMConnection] = Field(default_factory=list, description="LLM Connections")
     analysis_connection_id: str = Field(default="builtin", description="Default connection ID for analysis")
-    analysis_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for analysis")
+    analysis_model_name: str = Field(default="MiniCPM-V-4_7-Q4_K_M", description="Default model name for analysis")
     analysis_reasoning_effort: str = Field(default="none", description="Default reasoning effort for analysis")
     chat_connection_id: str = Field(default="builtin", description="Default connection ID for agent chat")
-    chat_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for agent chat")
+    chat_model_name: str = Field(default="MiniCPM-V-4_7-Q4_K_M", description="Default model name for agent chat")
     chat_reasoning_effort: str = Field(default="none", description="Default reasoning effort for agent chat")
     ai_api_url: str = Field(default=os.getenv("TS_AI_API_URL") or os.getenv("AI_API_URL", "http://127.0.0.1:8001"), validate_default=True, description="AI Service API URL")
 
@@ -250,7 +250,7 @@ class NavSettings(BaseModel):
     items: List[NavItemRef] = Field(default_factory=list, description="Ordered list of custom nav items")
 
 class AppSettings(BaseModel):
-    version: str = "0.21.1"
+    version: str = "0.21.2"
     ai: AISettings = Field(default_factory=AISettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     image: ImageSettings = Field(default_factory=ImageSettings)
@@ -450,10 +450,10 @@ class ConfigManager:
                 'provider': 'Built-in AI',
                 'api_base': builtin_api_base,
                 'api_key': 'empty',
-                'model_names': ['MiniCPM-V-4_6-Q4_K_M'],
+                'model_names': ['MiniCPM-V-4_7-Q4_K_M'],
                 'models': [{
-                    'model_name': 'MiniCPM-V-4_6-Q4_K_M',
-                    'display_name': 'MiniCPM-V-4_6-Q4_K_M',
+                    'model_name': 'MiniCPM-V-4_7-Q4_K_M',
+                    'display_name': 'MiniCPM-V-4_7-Q4_K_M',
                     'context_window': 32768,
                     'reasoning_levels': ['none'],
                 }],
@@ -470,4 +470,4 @@ class ConfigManager:
 os.makedirs(DATA_DIR, exist_ok=True)
 # Global instance
 config_manager = ConfigManager()
-VERSION = "0.21.1"
+VERSION = "0.21.2"

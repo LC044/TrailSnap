@@ -345,6 +345,9 @@ impl AIGateway {
             if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
                 command.env("TS_AI_SKIP_AUTO_DOWNLOAD", "1");
             }
+            if let Some(directory) = llama_runtime::managed_runtime_dir() {
+                command.env("TS_LLAMA_RUNTIME_DIR", directory);
+            }
             if let Some(llama_server) = llama_runtime::find_llama_server() {
                 command.env("LLAMA_SERVER_PATH", llama_server);
             }
@@ -502,7 +505,22 @@ async fn proxy_inner(
     let guard = gateway.begin_request()?;
     if method == Method::POST && (uri.path().starts_with("/v1/") || (uri.path().starts_with("/ai/models/llm-") && uri.path().ends_with("/download"))) {
         let _lock = gateway.start_lock.lock().await;
-        llama_runtime::install().await?;
+        let selection = ai_runtime::load(&gateway.app_root)?;
+        let text_model = if uri.path().starts_with("/ai/models/") {
+            uri.path() == "/ai/models/llm-minicpm-1b-q4/download"
+        } else {
+            fs::read(gateway.app_root.join("ai-config.json")).ok()
+                .and_then(|data| serde_json::from_slice::<Value>(&data).ok())
+                .is_some_and(|config| {
+                    config.pointer("/selections/llm").and_then(Value::as_str) == Some("llm-minicpm-1b-q4")
+                })
+        };
+        let npu = cfg!(all(target_os = "windows", target_arch = "x86_64"))
+            && text_model
+            && selection.backend == "openvino"
+            && selection.device.split('.').next() == Some("NPU")
+            && selection.error.is_none();
+        llama_runtime::install(npu).await?;
     }
     let port = gateway.ensure_sidecar().await?;
     *gateway

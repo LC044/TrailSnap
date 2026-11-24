@@ -117,7 +117,10 @@ class UnifiedModelManager:
             "embedding": {"clip-ViT-B-32": "embedding-clip-vit-b32"},
             # Older versions incorrectly used classification for CLIP.
             "classification": {"clip-ViT-B-32": "photo-classification-v1"},
-            "llm": {"MiniCPM-V-4_6-Q4_K_M": "llm-minicpm-v-4.6"},
+            "llm": {
+                "MiniCPM-V-4_6-Q4_K_M": "llm-minicpm-v-4.6",
+                "MiniCPM-V-4_7-Q4_K_M": "llm-minicpm-v-4.7",
+            },
         }
         disk: dict[str, Any] = {}
         try:

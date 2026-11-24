@@ -1,12 +1,12 @@
 """Nightly watch 2026-11-22 · app/service/cleanup_execution.py::start_cleanup 盲区。
 
 start_cleanup 是「清理计划」从预览进入执行的闸门：它校验人工勾选、把候选项
-置为 ready/skipped、创建后台任务并把计划置为 queued。
+选中项置为 ready，未选项保留 candidate、创建后台任务并把计划置为 queued。
 
 覆盖：
 - 勾选为空 -> ValueError（error）
 - 没有既有勾选且没有传 selected_items -> ValueError（error）
-- 合法勾选 -> 计划进入 queued、任务被创建、未勾选候选被跳过（happy）
+- 合法勾选 -> 计划进入 queued、任务被创建、未勾选候选保留（happy）
 - 重复清理但重复组没有保留项 -> ValueError（error）
 - 重复清理且存在保留项 -> 放行（happy）
 """
@@ -84,7 +84,7 @@ def test_start_cleanup_queues_the_plan_and_creates_a_task(face_sqlite_session):
     db.refresh(selected)
     db.refresh(skipped)
     assert selected.status == "ready"
-    assert skipped.status == "skipped"
+    assert skipped.status == "candidate"
     assert db.query(CleanupSelection).filter_by(plan_id=plan.id).count() == 1
 
 
@@ -127,3 +127,16 @@ def test_start_cleanup_accepts_a_duplicate_group_with_a_keeper(face_sqlite_sessi
     result = start_cleanup(db, SimpleNamespace(id=owner), plan, _request(None))
 
     assert result.status == "queued"
+
+
+@pytest.mark.parametrize("mode", ["similar", "quality", "duplicate"])
+def test_cleanup_keeps_unselected_candidates_for_next_batch(face_sqlite_session, mode):
+    db = face_sqlite_session
+    owner = uuid4()
+    plan = _plan(db, owner, mode=mode)
+    selected = _item(db, plan)
+    remaining = _item(db, plan)
+    start_cleanup(db, SimpleNamespace(id=owner), plan, _request([selected.id]))
+    db.refresh(remaining)
+    assert remaining.status == "candidate"
+    assert plan.status == "queued"

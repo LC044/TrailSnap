@@ -23,7 +23,7 @@
           <el-form v-else-if="kind === 'cleanup' && config.cleanup_mode !== 'duplicate'" label-position="top">
             <h2 class="ts-section-title mb-4">查找设置</h2>
             <el-form-item v-if="config.cleanup_mode === 'similar'" label="相似度阈值"><el-slider v-model="config.similarity" :min=".8" :max="1" :step=".01" show-input /></el-form-item>
-            <el-form-item v-if="config.cleanup_mode === 'quality'" label="评分上限"><el-input-number v-model="config.quality_max" :min="0" :max="200" /></el-form-item>
+            <el-form-item v-if="config.cleanup_mode === 'quality'" label="综合评分上限（0–200）"><el-input-number v-model="config.quality_max" :min="0" :max="200" /></el-form-item>
           </el-form>
           <el-form v-else-if="kind === 'metadata'" label-position="top">
             <h2 class="ts-section-title mb-4">修正拍摄信息</h2>
@@ -153,7 +153,8 @@ const execute = async (selected?: number[]) => {
     const result = await workflowApi.execute(plan.value, selected)
     if (owner !== user.userInfo?.id || plan.value?.id !== id || disposed) return
     plan.value = result
-    ElMessage.success('任务已接受，可以离开页面')
+    ElMessage.success(kind.value === 'cleanup'
+      ? '正在删除所选照片，完成后可继续选择删除' : '任务已接受，可以离开页面')
     await router.replace({ query: { plan: plan.value.id } })
     poll()
   } catch { error.value = '执行未确认成功，请刷新此计划核对状态，勿重复创建新计划' }

@@ -1,23 +1,26 @@
 <template>
   <div class="space-y-4 animate-fade-in">
-    <div class="flex items-center justify-between">
-      <h2 class="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-        <MapPin class="w-5 h-5 text-primary-500" />
-        {{ selectedRegion }}
-      </h2>
-      <button @click="emit('clear-selection')" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="la-eyebrow"><span class="la-eyebrow-dot" aria-hidden="true"></span>区域图鉴 · SELECTED REGION</p>
+        <h2 class="la-title region-title mt-1 flex items-center gap-2">
+          <MapPin class="w-4 h-4 text-primary-500" />
+          {{ selectedRegion }}
+        </h2>
+      </div>
+      <button @click="emit('clear-selection')" class="mt-1 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" aria-label="清除区域选择">
         <X class="w-5 h-5" />
       </button>
     </div>
-    
-    <div class="grid grid-cols-2 gap-3">
-      <div class="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700/50">
-        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">照片数量</div>
-        <div class="text-xl font-semibold text-gray-800 dark:text-white">{{ selectedRegionCount }}</div>
+
+    <div class="region-stats grid grid-cols-2 gap-0">
+      <div class="region-stat">
+        <div class="la-stat-label">照片数量</div>
+        <div class="la-stat-value">{{ selectedRegionCount.toLocaleString() }}<small>张</small></div>
       </div>
-      <div v-if="regionFirstVisit" class="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700/50">
-        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">首次点亮</div>
-        <div class="text-sm font-semibold text-gray-800 dark:text-white mt-1">{{ regionFirstVisit }}</div>
+      <div v-if="regionFirstVisit" class="region-stat">
+        <div class="la-stat-label">首次点亮</div>
+        <div class="region-first">{{ regionFirstVisit }}</div>
       </div>
     </div>
 
@@ -56,20 +59,14 @@
         <Trophy class="w-4 h-4 text-yellow-500" /> 热门打卡地
       </h3>
       <div v-if="regionTopSubRegions.length > 0" class="space-y-3">
-        <div v-for="(item, index) in regionTopSubRegions" :key="item.name" class="flex items-center gap-3 cursor-pointer group" @click="emit('click-location', item.name, regionSubLevel)">
-          <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-               :class="index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500' :
-                       index === 1 ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' :
-                       index === 2 ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-500' :
-                       'bg-gray-50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-500'">
-            {{ index + 1 }}
-          </div>
+        <div v-for="(item, index) in regionTopSubRegions" :key="item.name" class="flex items-center gap-3 cursor-pointer group ranking-row" @click="emit('click-location', item.name, regionSubLevel)">
+          <div class="ranking-index shrink-0">{{ String(index + 1).padStart(2, '0') }}</div>
           <div class="flex-1">
             <div class="flex justify-between text-sm mb-1">
               <span class="text-gray-700 dark:text-gray-200 group-hover:text-primary-500 transition-colors">{{ item.name }}</span>
-              <span class="text-gray-500 dark:text-gray-400">{{ item.count }} 张</span>
+              <span class="text-gray-500 dark:text-gray-400 tabular-nums">{{ item.count }} 张</span>
             </div>
-            <div class="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+            <div class="ranking-bar-track">
               <div class="h-full rounded-full transition-all duration-1000"
                    :style="{
                      width: `${(item.count / regionTopSubRegions[0].count) * 100}%`,
@@ -123,20 +120,21 @@
           查看全部 <ChevronRight class="w-3.5 h-3.5" />
         </button>
       </div>
-      <div class="grid grid-cols-3 gap-2">
-        <div 
-          v-for="(photo, index) in regionPhotos" 
+      <div class="region-photo-grid">
+        <div
+          v-for="(photo, index) in regionPhotos"
           :key="photo.id"
-          class="aspect-square rounded-lg overflow-hidden group relative shadow-sm"
+          class="region-photo group relative overflow-hidden"
+          :class="{ 'region-photo--lead': index === 0 }"
         >
-          <el-image 
-            :src="photo.thumbnail || photo.url" 
+          <el-image
+            :src="photo.thumbnail || photo.url"
             :preview-src-list="regionPhotos.map(p => p.url)"
             :initial-index="index"
             fit="cover"
             preview-teleported
             lazy
-            class="w-full h-full transition-transform duration-500 group-hover:scale-110 cursor-pointer preview-dark-aware" 
+            class="w-full h-full transition-transform duration-700 group-hover:scale-105 cursor-pointer preview-dark-aware"
           />
           <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
         </div>
@@ -179,6 +177,66 @@ const { currentTheme } = injectTheme()
 </script>
 
 <style scoped>
+.region-title {
+  font-size: clamp(24px, 2.4vw, 30px);
+  overflow-wrap: anywhere;
+}
+.region-stats {
+  border-top: 1px solid var(--ts-color-border);
+  border-bottom: 1px solid var(--ts-color-border);
+}
+.region-stat {
+  min-width: 0;
+  padding: 12px 10px 13px;
+  border-left: 1px solid var(--ts-color-border);
+}
+.region-stat:first-child { border-left: 0; padding-left: 0; }
+.region-stat:last-child { padding-right: 0; }
+.region-first {
+  margin-top: 7px;
+  color: var(--ts-color-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.ranking-row { border-radius: 10px; transition: background-color 180ms ease; }
+.ranking-row:hover { background: rgba(var(--theme-rgb), 0.06); }
+.ranking-index {
+  width: 22px;
+  color: var(--ts-color-text-tertiary);
+  font-family: var(--lm-font-display);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.ranking-bar-track {
+  height: 2px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(var(--theme-rgb), 0.12);
+}
+.region-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.region-photo {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: var(--ts-color-surface-muted);
+}
+.region-photo--lead {
+  grid-column: 1 / -1;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+}
+.region-photo--lead :deep(.el-image) { width: 100%; height: 100%; }
+.region-photo :deep(.el-image),
+.region-photo :deep(.el-image__inner) { display: block; width: 100%; height: 100%; }
+
 .animate-fade-in {
   animation: fadeIn 0.3s ease-in-out;
 }
@@ -200,7 +258,7 @@ const { currentTheme } = injectTheme()
     color: white;
     background-color: rgba(0, 0, 0, 0.5);
     border-color: rgba(255, 255, 255, 0.2);
-    
+
     &:hover {
       background-color: rgba(0, 0, 0, 0.8);
     }
@@ -213,7 +271,7 @@ html.dark {
       color: #e5e7eb;
       background-color: rgba(31, 41, 55, 0.6);
       border-color: rgba(75, 85, 99, 0.4);
-      
+
       &:hover {
         background-color: rgba(31, 41, 55, 0.9);
       }
