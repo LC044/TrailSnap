@@ -16,7 +16,7 @@ const memoryPage = ref(0)
 const mapCaptions = {
   '3d': '拖动地球、缩放视角，直接探索足迹',
   city: '在照片里，点亮去过的城市',
-  puzzle: '每一张照片，都落回它拍摄的地方',
+  puzzle: '用照片拼图，重新组织你的旅行记忆',
 }
 const memories = [
   {
@@ -50,7 +50,7 @@ const sections = [
   { id: 'diary', label: '日记' },
   { id: 'download', label: '下载' },
 ]
-const marquee = ['智能整理', '以文搜图', '足迹地图', '旅行日记', '人生章节', '月迹', '票夹', '断舍离', '5A 景区', '自托管']
+const marquee = ['智能整理', '以文搜图', '足迹地图', '旅行日记', '人生章节', '月迹', '票夹', '断舍离', '5A 景区', '自托管', 'NAS', 'AI相册']
 const albumTiles = [
   { name: '家人', note: '按人物', image: '/showcase/assets/lake.jpg' },
   { name: '风景', note: '按场景', image: '/showcase/assets/mountain.jpg' },
@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
           <span class="brand-text"><strong>行影集</strong><small>TRAILSNAP</small></span>
         </a>
         <nav class="nav-links" aria-label="主导航">
-          <a href="#capabilities"><span>01</span>能做什么</a>
+          <a href="#capabilities"><span>01</span>功能</a>
           <a href="#memory"><span>02</span>记忆</a>
           <a href="#footprints"><span>03</span>足迹</a>
           <a href="#diary"><span>04</span>日记</a>
