@@ -1126,7 +1126,7 @@ const checkAndLoadVisibleMonths = (refresh = false) => {
     })
 }
 
-watch(visibleBlockKeys, () => {
+watch([visibleBlockKeys, () => props.layoutMode, () => props.showMomentCaption], () => {
     checkAndLoadVisibleMonths()
     // 广播当前可见月份，用于外部按月批量拉取附加数据（如朋友圈日文案）
     if (props.layoutMode === 'moments' && props.showMomentCaption) {
