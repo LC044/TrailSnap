@@ -24,8 +24,8 @@
       <template v-if="isCleanup">
         <section v-for="(group, groupIndex) in photoGroups" :key="group.key" class="py-3">
           <h3 v-if="plan.request.config.cleanup_mode !== 'quality'" class="ts-muted mb-3 text-sm">第 {{ (page - 1) * 40 + groupIndex + 1 }} 组</h3>
-          <div :class="isSimilar ? 'flex gap-2 overflow-x-auto pb-2' : 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4'">
-            <article v-for="item in group.items" :key="item.id" class="relative min-w-0" :class="isSimilar && 'w-48 shrink-0 sm:w-56'">
+          <div :class="isGroupedCleanup ? 'flex gap-2 overflow-x-auto pb-2' : 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4'">
+            <article v-for="item in group.items" :key="item.id" class="relative min-w-0" :class="isGroupedCleanup && 'w-48 shrink-0 sm:w-56'">
               <el-image :src="thumbnailUrl(item.photo_id)" :preview-src-list="group.items.map(photo => thumbnailToFileUrl(thumbnailUrl(photo.photo_id)))" :initial-index="group.items.indexOf(item)" preview-teleported fit="cover" class="aspect-square w-full rounded-xl" :class="{ 'photo-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :alt="basename(item.source)" />
               <button v-if="isPreview && item.status === 'candidate'" type="button" role="checkbox" class="photo-choice" :class="{ 'is-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :aria-checked="!!(isAsyncCleanup ? item.selected : selected.includes(item.id))" :disabled="selecting" :aria-label="`将 ${basename(item.source)} 移入回收站`" @click="toggle(item.id, !(isAsyncCleanup ? item.selected : selected.includes(item.id)))">
                 <span class="photo-choice-mark"><Check v-if="isAsyncCleanup ? item.selected : selected.includes(item.id)" :size="20" :stroke-width="3" /></span>
@@ -35,14 +35,14 @@
               <details class="ts-muted mt-1 text-xs"><summary class="cursor-pointer py-2">详情</summary><p class="break-all">{{ item.source }}</p><p v-if="item.status === 'failed' || item.status === 'skipped'">{{ item.reason }}</p></details>
             </article>
           </div>
-          <div v-if="!isSimilar && group.groupId && references[group.groupId] && (references[group.groupId].total > 24 || references[group.groupId].items.some(photo => !group.items.some(item => item.photo_id === photo.photo_id)))" class="mt-2">
+          <div v-if="!isGroupedCleanup && group.groupId && references[group.groupId] && (references[group.groupId].total > 24 || references[group.groupId].items.some(photo => !group.items.some(item => item.photo_id === photo.photo_id)))" class="mt-2">
             <p class="ts-muted mb-2 text-xs">同组照片</p>
             <div class="flex gap-2 overflow-x-auto">
               <el-image v-for="member in references[group.groupId].items.filter(photo => !group.items.some(item => item.photo_id === photo.photo_id))" :key="member.photo_id" :src="thumbnailUrl(member.photo_id)" :preview-src-list="references[group.groupId].items.map(photo => thumbnailToFileUrl(thumbnailUrl(photo.photo_id)))" :initial-index="references[group.groupId].items.indexOf(member)" preview-teleported fit="cover" class="h-24 w-24 shrink-0 rounded-lg" alt="同组参考照片" />
             </div>
             <el-pagination v-if="references[group.groupId].total > 24" :current-page="referencePages[group.groupId] || 1" :page-size="24" :total="references[group.groupId].total" layout="prev, next" @current-change="page => loadReferences(group.groupId!, page)" />
           </div>
-          <el-pagination v-if="isSimilar && group.groupId && references[group.groupId]?.total > 24"
+          <el-pagination v-if="isGroupedCleanup && group.groupId && references[group.groupId]?.total > 24"
             :current-page="referencePages[group.groupId] || 1" :page-size="24" :total="references[group.groupId].total"
             layout="prev, next" @current-change="page => loadReferences(group.groupId!, page)" />
           <el-button v-if="group.groupId && !references[group.groupId]" link @click="loadReferences(group.groupId)">参考</el-button>
@@ -107,7 +107,7 @@ defineEmits<{ execute: [selected?: number[]]; back: []; stop: []; recover: [mode
 const labels: Record<string, string> = { preview: '待确认', queued: '排队中', running: '处理中', completed: '已完成', partial: '部分失败', stopped: '已停止', ready: '待确认', candidate: '待选', skipped: '跳过', success: '成功', failed: '失败' }
 const isPreview = computed(() => props.plan.status === 'preview')
 Object.assign(labels, { scan_queued: '等待扫描', scanning: '扫描中', scan_stopped: '扫描已停止', scan_failed: '扫描失败' })
-const isSimilar = computed(() => props.plan.kind === 'cleanup' && props.plan.request.config.cleanup_mode === 'similar')
+const isGroupedCleanup = computed(() => props.plan.kind === 'cleanup' && ['similar', 'duplicate'].includes(props.plan.request.config.cleanup_mode))
 const isCleanup = computed(() => props.plan.kind === 'cleanup')
 const isAsyncCleanup = computed(() => isCleanup.value && !!props.plan.summary.phase)
 const resultFilters = computed(() => {
@@ -143,7 +143,7 @@ const photoGroups = computed(() => {
     if (!groups.has(key)) groups.set(key, { key, groupId: item.detail.group_id, title: item.detail.label || '照片', items: [] })
     groups.get(key)!.items.push(item)
   }
-  if (isSimilar.value) {
+  if (isGroupedCleanup.value) {
     for (const group of groups.values()) {
       const members = group.groupId && references.value[group.groupId]
       if (members) {
@@ -161,7 +161,7 @@ const load = async () => {
   const version = ++sequence
   loading.value = true
   try {
-    const result = await workflowApi.items(props.plan.id, (page.value - 1) * 40, status.value || (isPreview.value ? (isCleanup.value ? 'candidate' : 'ready') : undefined))
+    const result = await workflowApi.items(props.plan.id, (page.value - 1) * 40, status.value || (isPreview.value ? (isCleanup.value ? 'candidate' : 'ready') : undefined), isGroupedCleanup.value)
     if (version !== sequence) return
     rows.value = result.items; total.value = result.total; serverSelected.value = result.selected_count || 0; error.value = ''
     references.value = {}; referencePages.value = {}
@@ -204,13 +204,18 @@ const toggle = async (id: number, checked: boolean) => {
   } catch { error.value = '选择未保存，请刷新核对后重试' }
   finally { selecting.value = false }
 }
+const referenceRequests = new Map<number, number>()
 const loadReferences = async (groupId: number, page = 1, requestSequence = sequence) => {
   const planId = props.plan.id
+  const version = (referenceRequests.get(groupId) || 0) + 1
+  referenceRequests.set(groupId, version)
+  const isCurrent = () => planId === props.plan.id && requestSequence === sequence
+    && referenceRequests.get(groupId) === version
   try {
     const result = await workflowApi.members(planId, groupId, (page - 1) * 24)
-    if (planId !== props.plan.id || requestSequence !== sequence) return
+    if (!isCurrent()) return
     references.value[groupId] = result; referencePages.value[groupId] = page
-  } catch { if (planId === props.plan.id && requestSequence === sequence) error.value = '参考照片加载失败，请重试' }
+  } catch { if (isCurrent()) error.value = '参考照片加载失败，请重试' }
 }
 const referenceToggle = (event: Event, item: ToolPlanItem) => {
   if ((event.target as HTMLDetailsElement).open && item.detail.group_id) loadReferences(item.detail.group_id)

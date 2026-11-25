@@ -494,3 +494,26 @@ def test_preferences_conflict_preserves_other_settings(library):
     conflict = save_preferences(ToolboxPreferences(version=0), library.db, library.user)
     assert conflict.code == 400
     assert library.user.settings["toolbox"]["presets"][0]["name"] == "Travel"
+
+@pytest.mark.parametrize("mode", ["duplicate", "similar"])
+def test_cleanup_pages_count_groups_instead_of_photos(library, mode):
+    from app.api.toolbox_workflows import items
+    from app.db.models.toolbox import ToolboxPlan
+    plan = ToolboxPlan(owner_id=library.user.id, kind="cleanup", status="preview",
+        request={"config": {"cleanup_mode": mode}}, summary={"phase": "done"},
+        expires_at=datetime.utcnow() + timedelta(days=1))
+    library.db.add(plan)
+    library.db.flush()
+    for group_id, count in [(1, 45), (2, 3), (3, 2)]:
+        for index in range(count):
+            library.db.add(ToolboxPlanItem(plan_id=plan.id, photo_id=uuid4(),
+                source=f"/{group_id}/{index}.jpg", status="candidate", detail={"group_id": group_id}))
+    library.db.commit()
+    pages = [items(plan.id, offset=offset, limit=2, status="candidate", group_by=True,
+                   db=library.db, user=library.user).data for offset in (0, 2)]
+    assert [page["total"] for page in pages] == [3, 3]
+    assert [[row["detail"]["group_id"] for row in page["items"]] for page in pages] == [[1, 2], [3]]
+    ordinary = items(plan.id, offset=0, limit=2, status="candidate", group_by=False,
+                     db=library.db, user=library.user).data
+    assert ordinary["total"] == 50
+    assert len(ordinary["items"]) == 2

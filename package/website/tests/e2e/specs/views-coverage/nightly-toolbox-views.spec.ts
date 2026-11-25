@@ -242,9 +242,14 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
           state = 'queued'
           return reply(route, plan())
         }
-        if (path.endsWith('/items')) return reply(route, {
-          total: remaining.length, selected_count: selected.size, items: remaining.map(item),
-        })
+        if (path.endsWith('/items')) {
+          const grouped = mode !== 'quality'
+          expect(url.searchParams.get('group_by')).toBe(String(grouped))
+          return reply(route, {
+            total: grouped ? (remaining.length ? 1 : 0) : remaining.length,
+            selected_count: selected.size, items: (grouped ? remaining.slice(0, 1) : remaining).map(item),
+          })
+        }
         if (path.endsWith('/members')) return reply(route, {
           total: remaining.length, representative_id: 'batch-photo-1',
           items: remaining.map(index => ({ photo_id: item(index).photo_id, source: item(index).source,
@@ -257,7 +262,7 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
       await page.goto('/toolbox/cleanup?plan=' + id)
       const cards = page.locator('article').filter({ has: page.locator('details > summary', { hasText: '详情' }) })
       await expect(cards).toHaveCount(5)
-      if (mode === 'similar') {
+      if (mode !== 'quality') {
         const boxes = await cards.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top))
         expect(new Set(boxes).size).toBe(1)
         for (let index = 0; index < 5; index++) {
