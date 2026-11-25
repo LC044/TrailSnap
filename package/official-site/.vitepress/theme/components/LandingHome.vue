@@ -16,7 +16,7 @@ const memoryPage = ref(0)
 const mapCaptions = {
   '3d': '拖动地球、缩放视角，直接探索足迹',
   city: '在照片里，点亮去过的城市',
-  puzzle: '每一张照片，都落回它拍摄的地方',
+  puzzle: '用照片拼图，重新组织你的旅行记忆',
 }
 const memories = [
   {
@@ -50,7 +50,7 @@ const sections = [
   { id: 'diary', label: '日记' },
   { id: 'download', label: '下载' },
 ]
-const marquee = ['智能整理', '以文搜图', '足迹地图', '旅行日记', '人生章节', '月迹', '票夹', '断舍离', '5A 景区', '自托管']
+const marquee = ['智能整理', '以文搜图', '足迹地图', '旅行日记', '人生章节', '月迹', '票夹', '断舍离', '5A 景区', '自托管', 'NAS', 'AI相册']
 const albumTiles = [
   { name: '家人', note: '按人物', image: '/showcase/assets/lake.jpg' },
   { name: '风景', note: '按场景', image: '/showcase/assets/mountain.jpg' },
@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
           <span class="brand-text"><strong>行影集</strong><small>TRAILSNAP</small></span>
         </a>
         <nav class="nav-links" aria-label="主导航">
-          <a href="#capabilities"><span>01</span>能做什么</a>
+          <a href="#capabilities"><span>01</span>功能</a>
           <a href="#memory"><span>02</span>记忆</a>
           <a href="#footprints"><span>03</span>足迹</a>
           <a href="#diary"><span>04</span>日记</a>
@@ -224,9 +224,9 @@ onBeforeUnmount(() => {
               <a class="btn btn-ghost" href="/download">下载安装 <span class="btn-arrow" aria-hidden="true">↓</span></a>
             </div>
             <ul class="hero-meta">
-              <li><i aria-hidden="true"></i>照片留在自己的设备</li>
-              <li><i aria-hidden="true"></i>AGPL-3.0 开源</li>
-              <li><i aria-hidden="true"></i>桌面端 / 服务器</li>
+              <li><i aria-hidden="true"></i>自托管</li>
+              <li><i aria-hidden="true"></i>开源免费</li>
+              <li><i aria-hidden="true"></i>NAS / 电脑 / 移动设备</li>
             </ul>
           </div>
 
@@ -261,7 +261,7 @@ onBeforeUnmount(() => {
 
             <div class="stage-quote">
               <span class="quote-mark" aria-hidden="true">“</span>
-              <p>照片不只是文件，<br>它们是你走过的时间。</p>
+              <p>照片不只是文件，<br>它们是你走过的旅程。</p>
               <small>THE ARCHIVE OF LIGHT</small>
             </div>
           </div>
@@ -283,9 +283,9 @@ onBeforeUnmount(() => {
           <header class="section-head">
             <div class="section-head-main">
               <p class="kicker"><span>01</span>能做什么 / CAPABILITIES</p>
-              <h2 class="section-title">照片不止于存放，<br>而是可以被重新遇见。</h2>
+              <h2 class="section-title">AI智能相册<br>行影集让照片不只是文件</h2>
             </div>
-            <p class="section-note">整理、查找、回顾——<br>把三件事做到底。</p>
+            <p class="section-note">智能分类、以文搜图、地图、旅行日记——<br>照片也是知识库</p>
           </header>
 
           <div class="cap-layout">
@@ -417,10 +417,10 @@ onBeforeUnmount(() => {
         <div class="wrap diary-grid">
           <div class="diary-copy">
             <p class="kicker"><span>04</span>旅行日记 / TRAVEL DIARY</p>
-            <h2 class="section-title">让一段旅程，<br>成为可以重读的故事。</h2>
+            <h2 class="section-title">让旅程成为<br>可以重读的故事</h2>
             <p class="diary-lead">把沿途的照片与足迹写成一篇旅行日记，收藏风景，也留下出发时的心情。</p>
             <blockquote class="diary-quote">
-              <p>「后来才发现，这一天最喜欢的照片，都不是刻意摆好的姿势。」</p>
+              <p>「假期太短，脚步太长。后来才发现，这一天最喜欢的，是随手按下的快门。」</p>
               <cite>国庆七日 · 2025 / 山海之间</cite>
             </blockquote>
             <a class="btn btn-ghost" href="/examples/travel-diary-2025-golden-week.html" target="_blank" rel="noopener">打开完整游记 <span class="btn-arrow" aria-hidden="true">↗</span></a>
@@ -446,17 +446,16 @@ onBeforeUnmount(() => {
           <header class="section-head">
             <div class="section-head-main">
               <p class="kicker"><span>05</span>记录与整理 / EVERYDAY TOOLS</p>
-              <h2 class="section-title">给相册减减负，<br>留下真正喜欢的。</h2>
+              <h2 class="section-title">给相册减减负，<br>留下真正喜欢的</h2>
             </div>
-            <p class="section-note">向右保留，向左丢弃。<br>给回忆做一次断舍离。</p>
+            <p class="section-note">向右保留，向左丢弃。<br>给回忆做一次断舍离</p>
           </header>
           <div class="panel tool-panel" data-reveal>
             <div class="tool-copy">
               <span class="tool-chip">断舍离 / SWIPE</span>
-              <h3>留下喜欢的，<br>放下多余的。</h3>
-              <p>逐张浏览，向右保留，向左丢弃。给相册做一次轻松的断舍离，只留下真正想记住的画面。</p>
+              <h3>留下喜欢的，<br>放下多余的</h3>
+              <p>向右保留，向左丢弃。给相册做一次轻松的断舍离，只留下真正想记住的画面。</p>
               <a class="cap-link" href="https://demo.trailsnap.cn/swipe-filter" target="_blank" rel="noopener">在演示站打开断舍离 <span aria-hidden="true">↗</span></a>
-              <small class="tool-note">左侧为本地交互示例，操作不会删除任何照片。</small>
             </div>
             <div class="tool-demo">
               <iframe src="/showcase/swipe-fragment.html" title="断舍离本地交互示例，操作不会删除照片" loading="lazy"></iframe>
@@ -470,7 +469,7 @@ onBeforeUnmount(() => {
           <header class="section-head">
             <div class="section-head-main">
               <p class="kicker"><span>06</span>开始使用 / GET STARTED</p>
-              <h2 class="section-title">三步，把相册搬回自己家。</h2>
+              <h2 class="section-title">三步，整理你的相册</h2>
             </div>
             <a class="btn btn-ghost" href="/docs/guide/install">查看完整安装指南 <span class="btn-arrow" aria-hidden="true">↗</span></a>
           </header>
@@ -478,13 +477,13 @@ onBeforeUnmount(() => {
             <li data-reveal>
               <span class="step-number">01</span>
               <h3>选择安装方式</h3>
-              <p>个人电脑使用，可下载桌面版；希望长期运行，可参考文档在自己的服务器上部署。</p>
+              <p>个人电脑使用，可下载桌面版；希望长期运行，可参考文档在自己的NAS上部署。</p>
               <a href="/download">查看下载选项 <span aria-hidden="true">→</span></a>
             </li>
             <li data-reveal style="--reveal-delay: 90ms">
               <span class="step-number">02</span>
               <h3>接入照片文件夹</h3>
-              <p>添加照片所在目录，等待扫描与索引。建议先用少量照片体验，再接入完整图库。</p>
+              <p>添加照片所在目录，等待扫描与索引。</p>
               <a href="https://demo.trailsnap.cn" target="_blank" rel="noopener">先看看演示 <span aria-hidden="true">→</span></a>
             </li>
             <li data-reveal style="--reveal-delay: 180ms">
@@ -528,7 +527,7 @@ onBeforeUnmount(() => {
         <span class="finale-glow" aria-hidden="true"></span>
         <div class="wrap finale-inner">
           <p class="kicker"><span>08</span>THE NEXT CHAPTER IS YOURS</p>
-          <h2>给照片一个家，<br>开始你的<span class="title-accent">行影集</span>。</h2>
+          <h2>准备好照片，<br>开始你的<span class="title-accent">行影集</span></h2>
           <p class="finale-lead">下载行影集，开始整理你的日常照片与旅行记忆。</p>
           <div class="finale-actions">
             <a class="btn btn-primary" href="/download">下载行影集 <span class="btn-arrow" aria-hidden="true">↓</span></a>

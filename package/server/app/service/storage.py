@@ -1,3 +1,4 @@
+import errno
 import os
 import traceback
 import shutil
@@ -6,7 +7,7 @@ from io import BytesIO
 from typing import Optional
 from fastapi import UploadFile
 from PIL import ImageOps
-from app.utils.image_loading import Image, LARGE_IMAGE_PIXELS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from app.utils.image_loading import open_image, Image, LARGE_IMAGE_PIXELS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from pillow_heif import register_heif_opener
 # Register HEIF opener to enable HEIC/HEIF support in Pillow
 register_heif_opener()
@@ -345,6 +346,44 @@ def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: Ima
     img.close()
     return m_path
 
+
+# Bound full sensor decoding across concurrent requests in this server process.
+# Keep the lock separate from the disk read budget: encoding also holds memory.
+import threading
+_RAW_HIGH_LOCK = threading.Lock()
+
+
+def get_raw_high_resolution_path(user_id: UUID, file_id: UUID, original_path: str) -> str:
+    """Cache a full-resolution browser image without touching the camera original."""
+    import hashlib
+    import tempfile
+    compact = str(file_id).replace('-', '')
+    base = os.path.join(_get_storage_root(user_id), 'thumbnails', compact[:2], compact[2:4])
+    with _RAW_HIGH_LOCK:
+        stat = os.stat(original_path)
+        version = hashlib.sha256(f'v1:{stat.st_mtime_ns}:{stat.st_size}'.encode()).hexdigest()[:20]
+        path = os.path.join(base, f'{compact}-raw-high-{version}.jpg')
+        if os.path.isfile(path):
+            return path
+        os.makedirs(base, exist_ok=True)
+        temporary = None
+        try:
+            with budgeted_open(original_path) as source, open_image(source, original_path, full_resolution=True) as image:
+                with ImageOps.exif_transpose(image) as oriented:
+                    with oriented.convert('RGB') as rgb:
+                        fd, temporary = tempfile.mkstemp(prefix=f'{compact}-raw-', suffix='.tmp', dir=base)
+                        os.close(fd)
+                        rgb.save(temporary, format='JPEG', quality=95, subsampling=0)
+            current = os.stat(original_path)
+            if (stat.st_mtime_ns, stat.st_size) != (current.st_mtime_ns, current.st_size):
+                raise OSError('RAW source changed during decoding; retry viewing')
+            os.replace(temporary, path)
+            temporary = None
+            return path
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.remove(temporary)
+
 def get_preview_path(user_id: UUID, file_id: UUID) -> Optional[str]:
     """Get the absolute path to the preview image if it exists."""
     compact = str(file_id).replace('-', '')
@@ -384,7 +423,7 @@ def generate_thumbnail(user_id: UUID, file_path: str, file_id: UUID, image_obj: 
             ):
                 return _save_thumbnails(image_obj, file_id, user_id, config=config)
             else:
-                with budgeted_open(file_path) as source, Image.open(source) as img:
+                with budgeted_open(file_path) as source, open_image(source, file_path) as img:
                     return _save_thumbnails(img, file_id, user_id, config=config, allow_draft=True)
     except Exception as e:
         logging.error(f"Error generating thumbnail for {file_path}: {e}\n{traceback.format_exc()}")
@@ -400,7 +439,7 @@ def get_image_dimensions(file_path: str, image_obj: Optional[Image.Image] = None
             if image_obj:
                 return (*display_image_size(image_obj), None)
             else:
-                with budgeted_open(file_path) as source, Image.open(source) as img:
+                with budgeted_open(file_path) as source, open_image(source, file_path) as img:
                     return (*display_image_size(img), None)
         elif ext in VIDEO_EXTENSIONS:
             cv2 = _resolve_cv2()
@@ -427,30 +466,20 @@ def delete_thumbnails(user_id: UUID, file_id: UUID):
         root = _get_storage_root(user_id)
         base = os.path.join(root, 'thumbnails', p1, p2)
         from pathlib import Path
-        for panorama_file in Path(base).glob(f"{compact}-pano-*.jpg"):
-            panorama_file.unlink(missing_ok=True)
-        # 判断webp格式的图片是否存在
-        wm = os.path.join(base, f"{compact}.webp")
-        ws = os.path.join(base, f"{compact}-thumb.webp")
-        if os.path.exists(wm):
-            os.remove(wm)
-        if os.path.exists(ws):
-            os.remove(ws)
-        jm = os.path.join(base, f"{compact}.jpg")
-        js = os.path.join(base, f"{compact}-thumb.jpg")
-        jv = os.path.join(base, f"{compact}.mp4")
-        if os.path.exists(jm):
-            os.remove(jm)
-        if os.path.exists(js):
-            os.remove(js)
-        if os.path.exists(jv):
-            os.remove(jv)
-        # 判断base目录是否为空
-        if not os.listdir(base):
-            os.rmdir(base)
-            base = os.path.join(root, 'thumbnails', p1)
-            if not os.listdir(base):
-                os.rmdir(base)
+        directory = Path(base)
+        for pattern in (f"{compact}-pano-*.jpg", f"{compact}-raw-high-*.jpg"):
+            for cached_file in directory.glob(pattern):
+                cached_file.unlink(missing_ok=True)
+        for suffix in ('.webp', '-thumb.webp', '.jpg', '-thumb.jpg', '.mp4'):
+            (directory / f'{compact}{suffix}').unlink(missing_ok=True)
+        for shard in (directory, directory.parent):
+            try:
+                shard.rmdir()
+            except OSError as error:
+                if error.errno not in (errno.ENOENT, errno.ENOTEMPTY, errno.EEXIST):
+                    raise
+    except FileNotFoundError:
+        pass
     except Exception as e:
         logging.error(f"Error deleting thumbnails for {user_id}/{file_id}: {e}")
 

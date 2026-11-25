@@ -1,8 +1,9 @@
 import type { UploadIntegrity } from '@/api/album'
 import { transferChunks } from './uploadTransfer'
 
-export const MEDIA_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'tif', 'tiff', 'heic', 'heif', 'mp4', 'mov', 'avi', 'mkv', 'webm'])
-export const MEDIA_ACCEPT = 'image/*,video/*,' + [...MEDIA_EXTENSIONS].map(ext => `.${ext}`).join(',')
+export const MEDIA_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'tif', 'tiff', 'heic', 'heif', 'raf', 'nef', 'nrw', 'dng', 'cr2', 'cr3', 'crw', 'arw', 'sr2', 'srf', 'orf', 'rw2', 'raw', 'pef', 'rwl', 'srw', '3fr', 'fff', 'iiq', 'kdc', 'dcr', 'mrw', 'x3f', 'mp4', 'mov', 'avi', 'mkv', 'webm'])
+// Explicit extensions also include camera RAWs with empty or generic MIME types.
+export const MEDIA_ACCEPT = [...MEDIA_EXTENSIONS].map(ext => `.${ext}`).join(',')
 
 export function isSupportedMedia(file: Pick<File, 'name' | 'type'>) {
   // Browsers often provide empty or application/octet-stream MIME for HEIC.

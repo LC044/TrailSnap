@@ -176,15 +176,15 @@ def test_remove_directory_returns_current_when_no_settings():
     db = MagicMock()
     user = _user(is_superuser=True)
     user.settings = None
+    task = SimpleNamespace(id=uuid4(), status='processing')
 
     with patch.object(settings_api, "get_storage_root", return_value="/data/photos"), \
-        patch('app.service.gallery_sync.lock_user', return_value=user), \
-        patch.object(settings_api.config_manager, 'update_user_config'):
+        patch('app.service.gallery_sync.queue_gallery_removal', return_value=([], task)):
         result = settings_api.remove_directory(
             payload={"path": "/data/x"}, db=db, current_user=user
         )
 
-    assert result == {"primary": "/data/photos", "external": [], "deleted_photos": 0}
+    assert result.data.model_dump() == {"primary": "/data/photos", "external": [], "task_id": task.id}
 
 
 # =====================================================================

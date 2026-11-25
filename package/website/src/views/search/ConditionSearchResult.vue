@@ -19,7 +19,7 @@
     @load-more="store.loadPhotos"
     @confirm-delete="deletePhotos"
     @photo-update="refresh"
-    @refresh-data="refresh"
+    :refresh-data="refresh"
   >
     <template #header-controls-start>
       <button type="button" class="ts-glass-button" aria-label="添加筛选" title="添加筛选" @click="showFilters = true">
@@ -106,11 +106,14 @@ const removeFilter = (key: keyof FilterState, value: string | number) => {
 const reload = async () => {
   if (!dateError.value) await store.loadPhotos(true)
 }
-const refresh = async (done?: unknown) => {
-  let success = false
-  try { await store.refreshCurrentContext(); success = !store.error }
-  catch { ElMessage.error('刷新失败，请重试') }
-  if (typeof done === 'function') done(success)
+const refresh = async () => {
+  try {
+    await store.refreshCurrentContext()
+    return !store.error
+  } catch (error) {
+    console.error('刷新搜索结果失败', error)
+    return false
+  }
 }
 const deletePhotos = async (ids: string[], done: (success: boolean) => void) => {
   try { await store.deletePhotos(ids); done(true) }

@@ -276,7 +276,7 @@
                                            <div
                                                class="absolute top-1 left-1 z-30 transition-opacity duration-200 cursor-pointer"
                                                :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto'"
-                                               @click.stop="toggleSelection(img)"
+                                               @click.stop="toggleSelection(img, $event)"
                                            >
                                                <div
                                                class="ts-photo-selection-indicator w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
@@ -379,7 +379,7 @@
                                 <div
                                     class="lm-photo-check absolute top-2 left-2 z-30 cursor-pointer"
                                     :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto'"
-                                    @click.stop="toggleSelection(img)"
+                                    @click.stop="toggleSelection(img, $event)"
                                 >
                                     <div
                                     class="lm-photo-check-dot ts-photo-selection-indicator"
@@ -537,7 +537,7 @@ const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:acti
 const {
   isSelectionMode,
   selectedIds: localSelectedIds,
-  selectionAnchorId,
+  resetRange,
   enterSelectionMode,
   exitSelectionMode,
   toggleSelect: toggleSelectionId,
@@ -593,7 +593,7 @@ const virtualContentEl = ref<HTMLElement | null>(null)
 const containerWidth = ref(1000)
 
 const scrollContainerRef = ref<HTMLElement | Window | null>(null)
-const { y: containerScrollTop } = useScroll(scrollContainerRef)
+const { y: containerScrollTop, measure: measureScroll } = useScroll(scrollContainerRef)
 
 const scrollTop = computed(() => containerScrollTop.value)
 
@@ -714,6 +714,7 @@ const suppressClickAfterGesture = () => {
 // 移动端滑选：长按进入选择模式（沿用原语义），不松手继续拖动即按视觉顺序
 // 整段选择/取消；选择模式内再次长按已选中照片拖动则整段取消。
 const applySwipeSelection = (photoId: string, shouldSelect: boolean) => {
+  resetRange()
   if (shouldSelect) localSelectedIds.add(photoId)
   else localSelectedIds.delete(photoId)
   if (localSelectedIds.size > 0 && !isSelectionMode.value) enterSelectionMode()
@@ -722,9 +723,10 @@ const applySwipeSelection = (photoId: string, shouldSelect: boolean) => {
 const {
   onTouchstart: startSwipeSelect,
   cancel: cancelSwipeSelect,
+  longPressFired,
 } = useSwipeSelect({
-  // 仅移动端（<768px）启用；PhotoSelector 弹窗内单选场景只保留长按，不滑选。
-  canStart: () => containerWidth.value < 768,
+  // PhotoSelector 弹窗内单选场景只保留长按。
+  canStart: () => props.active,
   canSweep: () => !props.singleSelect,
   isSelected: (id) => localSelectedIds.has(id),
   onLongPressActivate: (photoId) => {
@@ -748,7 +750,7 @@ const effectiveGridGap = computed(() => {
 })
 
 const mobileDateHeaderMode = computed(() =>
-  isSelectionMode.value
+  isSelectionMode.value && !longPressFired.value
     ? 'day'
     : containerWidth.value < 768
     ? getMobileDateHeaderMode(effectiveGridColumns.value ?? colCount.value)
@@ -978,6 +980,7 @@ const getRange = (key: string) => {
 
 const updateVisibleBlocks = () => {
     if (!props.active || !galleryEl.value?.isConnected || !galleryEl.value.clientWidth) return
+    measureScroll()
     const buffer = 1000 // Month Buffer
     const relativeScrollTop = scrollTop.value - virtualContentTop()
     const visibleMonths = getVisibleBlocks(relativeScrollTop, viewportHeight.value, buffer)
@@ -1115,18 +1118,18 @@ const checkAndLoadVisibleMonths = (refresh = false) => {
     if (!props.active) return
     const context = store.value.currentContext
     const albumId = context.type === 'album' ? context.id : undefined
-    visibleBlocksList.value.forEach(block => {
+    return Promise.all(visibleBlocksList.value.map(block => {
         const key = `${block.year}-${block.month}`
         // Check if we have photos for this month
         // store uses "YYYY-MM" format in loadPhotosByMonth
         // Note: hasPhotos(key) checks props.photos. 
         if (!hasPhotosForMonth(key) || store.value.isPartialPhotoMonth?.(block.year, block.month) || refresh) {
-             store.value.loadPhotosByMonth(block.year, block.month, albumId, refresh)
+             return store.value.loadPhotosByMonth(block.year, block.month, albumId, refresh)
         }
-    })
+    }))
 }
 
-watch([visibleBlockKeys, () => props.layoutMode, () => props.showMomentCaption], () => {
+watch([visibleBlockKeys, () => props.timelineStats, () => props.layoutMode, () => props.showMomentCaption], () => {
     checkAndLoadVisibleMonths()
     // 广播当前可见月份，用于外部按月批量拉取附加数据（如朋友圈日文案）
     if (props.layoutMode === 'moments' && props.showMomentCaption) {
@@ -1187,6 +1190,16 @@ const getMomentPhotos = (dayKey: string) => {
 }
 
 // --- Interaction Helpers ---
+const restoreMonthPosition = (key: string, top: number) => {
+    const block = monthBlocks.value.find(item => item.key === key)
+    if (!block) return false
+    measureScroll()
+    const container = scrollContainerRef.value ?? window
+    const viewportTop = container instanceof HTMLElement ? container.getBoundingClientRect().top : 0
+    container.scrollTo({ top: virtualContentTop() + block.top + viewportTop - top, behavior: 'auto' })
+    return true
+}
+
 const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
     // date format "YYYY年MM月" or "YYYY-MM-DD"
     if (date === '时间未知') {
@@ -1222,7 +1235,7 @@ watch(() => props.active, async active => {
     checkAndLoadVisibleMonths()
 })
 
-const scrollToPhoto = async (photo: AlbumImage, viewportTop?: number) => {
+const scrollToPhoto = async (photo: AlbumImage, viewportTop?: number, focus = true) => {
     await nextTick()
     if (galleryEl.value?.clientWidth) containerWidth.value = galleryEl.value.clientWidth
     recalculateLayout()
@@ -1246,6 +1259,7 @@ const scrollToPhoto = async (photo: AlbumImage, viewportTop?: number) => {
     const element = galleryEl.value?.querySelector<HTMLElement>(`[data-photo-id="${CSS.escape(photo.id)}"]`)
     if (element) {
       ;(container || window).scrollBy({ top: element.getBoundingClientRect().top - targetViewport, behavior: 'auto' })
+      if (!focus) return
       element.tabIndex = -1
       element.focus({ preventScroll: true })
       element.animate?.([{ outline: '3px solid var(--theme-primary)', outlineOffset: '2px' }, { outline: '3px solid transparent', outlineOffset: '2px' }], { duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 800 })
@@ -1273,11 +1287,10 @@ const exitSelectionMode = () => {
 }
 */
 
-const toggleSelection = (photo: AlbumImage) => {
+const toggleSelection = (photo: AlbumImage, event?: MouseEvent) => {
+  if (event?.shiftKey && handleRangeClick(photo)) return
   if (props.singleSelect && !localSelectedIds.has(photo.id)) localSelectedIds.clear()
   toggleSelectionId(photo.id)
-  // 普通点击移动 Shift 范围选择的锚点
-  selectionAnchorId.value = photo.id
   if (localSelectedIds.size > 0) {
       if (!isSelectionMode.value) enterSelectionMode()
   } else {
@@ -1295,15 +1308,33 @@ const orderedPhotoIds = computed(() => monthBlocks.value.flatMap(block =>
   }),
 ))
 
-// PC 端 Shift 点击范围选择/取消选择：从锚点到点击照片整段置为单一状态。
-// 未进入选择模式时同样可用（整段直接置为选中并进入选择模式）。
-// Shift 点击本身不移动锚点（与 macOS Finder 一致）：连续 Shift 点击同一段
-// 会在「整段选中/整段取消」间切换；普通点击才移动锚点。
+const loadRangeMonths = (anchorId: string, targetId: string) => {
+  const stats = props.timelineStats
+  if (!stats?.timeline || anchorId === targetId) return
+  const monthIndex = (id: string) => {
+    const photo = props.photos.find(item => item.id === id)
+    if (!photo) return -1
+    const { year, month } = timelineParts(photo.timestamp)
+    return monthBlocks.value.findIndex(block => block.year === year && block.month === month)
+  }
+  const start = monthIndex(anchorId)
+  const end = monthIndex(targetId)
+  if (start < 0 || end < 0) return
+  const isIncomplete = (block: MonthBlock) => block.days.some(day => getPhotos(day.key).length < day.count)
+  const missing = monthBlocks.value.slice(Math.min(start, end), Math.max(start, end) + 1).filter(isIncomplete)
+  if (!missing.length) return
+  const context = store.value.currentContext
+  const albumId = context.type === 'album' ? context.id : undefined
+  return Promise.all(missing.map(block => store.value.loadPhotosByMonth(block.year, block.month, albumId)))
+    .then(async () => {
+      await nextTick()
+      return props.active && props.timelineStats === stats && !missing.some(isIncomplete)
+    })
+}
+
 const handleRangeClick = (photo: AlbumImage) => {
   if (props.singleSelect) return false
-  const targetSelected = localSelectedIds.has(photo.id)
-  if (!isSelectionMode.value && !targetSelected) enterSelectionMode()
-  selectRangeIds(orderedPhotoIds.value, photo.id)
+  void selectRangeIds(() => orderedPhotoIds.value, photo.id, loadRangeMonths)
   return true
 }
 
@@ -1316,6 +1347,7 @@ const isDaySelected = (day: DayBlock) => {
 const toggleDaySelection = (day: DayBlock) => {
     const photos = getPhotos(day.key)
     if (photos.length === 0) return
+    resetRange()
 
     const allSelected = isDaySelected(day)
     const ids = photos.map(p => p.id)
@@ -1343,14 +1375,11 @@ const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, h
 })
 
 const handlePhotoClick = (photo: AlbumImage, event?: MouseEvent) => {
+  if (event?.shiftKey && handleRangeClick(photo)) return
   if (isSelectionMode.value) {
-    // PC 端 Shift 点击走范围选择（整段置为同一状态），普通点击仍是单张 toggle
-    if (event?.shiftKey && handleRangeClick(photo)) return
     toggleSelection(photo)
     return
   }
-  // Shift 点击快速范围选择：无需先进入选择模式
-  if (event?.shiftKey && handleRangeClick(photo)) return
   // Only still images can be carried across the screen; videos keep their
   // player's own entrance.
   if (photo.file_type && photo.file_type !== 'image' && photo.file_type !== 'live_photo') {
@@ -1456,6 +1485,7 @@ const handleDelete = () => {
 }
 
 defineExpose({
+  restoreMonthPosition,
   scrollToDate,
   scrollToPhoto,
   enterSelectionMode,

@@ -9,12 +9,14 @@ from pathlib import Path
 
 from app.core.config_manager import config_manager
 from app.db.models.album import Album, AlbumPhoto
+from app.db.models.index_log import IndexLog
 from app.db.models.photo import Photo, FileType
 from app.db.models.task import Task, TaskStatus, TaskType
 from app.db.models.user import User
 from app.service import gallery_sync
 from app.service.tasks.scan import ScanFolderStrategy
 from app.service.tasks.basic import BasicTaskStrategy
+from app.service.tasks import gallery_removal
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
 
@@ -65,6 +67,7 @@ def test_remove_normalized_path_cascades_and_preserves_originals_and_other_users
     source.write_bytes(b'original')
     doomed = photo(db, user, source)
     doomed_id = doomed.id
+    (sibling / 'two.jpg').write_bytes(b'keep')
     survivor = photo(db, user, sibling / 'two.jpg')
     other = User(id=uuid4(), username=str(uuid4()), settings={})
     db.add(other)
@@ -77,9 +80,15 @@ def test_remove_normalized_path_cascades_and_preserves_originals_and_other_users
     task = Task(type=TaskType.PROCESS_BASIC, payload={'file_path': str(source), 'user_id': str(user.id)})
     db.add(task)
     db.commit()
-    result = gallery_sync.remove_gallery(db, user.id, str(root / '..' / root.name) + '/')
-    assert result['deleted_photos'] == 1
-    assert str(root) not in result['external']
+    remaining, removal = gallery_sync.queue_gallery_removal(db, user.id, str(root / '..' / root.name) + '/')
+    assert str(root) not in remaining
+    assert db.get(Photo, doomed_id) is not None
+    assert gallery_sync.queue_gallery_removal(db, user.id, str(root))[1].id == removal.id
+    assert scan(db, user)['deleted_files'] == 0
+    assert db.get(Photo, doomed_id) is not None
+    removal.status = TaskStatus.PROCESSING
+    db.commit()
+    assert gallery_removal.cleanup_gallery(db, removal.id) == {'deleted_photos': 1}
     assert db.get(Photo, doomed_id) is None
     assert db.get(Photo, survivor.id) is not None
     assert db.get(Photo, other_photo.id) is not None
@@ -89,21 +98,39 @@ def test_remove_normalized_path_cascades_and_preserves_originals_and_other_users
     db.refresh(task)
     assert task.status == TaskStatus.CANCELLED
     assert source.read_bytes() == b'original'
-    assert gallery_sync.remove_gallery(db, user.id, str(root))['deleted_photos'] == 0
+    assert removal.processed_items == removal.total_items == 1
 
 
 def test_remove_retries_after_cleanup_failure(library, monkeypatch):
     db, user, root, _ = library
-    row_id = photo(db, user, root / 'one.jpg').id
-    original = gallery_sync.delete_index
-    monkeypatch.setattr(gallery_sync, 'delete_index', lambda *args: (_ for _ in ()).throw(RuntimeError('interrupted')))
-    with pytest.raises(RuntimeError):
-        gallery_sync.remove_gallery(db, user.id, str(root))
+    doomed_ids = {photo(db, user, root / name).id for name in ('one.jpg', 'two.jpg')}
+    _, task = gallery_sync.queue_gallery_removal(db, user.id, str(root))
+    task.status = TaskStatus.PROCESSING
+    db.commit()
+    monkeypatch.setattr(gallery_removal, 'DELETE_CHUNK_SIZE', 1)
+    clean_thumbnails = gallery_removal.clean_thumbnails
+
+    def interrupt(_owner, photo_ids):
+        if photo_ids:
+            raise RuntimeError('interrupted after commit')
+
+    monkeypatch.setattr(gallery_removal, 'clean_thumbnails', interrupt)
+    with pytest.raises(RuntimeError, match='after commit'):
+        gallery_removal.cleanup_gallery(db, task.id)
     db.rollback()
+    assert task.processed_items == 1
     assert str(root) not in gallery_sync.external_roots(db.get(User, user.id))
-    monkeypatch.setattr(gallery_sync, 'delete_index', original)
-    assert gallery_sync.remove_gallery(db, user.id, str(root))['deleted_photos'] == 1
-    assert db.get(Photo, row_id) is None
+    task.status = TaskStatus.FAILED
+    db.commit()
+    _, retry = gallery_sync.queue_gallery_removal(db, user.id, str(root))
+    assert retry.id == task.id
+    retry.status = TaskStatus.PROCESSING
+    db.commit()
+    monkeypatch.setattr(gallery_removal, 'clean_thumbnails', clean_thumbnails)
+    assert gallery_removal.cleanup_gallery(db, task.id) == {'deleted_photos': 2}
+    assert db.query(Photo).count() == 0
+    assert {row.photo_id for row in db.query(IndexLog)} == doomed_ids
+    assert db.query(IndexLog).count() == 2
 
 
 @pytest.mark.parametrize('target', ['relative', 'disk', 'managed', 'parent', 'child'])
@@ -112,7 +139,7 @@ def test_remove_rejects_unsafe_scope(library, target):
     targets = {'relative': '.', 'disk': str(root.anchor), 'managed': gallery_sync.managed_roots(user)[0],
                'parent': str(root.parent), 'child': str(root / '2026')}
     with pytest.raises(ValueError):
-        gallery_sync.remove_gallery(db, user.id, targets[target])
+        gallery_sync.queue_gallery_removal(db, user.id, targets[target])
     db.rollback()
     assert str(root) in gallery_sync.external_roots(user)
 
@@ -180,7 +207,7 @@ def test_directory_removed_during_scan_cannot_queue_imports(library, monkeypatch
             removed = True
             from sqlalchemy.orm import Session
             with Session(bind=db.get_bind()) as other:
-                gallery_sync.remove_gallery(other, user.id, str(root))
+                gallery_sync.queue_gallery_removal(other, user.id, str(root))
         return result
     db.rollback()
     monkeypatch.setattr(scanner, 'scan_directory_recursive', remove_while_reading)
@@ -193,14 +220,14 @@ def test_late_completion_is_skipped_after_removal(library, monkeypatch):
     source = root / 'one.jpg'
     source.write_bytes(b'original')
     uid = user.id
-    gallery_sync.remove_gallery(db, uid, str(root))
+    gallery_sync.queue_gallery_removal(db, uid, str(root))
     item = {'task_id': uuid4(), 'status': TaskStatus.COMPLETED,
             'result': {'photo_create_data': {'user_id': str(uid), 'photo_id': uuid4(), 'file_path': str(source)}}}
     asyncio.run(BasicTaskStrategy().handle_completion(worker(), [item], db))
     db.commit()
     assert item['result']['status'] == 'skipped'
     assert db.query(Photo).count() == 0
-    assert db.query(Task).count() == 0
+    assert db.query(Task).filter(Task.type == TaskType.PROCESS_BASIC).count() == 0
 
 
 def test_large_enqueue_only_resolves_files_before_writer_lock(library, monkeypatch):
@@ -339,6 +366,46 @@ def test_scan_all_api_enforces_admin_and_targets_selected_user(library, monkeypa
         assert response.status_code == 200
         assert response.json()['code'] == 0
         assert calls[0][0][2] == {'user_id': str(user.id), 'reconcile': True}
+
+
+def test_removal_api_returns_a_persisted_job_and_reports_progress(library, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+    from app.api import settings
+
+    db, admin, root, _ = library
+    admin.is_superuser = True
+    db.commit()
+    owner_id = admin.id
+    photo_id = photo(db, admin, root / 'intact.jpg').id
+    bind = db.get_bind()
+    db.commit()
+    app = FastAPI()
+    app.include_router(settings.router)
+    app.dependency_overrides[settings.get_db] = lambda: db
+    app.dependency_overrides[settings.get_current_user] = lambda: admin
+    monkeypatch.setattr(settings.TaskManager, 'start_worker_if_needed', lambda self: None)
+
+    with TestClient(app) as client:
+        response = client.request('DELETE', '/directories', json={'path': str(root)})
+        assert response.status_code == 200
+        task_id = response.json()['data']['task_id']
+        assert client.request('DELETE', '/directories', json={'path': str(root)}).json()['data']['task_id'] == task_id
+        jobs = client.get('/directories/removals').json()['data']
+        assert [(job['id'], job['status']) for job in jobs] == [(task_id, 'pending')]
+        assert client.get(f'/directories/removals?user_id={uuid4()}').json()['data'] == []
+        db.commit()
+
+        with Session(bind) as worker_db:
+            assert worker_db.get(Photo, photo_id) is not None
+            task = gallery_sync.removal_tasks(worker_db, owner_id).one()
+            task_uuid = task.id
+            task.status = TaskStatus.PROCESSING
+            worker_db.commit()
+        assert gallery_removal.run_gallery_removal(bind, task_uuid) == {'deleted_photos': 1}
+        jobs = client.get('/directories/removals').json()['data']
+        assert [(job['id'], job['processed_items'], job['total_items']) for job in jobs] == [(task_id, 1, 1)]
 
 
 def test_completed_scan_summary_is_available_through_task_api(library):

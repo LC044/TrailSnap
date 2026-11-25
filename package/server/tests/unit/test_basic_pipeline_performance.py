@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from PIL import Image
 from sqlalchemy import event
 
 from app.core.config_manager import AppSettings
@@ -150,6 +151,49 @@ def test_basic_completion_preserves_hash_and_reuses_metadata(face_sqlite_session
     assert db.get(Photo, pid).md5 == 'a'*32
     assert db.get(Photo, pid).file_type == FileType.live_photo
     assert db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == pid).count() == 1
+
+
+@pytest.mark.parametrize('rebuild', [False, True])
+def test_basic_keeps_small_upload_but_filters_new_external_file(
+    face_sqlite_session, monkeypatch, tmp_path, rebuild,
+):
+    db = face_sqlite_session
+    uid, (photo,) = seed(db, count=1)
+    upload = tmp_path / 'uploads' / 'screenshot.png'
+    upload.parent.mkdir()
+    external = tmp_path / 'external.png'
+    for path in (upload, external):
+        Image.new('RGBA', (488, 217)).save(path)
+    photo.file_path = str(upload)
+    photo.filename = upload.name
+    photo.width = photo.height = None
+    db.commit()
+
+    config = AppSettings()
+    config.filter.enable = True
+    config.filter.min_width = config.filter.min_height = 256
+    monkeypatch.setattr(basic.config_manager, 'get_user_config', lambda *_: config)
+    monkeypatch.setattr(basic.storage, '_get_storage_root', lambda *_: str(tmp_path))
+    worker = SimpleNamespace(thread_pool=None)
+    tasks = [
+        Task(id=uuid4(), type=TaskType.PROCESS_BASIC, owner_id=uid,
+             payload={'file_path': str(upload), 'photo_id': str(photo.id), **(
+                 {'force': False} if rebuild else {'user_id': str(uid)}
+             )}),
+        Task(id=uuid4(), type=TaskType.PROCESS_BASIC, owner_id=uid,
+             payload={'file_path': str(external), 'user_id': str(uid)}),
+    ]
+
+    results = asyncio.run(basic.BasicTaskStrategy().process_batch(worker, tasks, db))
+    assert results[1]['result']['reason'] == 'filtered_by_height'
+    asyncio.run(basic.BasicTaskStrategy().handle_completion(worker, results, db))
+    db.commit()
+
+    assert (photo.width, photo.height) == (488, 217)
+    assert photo.processed_tasks['basic'] is True
+    assert db.query(Photo).count() == 1
+    assert (tmp_path / 'thumbnails' / photo.id.hex[:2] / photo.id.hex[2:4]
+            / f'{photo.id.hex}-thumb.webp').is_file()
 
 
 def test_basic_precheck_is_one_query_for_a_batch(face_sqlite_session, monkeypatch, tmp_path):

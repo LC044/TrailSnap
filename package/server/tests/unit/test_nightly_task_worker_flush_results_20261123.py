@@ -93,10 +93,11 @@ async def test_completed_task_row_is_deleted_and_an_event_is_emitted(worker_db):
 
 
 @pytest.mark.asyncio
-async def test_preserved_task_type_keeps_its_row(worker_db):
+@pytest.mark.parametrize('task_type', [TaskType.DISCOVER_CHAPTERS, TaskType.REMOVE_GALLERY])
+async def test_preserved_task_type_keeps_its_row(worker_db, task_type):
     db = worker_db
     owner = _owner(db)
-    task = _task(db, owner, TaskType.DISCOVER_CHAPTERS)
+    task = _task(db, owner, task_type)
     db.commit()
     worker = TaskWorker()
 

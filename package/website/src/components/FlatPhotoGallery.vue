@@ -1,5 +1,5 @@
 <template>
-  <div class="photo-gallery min-h-screen relative" :class="{ 'ts-photo-selecting': isSelectionMode }" ref="galleryEl" @click.capture="handleGridClickCapture">
+  <div class="photo-gallery min-h-screen relative" :class="{ 'ts-photo-selecting': isSelectionMode }" ref="galleryEl" @touchstart.passive="startSwipeSelect" @click.capture="handleGridClickCapture">
     <!-- Skeleton Loader (Initial Load) -->
     <GalleryChrome :loading="loading" :error="error" :photos="photos" @retry="$emit('retry')" />
 
@@ -57,7 +57,6 @@
                   'shrink-animation grayscale opacity-70': pendingRemoveIds.has(img.id)
                 }"
                 @click="handlePhotoClick(img, $event)"
-                @touchstart.passive="startSwipeSelect"
                 @contextmenu="contextMenu?.open($event, img, selectable || $event.button === 2)"
                 @vue:mounted="loadImage(img)"
                 @vue:unmounted="cancelImageLoad(img.id)"
@@ -73,7 +72,7 @@
                     v-if="selectable"
                     class="absolute top-2 left-2 z-30 transition-opacity duration-200 cursor-pointer"
                     :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'"
-                    @click.stop="toggleSelection(img)"
+                    @click.stop="toggleSelection(img, $event)"
                 >
                     <div
                     class="ts-photo-selection-indicator w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
@@ -181,7 +180,7 @@ const emit = defineEmits(['click-photo', 'batch-delete', 'add-to-album', 'remove
 const {
   isSelectionMode,
   selectedIds: localSelectedIds,
-  selectionAnchorId,
+  resetRange,
   enterSelectionMode,
   exitSelectionMode,
   toggleSelect: toggleSelectionId,
@@ -346,22 +345,20 @@ const paddingTop = computed(() => visibleRange.value.paddingTop)
 // --- Interaction Helpers ---
 const formatTime = (ts: number) => format(new Date(ts), 'yyyy-MM-dd HH:mm')
 
-const toggleSelection = (photo: AlbumImage) => {
+const toggleSelection = (photo: AlbumImage, event?: MouseEvent) => {
+  if (props.selectable && event?.shiftKey) {
+    handleRangeClick(photo)
+    return
+  }
   toggleSelectionId(photo.id)
-  // 普通点击移动 Shift 范围选择的锚点
-  selectionAnchorId.value = photo.id
   if (localSelectedIds.size > 0) {
       if (!isSelectionMode.value) enterSelectionMode()
   }
 }
 
-// PC 端 Shift 点击范围选择/取消选择：整段置为与目标端相反的单一状态。
-// Shift 点击不移动锚点（与 macOS Finder 一致），普通点击才移动。
 const orderedPhotoIds = computed(() => props.photos.map(p => p.id))
 const handleRangeClick = (photo: AlbumImage) => {
-  const targetSelected = localSelectedIds.has(photo.id)
-  if (!isSelectionMode.value && !targetSelected) enterSelectionMode()
-  selectRangeIds(orderedPhotoIds.value, photo.id)
+  void selectRangeIds(() => orderedPhotoIds.value, photo.id)
 }
 
 // 移动端滑选：长按进入选择模式，不松手拖动按视觉顺序整段选择/取消。
@@ -380,17 +377,17 @@ const {
   onTouchstart: startSwipeSelect,
   cancel: cancelSwipeSelect,
 } = useSwipeSelect({
-  canStart: () => props.selectable && containerWidth.value < 768,
+  canStart: () => props.selectable,
   canSweep: () => true,
   isSelected: (id) => localSelectedIds.has(id),
   onLongPressActivate: (photoId) => {
     if (!props.photos.some(photo => photo.id === photoId)) return
     enterSelectionMode()
     toggleSelectionId(photoId)
-    selectionAnchorId.value = photoId
     navigator.vibrate?.(10)
   },
   onSwipePhoto: (photoId, shouldSelect) => {
+    resetRange()
     if (shouldSelect) localSelectedIds.add(photoId)
     else localSelectedIds.delete(photoId)
   },
@@ -458,6 +455,9 @@ defineExpose({
 </script>
 
 <style scoped>
+[data-photo-id] {
+  -webkit-touch-callout: none;
+}
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }

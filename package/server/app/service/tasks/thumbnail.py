@@ -13,7 +13,7 @@ from app.db.models.photo_color import PhotoColor
 from app.service import storage
 from app.core.config_manager import ImageSettings, config_manager
 from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
-from app.utils.image_loading import IMAGE_EXTENSIONS
+from app.utils.image_loading import open_image, IMAGE_EXTENSIONS
 from app.service.disk_budget import budgeted_open
 from app.service.task_runtime import await_owned
 
@@ -28,7 +28,7 @@ def rebuild_thumbnail_cpu_job(user_id: str, file_path: str, file_id: UUID, stora
         if ext in IMAGE_EXTENSIONS:
             try:
                 from app.utils.image_loading import Image as PILImage
-                with budgeted_open(file_path) as source, PILImage.open(source) as img:
+                with budgeted_open(file_path) as source, open_image(source, file_path) as img:
                     color_info = extract_color_info(img)
             except Exception as e:
                 logging.getLogger(__name__).warning(f"Color extraction failed for {file_path}: {e}")

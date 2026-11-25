@@ -365,9 +365,12 @@ pnpm test:e2e:headed                       # 可见浏览器
 | Server unit | `uv run python -m pytest tests/unit` | `python -m` 把 cwd 加进 sys.path，使 `from app...` 可导入 |
 | AI unit | `uv run python -m pytest tests/` | router 测试 mock 模型，不下载权重 |
 | Server integration | service container pgvector(55432) + uvicorn(58000) + `pytest tests/integration` | HTTP 级集成 |
+| Website unit | `run-tests.ps1 -Layer unit -Component website -Level smoke` | 独立 job，Fork PR 也可运行 |
 | E2E | `run-tests.ps1 -Layer e2e -Level <level> -Mode docker` | 本地 `-Mode docker` 同路径 |
 
-**E2E level 选择**：PR / push master / nightly cron → `full`；手动 dispatch → 可选。同一 PR 多次推送用 `concurrency` 取消旧 run；nightly 与 push 落在不同 group，互不打断。
+PR 和默认分支 push 按改动范围运行相应的单测及 Server 集成测试。修改 `tests/`、测试工作流或根目录 Node 依赖清单时，运行所有组件测试。夜间任务、手动运行和无法确定变更范围的运行也执行所有组件测试。
+
+同仓库 PR、默认分支 push 和夜间任务使用 `full` E2E。手动运行可选择档位，或用 `skip_e2e` 只运行单测及 Server 集成测试。同一 PR 多次推送会取消旧的测试和桌面打包运行。夜间测试与 push 分属不同并发组。
 
 **AI 模型权重缓存**：e2e 栈的 ai 容器把 `tests/.cache/ai-models` bind-mount 进去；CI 用 `actions/cache`（key `ai-models-v1`）跨 run 持久化。首次 run 下载数百 MB（modelscope），后续秒级恢复。`services-up` 的 AI 预热轮询 `POST /embedding/text` 到 200 确认模型就绪。
 

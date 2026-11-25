@@ -6,7 +6,7 @@ import { requirePhotos } from '../../helpers/data-probe'
 /**
  * P1 - 照片快速选择（PC Shift 范围选择 / 移动端滑选）
  *
- * 覆盖 PC 端 Shift 点击范围选择/取消选择与移动端长按+滑动快速选择。
+ * 覆盖 PC 端 Shift 连选与移动端长按滑选。
  * 运行于 Nightly（pnpm test:e2e），不带 @smoke 标签。
  */
 
@@ -54,7 +54,7 @@ test.describe('P1 - 照片快速选择', () => {
     await expect(page.getByTestId('photo-selection-bar')).toContainText('已选 3 项')
   })
 
-  test('PC Shift 点击范围取消：起始已选中时整段取消', async ({ page, request }, testInfo) => {
+  test('PC Shift 重复点击保持选区，移近终点时只缩短范围', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 4, 50)
     if (!probe.ok) return
     await page.goto('/photos')
@@ -70,9 +70,11 @@ test.describe('P1 - 照片快速选择', () => {
     await photos.nth(2).click({ modifiers: ['Shift'], force: true })
     await expect.poll(() => selectedCount(page)).toBe(3)
 
-    // 再 Shift 点击第 3 张（目标端已选中）：整段取消
     await photos.nth(2).click({ modifiers: ['Shift'], force: true })
-    await expect.poll(() => selectedCount(page)).toBe(0)
+    await expect.poll(() => selectedCount(page)).toBe(3)
+
+    await photos.nth(1).click({ modifiers: ['Shift'], force: true })
+    await expect.poll(() => selectedCount(page)).toBe(2)
   })
 
   test('PC Shift 范围选择后普通点击重设锚点', async ({ page, request }, testInfo) => {
@@ -209,17 +211,14 @@ test.describe('P1 - 移动端照片滑动快速选择', () => {
     await startLongPress(input, photo)
     await expect.poll(() => selectedCount(page)).toBe(1)
 
-    // Chromium 可能不给长按生成 click。补发一次，确保测试覆盖画廊的点击拦截。
     await photo.evaluate(card => {
-      window.addEventListener('touchend', () => {
-        const click = new MouseEvent('click', { bubbles: true, cancelable: true })
-        card.dispatchEvent(click)
-        card.setAttribute('data-test-release-click-cancelled', String(click.defaultPrevented))
-      }, { once: true })
+      window.addEventListener('touchend', event => {
+        card.setAttribute('data-test-touch-end-cancelled', String(event.defaultPrevented))
+      }, { once: true, passive: true })
     })
     await endTouch(input)
 
-    await expect(photo).toHaveAttribute('data-test-release-click-cancelled', 'true')
+    await expect(photo).toHaveAttribute('data-test-touch-end-cancelled', 'true')
     await expect.poll(() => selectedCount(page)).toBe(1)
     await expect(page.getByTestId('photo-lightbox-media')).toHaveCount(0)
   })
@@ -237,7 +236,6 @@ test.describe('P1 - 移动端照片滑动快速选择', () => {
     const sweep = async (countAfterLongPress: number) => {
       await startLongPress(input, photos.first())
       await expect.poll(() => selectedCount(page)).toBe(countAfterLongPress)
-      // 进入选择模式会改变布局，等长按生效后再取目标坐标。
       await moveTouch(input, await photoCenter(photos.nth(1)))
       await moveTouch(input, await photoCenter(photos.nth(2)))
       await endTouch(input)

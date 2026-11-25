@@ -335,6 +335,8 @@ def create_task(task_in: TaskCreate, db: Session = Depends(get_db), current_user
 
     if task_type in {TaskType.ORGANIZE_PHOTOS, TaskType.BATCH_RENAME}:
         return BaseResponse.fail(code=400, msg="整理和重命名必须从工具箱生成计划并确认，不能直接创建文件操作任务")
+    if task_type == TaskType.REMOVE_GALLERY:
+        return BaseResponse.fail(code=400, msg="请从外部图库设置移除文件夹")
 
     task = TaskManager.get_instance().add_task(db, task_in.type, task_in.payload, owner_id=current_user.id)
     return BaseResponse.success(data=task)
