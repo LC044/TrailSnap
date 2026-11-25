@@ -310,12 +310,13 @@ class BasicTaskStrategy(BaseTaskStrategy):
                 })
                 continue
                 
-            # Check resolution filter
             user_id = data['user_id']
             filter_config = filter_config_cache.get(user_id)
             if filter_config is None:
                 filter_config = config_manager.get_user_config(user_id, db).filter
-            if filter_config.enable:
+            # Apply the resolution filter when indexing new external files.
+            # Uploads already have a photo row, as do photos being rebuilt.
+            if not data['is_pre_created'] and filter_config.enable:
                 # get_image_dimensions 对损坏图片 / 未装 cv2 的视频 / 不支持的扩展名
                 # 会返回 (None, None, None)，且异常被底层裸 except 吞掉。
                 # 这里若不守卫，None < int 会抛 TypeError 并拖垮整批任务。
