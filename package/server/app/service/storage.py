@@ -1,3 +1,4 @@
+import errno
 import os
 import traceback
 import shutil
@@ -465,30 +466,20 @@ def delete_thumbnails(user_id: UUID, file_id: UUID):
         root = _get_storage_root(user_id)
         base = os.path.join(root, 'thumbnails', p1, p2)
         from pathlib import Path
-        for panorama_file in list(Path(base).glob(f"{compact}-pano-*.jpg")) + list(Path(base).glob(f"{compact}-raw-high-*.jpg")):
-            panorama_file.unlink(missing_ok=True)
-        # 判断webp格式的图片是否存在
-        wm = os.path.join(base, f"{compact}.webp")
-        ws = os.path.join(base, f"{compact}-thumb.webp")
-        if os.path.exists(wm):
-            os.remove(wm)
-        if os.path.exists(ws):
-            os.remove(ws)
-        jm = os.path.join(base, f"{compact}.jpg")
-        js = os.path.join(base, f"{compact}-thumb.jpg")
-        jv = os.path.join(base, f"{compact}.mp4")
-        if os.path.exists(jm):
-            os.remove(jm)
-        if os.path.exists(js):
-            os.remove(js)
-        if os.path.exists(jv):
-            os.remove(jv)
-        # 判断base目录是否为空
-        if not os.listdir(base):
-            os.rmdir(base)
-            base = os.path.join(root, 'thumbnails', p1)
-            if not os.listdir(base):
-                os.rmdir(base)
+        directory = Path(base)
+        for pattern in (f"{compact}-pano-*.jpg", f"{compact}-raw-high-*.jpg"):
+            for cached_file in directory.glob(pattern):
+                cached_file.unlink(missing_ok=True)
+        for suffix in ('.webp', '-thumb.webp', '.jpg', '-thumb.jpg', '.mp4'):
+            (directory / f'{compact}{suffix}').unlink(missing_ok=True)
+        for shard in (directory, directory.parent):
+            try:
+                shard.rmdir()
+            except OSError as error:
+                if error.errno not in (errno.ENOENT, errno.ENOTEMPTY, errno.EEXIST):
+                    raise
+    except FileNotFoundError:
+        pass
     except Exception as e:
         logging.error(f"Error deleting thumbnails for {user_id}/{file_id}: {e}")
 

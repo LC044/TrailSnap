@@ -299,6 +299,30 @@ function accelLink(platform: PlatformKey, kind: DownloadKind = 'installer', inde
   return url ? `${accelPrefixes[index]}${url}` : ''
 }
 
+function primaryMirrorUrl(original: string) {
+  const prefix = 'https://github.com/LC044/TrailSnap/releases/'
+  if (!original.startsWith(prefix)) return ''
+  const path = original.slice(prefix.length)
+  return /^download\/v\d+\.\d+\.\d+\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(path)
+    ? `https://download.trailsnap.cn/LC044/TrailSnap/releases/${path}`
+    : ''
+}
+
+async function preferredDownloadUrl(original: string) {
+  const mirror = primaryMirrorUrl(original)
+  if (!mirror) return original
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 1500)
+  try {
+    const response = await fetch(mirror, { method: 'HEAD', signal: controller.signal, redirect: 'error' })
+    return response.ok ? mirror : original
+  } catch {
+    return original
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 const featuredAccels = computed<string[]>(() => {
   const url = resolvedAssetUrl(featuredPlatform.value.key, featuredKind.value)
   return url ? accelPrefixes.map(prefix => `${prefix}${url}`) : []
@@ -340,13 +364,13 @@ async function onDownload(platform: PlatformKey, event: MouseEvent, kind: Downlo
   if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
   event.preventDefault()
   if (loadingPlatform.value) return
-  if (assets.value.length === 0) {
-    loadingPlatform.value = kind === 'installer' ? platform : `${platform}-${kind}`
-    const ok = await fetchAssets()
+  loadingPlatform.value = kind === 'installer' ? platform : `${platform}-${kind}`
+  try {
+    if (assets.value.length === 0 && !(await fetchAssets())) apiUnavailable.value = true
+    window.location.assign(await preferredDownloadUrl(assetUrl(platform, kind)))
+  } finally {
     loadingPlatform.value = ''
-    if (!ok) apiUnavailable.value = true
   }
-  window.location.assign(assetUrl(platform, kind))
 }
 
 async function onFnosDownload(event: MouseEvent) {
@@ -354,9 +378,12 @@ async function onFnosDownload(event: MouseEvent) {
   event.preventDefault()
   if (loadingPlatform.value) return
   loadingPlatform.value = 'fnos'
-  if (assets.value.length === 0 && !(await fetchAssets())) apiUnavailable.value = true
-  loadingPlatform.value = ''
-  window.location.assign(fnosAssetUrl())
+  try {
+    if (assets.value.length === 0 && !(await fetchAssets())) apiUnavailable.value = true
+    window.location.assign(await preferredDownloadUrl(fnosAssetUrl()))
+  } finally {
+    loadingPlatform.value = ''
+  }
 }
 
 onMounted(async () => {

@@ -1,5 +1,13 @@
 import request from '@/utils/request';
 
+export type GalleryRemoval = {
+  id: string
+  path: string
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  processed_items: number
+  total_items: number
+}
+
 export type LLMUsageCounts = {
   requests: number
   reported_requests: number
@@ -48,7 +56,13 @@ export const settingsApi = {
     return data
   },
   async removeDirectory(path: string, user_id?: string) {
-    const { data } = await request.delete('/api/settings/directories', { data: { path, user_id } })
+    const { data } = await request.delete<{ task_id: string }>('/api/settings/directories', { data: { path, user_id } })
+    return data
+  },
+  async getGalleryRemovals(user_id?: string) {
+    const { data } = await request.get<GalleryRemoval[]>('/api/settings/directories/removals', {
+      params: { user_id }, silentError: true, retry: false,
+    })
     return data
   },
   async scanAllDirectories(user_id?: string) {

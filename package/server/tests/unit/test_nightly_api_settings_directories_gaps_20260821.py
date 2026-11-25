@@ -353,7 +353,9 @@ def test_remove_directory_requires_path():
     assert "path required" in exc.value.detail
 
 
-def test_remove_directory_noop_when_not_in_external_list(tmp_path):
+def test_remove_directory_queues_residual_cleanup_when_not_in_external_list(tmp_path):
+    from uuid import uuid4
+
     db = MagicMock()
     user = _user(is_superuser=True)
     user.settings = {"storage": {"external_directories": [str(tmp_path / "a")]}}
@@ -361,20 +363,22 @@ def test_remove_directory_noop_when_not_in_external_list(tmp_path):
     other = tmp_path / "b"
     other.mkdir()
 
-    with patch.object(
-        settings_api.config_manager,
-        "get_user_config",
-        return_value=_config(external=[str(tmp_path / "a")]),
-    ), patch('app.service.gallery_sync.lock_user', return_value=user), \
-        patch.object(settings_api.config_manager, 'update_user_config'):
+    task = SimpleNamespace(id=uuid4(), status='pending')
+    manager = MagicMock()
+    with patch('app.service.gallery_sync.queue_gallery_removal',
+               return_value=([str(tmp_path / "a")], task)) as queue, \
+         patch.object(settings_api.TaskManager, 'get_instance', return_value=manager), \
+         patch.object(settings_api, 'get_storage_root', return_value='/data/photos'):
         result = settings_api.remove_directory(
             payload={"path": str(other)},
             db=db,
             current_user=user,
         )
 
-    assert result["external"] == [str(tmp_path / "a")]
-    assert result["primary"].endswith("photos")
+    assert result.data.external == [str(tmp_path / "a")]
+    assert result.data.task_id == task.id
+    queue.assert_called_once_with(db, user.id, str(other))
+    manager.start_worker_if_needed.assert_called_once()
 
 
 # ---------- GET /directories/browse ----------

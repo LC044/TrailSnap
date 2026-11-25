@@ -28,7 +28,7 @@ class Album(Base):
     description = Column(Text)
 
     # Relationships
-    cover_id = Column("cover", UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True)
+    cover_id = Column("cover", UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True, index=True)
     cover = relationship("Photo", foreign_keys=[cover_id])
 
     # New Fields

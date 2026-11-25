@@ -61,7 +61,7 @@ class Memory(Base):
     story_generation_status = Column(String(16), nullable=False, default="idle")
     story_generation_started_at = Column(DateTime, nullable=True)
     story_generation_error = Column(Text, nullable=True)
-    cover_photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True)
+    cover_photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True, index=True)
     cover_source = Column(String(16), nullable=False, default="system")
     start_time = Column(DateTime, nullable=True, index=True)
     end_time = Column(DateTime, nullable=True)

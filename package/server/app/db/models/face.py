@@ -18,7 +18,7 @@ class FaceIdentity(Base):
     description = Column(String(500), nullable=True)
     tags = Column(JSON, nullable=True)
     # use_alter=True to handle circular dependency during creation
-    default_face_id = Column(Integer, ForeignKey("faces.id", use_alter=True, ondelete="SET NULL"), nullable=True)
+    default_face_id = Column(Integer, ForeignKey("faces.id", use_alter=True, ondelete="SET NULL"), nullable=True, index=True)
     create_time = Column(DateTime, default=datetime.now)
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     is_deleted = Column(Boolean, default=False)
@@ -83,7 +83,7 @@ class FaceCluster(Base):
     identity_id = Column(UUID(as_uuid=True), ForeignKey("face_identities.id", ondelete="SET NULL"), nullable=True)
     center = Column(VECTOR(512), nullable=False)
     vector_sum = Column(VECTOR(512), nullable=False)
-    anchor_face_id = Column(Integer, ForeignKey("faces.id", ondelete="SET NULL"), nullable=True)
+    anchor_face_id = Column(Integer, ForeignKey("faces.id", ondelete="SET NULL"), nullable=True, index=True)
     face_count = Column(Integer, nullable=False, default=0)
     status = Column(String(16), nullable=False, default="pending")
     revision = Column(Integer, nullable=False, default=1)

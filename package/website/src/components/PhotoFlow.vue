@@ -126,7 +126,7 @@
             role="checkbox"
             :aria-checked="localSelectedIds.has(item.photo.id)"
             aria-label="选择这张照片"
-            @click.stop="toggleSelection(item.photo)"
+            @click.stop="toggleSelection(item.photo, $event)"
           ><Check v-if="localSelectedIds.has(item.photo.id)" class="h-3.5 w-3.5" /></span>
 
           <span v-if="item.photo.panorama_projection" class="pf-badge pf-badge--left">360°</span>
@@ -197,7 +197,7 @@ const emit = defineEmits([
 const {
   isSelectionMode,
   selectedIds: localSelectedIds,
-  selectionAnchorId,
+  resetRange,
   enterSelectionMode,
   exitSelectionMode,
   toggleSelect: toggleSelectionId,
@@ -611,23 +611,37 @@ const onImageLoad = (event: Event) => (event.currentTarget as HTMLImageElement).
 /* ---------------------------------------------------------------------------
  * Interaction
  * ------------------------------------------------------------------------- */
-const toggleSelection = (photo: AlbumImage) => {
+const toggleSelection = (photo: AlbumImage, event?: Event) => {
+  if ((event as MouseEvent | undefined)?.shiftKey) {
+    handleRangeClick(photo)
+    return
+  }
   toggleSelectionId(photo.id)
-  // 普通点击移动 Shift 范围选择的锚点
-  selectionAnchorId.value = photo.id
   if (localSelectedIds.size > 0 && !isSelectionMode.value) enterSelectionMode()
 }
 
-// 瀑布流的视觉顺序：photos 数组顺序（blocks/rows 按同一顺序切分排版）
-const orderedPhotoIds = computed(() => props.photos.map(photo => photo.id))
+const orderedPhotoIds = computed(() => blocks.value.flatMap(block =>
+  block.rows?.flatMap(row => row.photos.map(item => item.photo.id)) ?? [],
+))
 
-// PC 端 Shift 点击范围选择/取消选择：整段置为与目标端相反的单一状态。
-// Shift 点击不移动锚点（与 macOS Finder 一致），普通点击才移动。
+const loadRangePages = (anchorId: string, targetId: string) => {
+  const store = remoteStore.value
+  if (!store || anchorId === targetId) return
+  const stats = props.timelineStats
+  const blockIndex = (id: string) => blocks.value.findIndex(block =>
+    block.rows?.some(row => row.photos.some(item => item.photo.id === id)),
+  )
+  const start = blockIndex(anchorId)
+  const end = blockIndex(targetId)
+  if (start < 0 || end < 0) return
+  const missing = blocks.value.slice(Math.min(start, end), Math.max(start, end) + 1).filter(block => !block.rows)
+  if (!missing.length) return
+  return Promise.all(missing.map(block => store.loadPhotoChunk(block.year, block.month, block.skip, block.count)))
+    .then(results => props.active && props.timelineStats === stats && remoteStore.value === store && results.every(Boolean))
+}
+
 const handleRangeClick = (photo: AlbumImage) => {
-  const targetSelected = localSelectedIds.has(photo.id)
-  if (!isSelectionMode.value && !targetSelected) enterSelectionMode()
-  selectRangeIds(orderedPhotoIds.value, photo.id)
-  return true
+  void selectRangeIds(() => orderedPhotoIds.value, photo.id, loadRangePages)
 }
 
 // 移动端滑选：长按进入选择模式，不松手拖动按视觉顺序整段选择/取消。
@@ -647,7 +661,7 @@ const {
   onTouchstart: startSwipeSelect,
   cancel: cancelSwipeSelect,
 } = useSwipeSelect({
-  canStart: () => containerWidth.value < 640,
+  canStart: () => props.active,
   canSweep: () => true,
   isSelected: (id) => localSelectedIds.has(id),
   onLongPressActivate: (photoId) => {
@@ -657,6 +671,7 @@ const {
     navigator.vibrate?.(10)
   },
   onSwipePhoto: (photoId, shouldSelect) => {
+    resetRange()
     if (shouldSelect) localSelectedIds.add(photoId)
     else localSelectedIds.delete(photoId)
     if (localSelectedIds.size > 0 && !isSelectionMode.value) enterSelectionMode()
@@ -671,12 +686,10 @@ const handleGridClickCapture = (event: MouseEvent) => {
 }
 
 const handlePhotoClick = (photo: AlbumImage, event?: Event) => {
-  if (isSelectionMode.value) {
-    if ((event as MouseEvent | undefined)?.shiftKey && handleRangeClick(photo)) return
-    toggleSelection(photo)
+  if (isSelectionMode.value || (event as MouseEvent | undefined)?.shiftKey) {
+    toggleSelection(photo, event)
     return
   }
-  if ((event as MouseEvent | undefined)?.shiftKey && handleRangeClick(photo)) return
   if (photo.file_type && photo.file_type !== 'image' && photo.file_type !== 'live_photo') {
     emit('click-photo', photo)
     return
@@ -818,6 +831,7 @@ defineExpose({
 }
 
 .pf-photo {
+  -webkit-touch-callout: none;
   position: relative;
   height: 100%;
   overflow: hidden;

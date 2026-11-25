@@ -183,66 +183,28 @@ def test_remove_directory_superuser_404_for_missing_target():
     assert exc.value.status_code == 404
 
 
-def test_remove_directory_cascade_deletes_photos_in_removed_path(tmp_path):
-    """Superuser path; verifies photo cascade (lines 479-492).
-
-    Bypass PathValidator.validate so the test is independent of OS path layout.
-    """
-    import os
+def test_remove_directory_targets_selected_user_and_starts_cleanup(tmp_path):
+    from uuid import uuid4
 
     db = MagicMock()
     admin = _user(is_superuser=True)
-
-    target_path = tmp_path / "victim-gallery"
-    target_path.mkdir()
-    sibling = tmp_path / "sibling-gallery"
-    sibling.mkdir()
-    abs_target = os.path.abspath(str(target_path))
-
-    target = _user(uid="victim-user")
-    target.settings = {"storage": {"external_directories": [abs_target]}}
+    target = _user()
     db.query.return_value.filter.return_value.first.return_value = target
+    task = SimpleNamespace(id=uuid4(), status="pending")
+    manager = MagicMock()
 
-    cfg = _config(storage_path="/srv/root", external=[abs_target])
-
-    inside = SimpleNamespace(id=1, file_path=os.path.join(abs_target, "img.jpg"))
-    sibling_photo = SimpleNamespace(id=2, file_path=str(sibling / "stay.jpg"))
-    db.query.return_value.filter.return_value.all.return_value = [inside, sibling_photo]
-
-    batch_delete = MagicMock()
-    fake_task_manager = MagicMock()
-    with patch.object(
-        settings_api.PathValidator, "validate", return_value=abs_target
-    ), patch.object(
-        settings_api.gallery_service,
-        "relation",
-        side_effect=lambda p, q: ("child" if p.startswith(abs_target) else "unrelated"),
-    ), patch.object(
-        settings_api.config_manager,
-        "get_user_config",
-        return_value=cfg,
-    ), patch.object(
-        settings_api.config_manager, "update_user_config"
-    ), patch(
-        "app.service.task_manager.TaskManager.get_instance",
-        return_value=fake_task_manager,
-    ), patch(
-        "app.crud.photo.batch_delete_photos_db", batch_delete
-    ), patch.object(settings_api, "get_storage_root", return_value="/srv/root"), \
-        patch('app.service.gallery_sync.lock_user', return_value=target), \
-        patch('app.service.gallery_sync.cancel_path_tasks', return_value=0):
-        settings_api.remove_directory(
-            payload={"user_id": "victim-user", "path": str(target_path)},
+    with patch("app.service.gallery_sync.queue_gallery_removal", return_value=([], task)) as queue, \
+         patch.object(settings_api.TaskManager, "get_instance", return_value=manager), \
+         patch.object(settings_api, "get_storage_root", return_value="/srv/root"):
+        result = settings_api.remove_directory(
+            payload={"user_id": str(target.id), "path": str(tmp_path)},
             db=db,
             current_user=admin,
         )
 
-    # The photo inside the removed path should be deleted; the sibling photo must NOT.
-    assert db.add.called  # IndexLog rows added
-    assert batch_delete.called
-    deleted_ids = batch_delete.call_args.args[1]
-    assert deleted_ids == [1]
-    db.commit.assert_called_once()
+    queue.assert_called_once_with(db, target.id, str(tmp_path))
+    manager.start_worker_if_needed.assert_called_once()
+    assert result.data.task_id == task.id
 
 
 # ---------- PUT /storage-root ----------

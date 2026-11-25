@@ -611,17 +611,25 @@ def _smart_location_section(db: Session, owner_id: UUID, representative_limit: i
 
 def _smart_classification_section(db: Session, owner_id: UUID, representative_limit: int, representative_skip: int = 0) -> album_schemas.SmartAlbumSection:
     """Build the AI-classification summary in a single database round trip."""
+    sqlite = db.get_bind().dialect.name == "sqlite"
+    materialize = "MATERIALIZED" if sqlite else _postgresql_cte_hint(db)
+    # SQLite preserves CROSS JOIN order, so each tag can probe its live relation index.
+    tag_relations = (
+        "photo_tags pt CROSS JOIN photo_tag_relations ptr ON ptr.tag_id = pt.id"
+        if sqlite else
+        "photo_tag_relations ptr JOIN photo_tags pt ON pt.id = ptr.tag_id"
+    )
+    join = "CROSS JOIN" if sqlite else "JOIN"
     query = text(
         f"""
-        WITH valid_relations AS {_postgresql_cte_hint(db)} (
+        WITH valid_relations AS {materialize} (
             SELECT
                 ptr.tag_id,
                 ptr.photo_id,
                 ptr.created_at,
                 ptr.id AS relation_id
-            FROM photo_tag_relations ptr
-            JOIN photo_tags pt ON pt.id = ptr.tag_id
-            JOIN photos p ON p.id = ptr.photo_id
+            FROM {tag_relations}
+            {join} photos p ON p.id = ptr.photo_id
             WHERE pt.owner_id = :owner_id
               AND pt.is_deleted = false
               AND p.owner_id = :owner_id

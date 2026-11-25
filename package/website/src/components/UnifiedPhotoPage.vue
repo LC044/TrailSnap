@@ -372,7 +372,7 @@
     <TimeBatchEditor
       v-model="showTimeBatchEditor"
       :photo-ids="timeEditPhotoIds"
-      @updated="emit('retry')"
+      @updated="handleBatchTimeUpdated"
       @success="galleryRef?.exitSelectionMode()"
     />
 
@@ -460,6 +460,7 @@ const props = withDefaults(defineProps<{
   allowFolderView?: boolean
   allowDiaryView?: boolean
   updateAvailable?: boolean
+  refreshData?: () => Promise<boolean>
   updateMessage?: string
 }>(), {
   stableTitle: false,
@@ -499,7 +500,6 @@ const emit = defineEmits<{
   (e: 'remove-from-album', ids: string[]): void // General delete/remove event
   (e: 'confirm-delete', ids: string[], callback: (success: boolean) => void, source: 'batch' | 'lightbox'): void
   (e: 'confirm-remove-association', ids: string[], callback: (success: boolean) => void): void
-  (e: 'refresh-data', done: (success?: boolean) => void): void
 }>()
 
 // 批量工具栏的主按钮：有解除关联菜单项时恢复为默认「删除」，灯箱仍用 deleteLabel
@@ -619,22 +619,29 @@ watch(layoutMode, async (mode, previous) => {
 
 const getScrollContainer = (): HTMLElement | Window => {
   const main = document.querySelector('main') as HTMLElement | null
-  return main && window.getComputedStyle(main).overflowY === 'auto' ? main : window
+  return main && (main.matches('.ts-main-scroll') || window.getComputedStyle(main).overflowY === 'auto') ? main : window
 }
 
 const captureVisibleMonth = () => {
-  const blocks = Array.from(document.querySelectorAll<HTMLElement>('.month-block[data-month]'))
+  const gallery = galleryRef.value?.$el as HTMLElement | undefined
+  const blocks = Array.from(gallery?.querySelectorAll<HTMLElement>('.month-block[data-month]') ?? [])
+  const container = getScrollContainer()
+  const viewport = container === window ? { top: 0, bottom: window.innerHeight } : (container as HTMLElement).getBoundingClientRect()
   const block = blocks.find((item) => {
     const rect = item.getBoundingClientRect()
-    return rect.bottom > 0 && rect.top < window.innerHeight
+    return rect.bottom > viewport.top + headerHeight.value && rect.top < viewport.bottom
   })
   return block ? { month: block.dataset.month, top: block.getBoundingClientRect().top } : null
 }
 
 const restoreVisibleMonth = (anchor: { month?: string; top: number } | null) => {
   if (!anchor?.month) return false
-  const block = document.querySelector<HTMLElement>(`.month-block[data-month="${CSS.escape(anchor.month)}"]`)
-  if (!block) return false
+  const gallery = galleryRef.value
+  const root = gallery?.$el as HTMLElement | undefined
+  const block = root?.querySelector<HTMLElement>(`.month-block[data-month="${CSS.escape(anchor.month)}"]`)
+  if (!block) return gallery && 'restoreMonthPosition' in gallery
+    ? gallery.restoreMonthPosition(anchor.month, anchor.top)
+    : false
   const delta = block.getBoundingClientRect().top - anchor.top
   const container = getScrollContainer()
   container.scrollBy({ top: delta, behavior: 'auto' })
@@ -676,32 +683,53 @@ const restoreVisiblePhoto = (anchor: { id: string; top: number } | null) => {
   })
 }
 
-const refreshDataPreservingPosition = (): Promise<boolean> => {
-  if (refreshingData.value || isPhotoInteractionActive.value) return Promise.resolve(false)
-  refreshingData.value = true
-  const monthAnchor = captureVisibleMonth()
-  const photoAnchor = captureVisiblePhoto([])
-  const container = getScrollContainer()
-  const previousScrollTop = container === window ? window.scrollY : (container as HTMLElement).scrollTop
-  return new Promise((resolve) => {
-    emit('refresh-data', (success = true) => {
-      void nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
-        // Restore the month first so the virtual gallery renders the same area,
-        // then align the exact photo if it still exists.
-        if (!restoreVisibleMonth(monthAnchor)) {
-          container.scrollTo({ top: previousScrollTop, behavior: 'auto' })
-        }
-        requestAnimationFrame(() => {
-          restoreVisiblePhoto(photoAnchor)
-          refreshingData.value = false
-          resolve(success)
-        })
-      })))
-    })
+let positionRefresh: Promise<boolean> | undefined
+const refreshDataPreservingPosition = async (editedIds?: string[]): Promise<boolean> => {
+  if (!props.refreshData || (!editedIds && (positionRefresh || isPhotoInteractionActive.value))) return false
+  // 部分成功后允许立即重试失败项，后一次刷新要等前一次发布完数据。
+  while (positionRefresh) await positionRefresh
+  positionRefresh = reloadAtCurrentPosition(props.refreshData, editedIds ?? []).finally(() => {
+    positionRefresh = undefined
+    refreshingData.value = false
   })
+  return positionRefresh
 }
 
-const handleRefreshData = () => { void refreshDataPreservingPosition() }
+const reloadAtCurrentPosition = async (refresh: () => Promise<boolean>, editedIds: string[]) => {
+  refreshingData.value = true
+  const monthAnchor = captureVisibleMonth()
+  const photoAnchor = captureVisiblePhoto(editedIds)
+  const container = getScrollContainer()
+  const path = route.fullPath
+  const gallery = galleryRef.value
+  const previousScrollTop = container === window ? window.scrollY : (container as HTMLElement).scrollTop
+  try {
+    if (!await refresh()) return false
+    await nextTick()
+    if (route.fullPath !== path || gallery !== galleryRef.value) return true
+    if (!restoreVisibleMonth(monthAnchor)) {
+      container.scrollTo({ top: previousScrollTop, behavior: 'auto' })
+    }
+    gallery?.updateVisibleBlocks()
+    await nextTick()
+    await gallery?.checkAndLoadVisibleMonths()
+    await nextTick()
+    if (photoAnchor && gallery && gallery === galleryRef.value && 'restoreMonthPosition' in gallery) {
+      const photo = props.photos.find(item => item.id === photoAnchor.id)
+      if (photo) await gallery.scrollToPhoto(photo, photoAnchor.top, false)
+    } else {
+      restoreVisiblePhoto(photoAnchor)
+    }
+    return true
+  } catch (error) {
+    console.error('无法恢复照片浏览位置', error)
+    return false
+  }
+}
+
+const handleRefreshData = async () => {
+  if (!await refreshDataPreservingPosition()) ElMessage.error('刷新失败，请重试')
+}
 
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768
@@ -1002,6 +1030,15 @@ const timeEditPhotoIds = ref<string[]>([])
 const handleBatchEditTime = (ids: string[]) => {
   timeEditPhotoIds.value = ids
   showTimeBatchEditor.value = true
+}
+const handleBatchTimeUpdated = async () => {
+  if (!props.refreshData) {
+    emit('retry')
+    return
+  }
+  if (!await refreshDataPreservingPosition(timeEditPhotoIds.value)) {
+    ElMessage.error('照片时间已修改，刷新失败，请重试')
+  }
 }
 
 // Batch location edit state

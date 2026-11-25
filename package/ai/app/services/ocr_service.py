@@ -68,28 +68,15 @@ def load_paddleocr_model():
             "Rec.model_type": model_type,
             "Rec.ocr_version": ocr_version,
             "Rec.model_path": base / runtime["recFile"],
-            "EngineConfig.onnxruntime.use_cuda": True,
+            "EngineConfig.onnxruntime.use_cuda": os.getenv("TS_AI_BACKEND") in (None, "cuda"),
         }
         if runtime.get("recKeysFile"):
             params["Rec.rec_keys_path"] = base / runtime["recKeysFile"]
         _ocr_engine_is_openvino = False
-        if "TS_AI_BACKEND" in os.environ:
-            from app.services.onnx_providers import create_inference_session
-
-            class DesktopRapidOCR(RapidOCR):
-                def _load_config(self, config_path, params):
-                    cfg = super()._load_config(config_path, params)
-                    cfg._set_flag("allow_objects", True)
-                    for stage in ("Det", "Cls", "Rec"):
-                        model_path = str(cfg[stage].model_path)
-                        cfg[stage].session = create_inference_session(model_path, ocr_stage=stage)
-                    return cfg
-
-            params["EngineConfig.onnxruntime.use_cuda"] = False
-            return DesktopRapidOCR(params=params)
         try:
             from openvino import Core  # noqa: F401
 
+            # RapidOCR owns all three sessions. Its OpenVINO engine uses CPU.
             params.update({
                 "Det.engine_type": EngineType.OPENVINO,
                 "Cls.engine_type": EngineType.OPENVINO,

@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from collections.abc import Callable, Iterable
+from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Query, Session
 
 from app.db.models.photo import Photo
-from app.db.models.task import Task, TaskStatus
+from app.db.models.task import INTERACTIVE_TASK_PRIORITY, Task, TaskStatus, TaskType
 from app.db.models.user import User
 from app.service.user_storage import configured_storage_base, get_user_root, legacy_storage_base
 
@@ -23,6 +24,10 @@ def contains(root: str, path: str) -> bool:
     if not root or not path:
         return False
     root, path = path_key(root), path_key(path)
+    return contains_key(root, path)
+
+
+def contains_key(root: str, path: str) -> bool:
     try:
         return os.path.commonpath([root, path]) == root
     except ValueError:
@@ -89,7 +94,24 @@ def delete_index(db: Session, owner_id: UUID, photos: Iterable[Photo]) -> int:
     return batch_delete_photos_db(db, [photo.id for photo in photos], is_delete_file=False, user_id=owner_id)
 
 
-def remove_gallery(db: Session, owner_id: UUID, raw_path: str) -> dict:
+def removal_tasks(db: Session, owner_id: UUID) -> Query:
+    return db.query(Task).filter(Task.type == TaskType.REMOVE_GALLERY, Task.owner_id == owner_id)
+
+
+def active_removal_roots(db: Session, owner_id: UUID) -> list[str]:
+    return [
+        task.payload['path'] for task in removal_tasks(db, owner_id)
+        .filter(Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]))
+    ]
+
+
+def ensure_removable(path: str, protected_roots: Iterable[str]) -> None:
+    for root in map(path_key, protected_roots):
+        if contains_key(path, root) or contains_key(root, path):
+            raise ValueError('该路径与主存储或其他已添加文件夹重叠，请移除准确的图库目录')
+
+
+def queue_gallery_removal(db: Session, owner_id: UUID, raw_path: str) -> tuple[list[str], Task]:
     if not isinstance(raw_path, str) or not raw_path.strip() or '\x00' in raw_path:
         raise ValueError('请提供有效的文件夹绝对路径')
     raw_path = os.path.expanduser(raw_path.strip())
@@ -101,17 +123,34 @@ def remove_gallery(db: Session, owner_id: UUID, raw_path: str) -> dict:
     user = lock_user(db, owner_id)
     roots = external_roots(user)
     remaining = [root for root in roots if path_key(root) != path]
-    if any(contains(path, root) or contains(root, path) for root in managed_roots(user) + remaining):
-        raise ValueError('该路径与主存储或其他已添加文件夹重叠，请移除准确的图库目录')
+    ensure_removable(path, managed_roots(user) + remaining)
+    task = (removal_tasks(db, owner_id)
+            .filter(Task.payload['path'].as_string() == path)
+            .order_by(Task.created_at.desc()).first())
+    if task and task.status in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+        db.commit()
+        return remaining, task
+    if task and task.status == TaskStatus.COMPLETED and len(remaining) == len(roots):
+        db.commit()
+        return remaining, task
+    if any(contains_key(path, root) or contains_key(root, path)
+           for root in active_removal_roots(db, owner_id)):
+        raise ValueError('有重叠的文件夹正在移除，请等待清理完成')
 
-    # Persist the removal before slow, chunked cleanup. Retrying still cleans
-    # rows even when this directory is no longer present in the settings.
+    if not task or task.status == TaskStatus.COMPLETED:
+        task = Task(type=TaskType.REMOVE_GALLERY, status=TaskStatus.PENDING,
+                    owner_id=owner_id, payload={'path': path}, priority=INTERACTIVE_TASK_PRIORITY,
+                    created_at=datetime.now(timezone.utc))
+        db.add(task)
+    else:
+        task.status = TaskStatus.PENDING
+        task.error = None
+        task.next_retry_at = None
+        task.attempt_count = 0
+
+    # Commit the job and detach its directory together.
     from app.core.config_manager import config_manager
     settings = dict(user.settings or {})
     settings['storage'] = dict(settings.get('storage') or {}, external_directories=remaining)
-    cancel_path_tasks(db, user.id, lambda candidate: contains(path, candidate))
     config_manager.update_user_config(user.id, settings, db)
-    photos = db.query(Photo).filter(Photo.owner_id == user.id).all()
-    deleted = delete_index(db, user.id, (p for p in photos if contains(path, p.file_path)))
-    db.commit()
-    return {'external': remaining, 'deleted_photos': deleted}
+    return remaining, task

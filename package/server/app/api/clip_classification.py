@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import bindparam, func, text
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.db.models.photo import Photo
@@ -123,6 +123,42 @@ def queue_rebuild(db, user, category_ids=None):
     return str(task.id)
 
 
+def _category_photo_counts(db: Session, owner_id: UUID, tag_ids: list[UUID]) -> dict[UUID, int]:
+    if not tag_ids:
+        return {}
+
+    if db.get_bind().dialect.name == "sqlite":
+        # Keep the tag index on the outer loop. The partial index requires
+        # the same deletion predicate as its definition.
+        statement = text("""
+            SELECT ptr.tag_id, COUNT(*) AS photo_count
+            FROM photo_tag_relations ptr
+            CROSS JOIN photos p ON p.id = ptr.photo_id
+            WHERE ptr.tag_id IN :tag_ids
+              AND ptr.is_deleted = false
+              AND p.owner_id = :owner_id
+              AND p.is_deleted IS 0
+            GROUP BY ptr.tag_id
+        """).bindparams(
+            bindparam("tag_ids", expanding=True, type_=PhotoTagRelation.tag_id.type),
+            bindparam("owner_id", type_=Photo.owner_id.type),
+        ).columns(tag_id=PhotoTagRelation.tag_id.type)
+        return dict(db.execute(statement, {"owner_id": owner_id, "tag_ids": tag_ids}).all())
+
+    return dict(
+        db.query(PhotoTagRelation.tag_id, func.count(PhotoTagRelation.id))
+        .join(Photo, Photo.id == PhotoTagRelation.photo_id)
+        .filter(
+            Photo.owner_id == owner_id,
+            Photo.is_deleted.is_(False),
+            PhotoTagRelation.is_deleted.is_(False),
+            PhotoTagRelation.tag_id.in_(tag_ids),
+        )
+        .group_by(PhotoTagRelation.tag_id)
+        .all()
+    )
+
+
 @router.get("/categories", response_model=BaseResponse[dict])
 def categories(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
@@ -137,18 +173,7 @@ def categories(db: Session = Depends(get_db), user: User = Depends(get_current_u
             .all()
         )
         cats = [cat for cat, _, _ in rows]
-        counts = dict(
-            db.query(PhotoTagRelation.tag_id, func.count(PhotoTagRelation.id))
-            .join(Photo, Photo.id == PhotoTagRelation.photo_id)
-            .filter(
-                Photo.owner_id == user.id,
-                Photo.is_deleted.is_(False),
-                PhotoTagRelation.is_deleted.is_(False),
-                PhotoTagRelation.tag_id.in_([cat.tag_id for cat in cats]),
-            )
-            .group_by(PhotoTagRelation.tag_id)
-            .all()
-        )
+        counts = _category_photo_counts(db, user.id, [cat.tag_id for cat in cats])
         return BaseResponse.success(
             {
                 "groups": list(

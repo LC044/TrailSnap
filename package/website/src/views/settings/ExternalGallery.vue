@@ -179,6 +179,18 @@
               <li v-for="item in scanSkipped" :key="item.path" class="break-all">{{ item.path }}：{{ item.reason }}</li>
             </ul>
           </div>
+          <div v-if="isSuperuser && removals.length" class="mb-3 space-y-2">
+            <div v-for="job in removals" :key="job.id" class="ts-muted flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-900">
+              <div class="min-w-0">
+                <p class="break-all">{{ job.path }}</p>
+                <p role="status">{{ removalStatus(job) }}</p>
+              </div>
+              <el-button v-if="job.status === 'failed' || job.status === 'cancelled'" size="small"
+                :loading="removingPath === job.path" :disabled="!!removingPath" @click="startRemoval(job.path)">
+                重试清理
+              </el-button>
+            </div>
+          </div>
           <div v-if="registeredDirs.length" class="grid gap-3">
             <article v-for="row in registeredDirs" :key="row.path" class="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700 sm:flex-row sm:items-center">
               <div class="flex min-w-0 flex-1 items-center gap-3">
@@ -343,7 +355,7 @@
 import BasicSettings from './BasicSettings.vue'
 import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { settingsApi } from '@/api/settings'
+import { settingsApi, type GalleryRemoval } from '@/api/settings'
 import { tasksApi } from '@/api/tasks'
 import { userService, type User } from '@/api/user'
 import { useUserStore } from '@/stores/user'
@@ -389,17 +401,27 @@ const selectedSet = reactive<Set<string>>(new Set())
 const registeredDirs = ref<{ path: string }[]>([])
 const scanningAll = ref(false)
 const removingPath = ref('')
+const removals = ref<GalleryRemoval[]>([])
 const scanMessage = ref('')
 const scanSkipped = ref<{ path: string; reason: string }[]>([])
 let scanPoll: ReturnType<typeof setTimeout> | undefined
 let scanGeneration = 0
-onUnmounted(() => { scanGeneration++; clearTimeout(scanPoll) })
+let removalPoll: ReturnType<typeof setTimeout> | undefined
+let removalGeneration = 0
+onUnmounted(() => {
+  scanGeneration++
+  removalGeneration++
+  clearTimeout(scanPoll)
+  clearTimeout(removalPoll)
+})
 watch(selectedUserId, () => {
   scanGeneration++
   clearTimeout(scanPoll)
   scanningAll.value = false
   scanMessage.value = ''
   scanSkipped.value = []
+  removals.value = []
+  removingPath.value = ''
 })
 
 // 手动添加
@@ -502,6 +524,7 @@ watch(selectedUserId, () => {
   manualMsg.value = ''
   manualPath.value = ''
   reloadAll()
+  refreshRemovals()
 })
 
 const batchAdd = async () => {
@@ -653,8 +676,63 @@ const scanAllDirs = async () => {
   }
 }
 
+const removalActive = (job: GalleryRemoval) => job.status === 'pending' || job.status === 'processing'
+
+const removalStatus = (job: GalleryRemoval) => {
+  if (job.status === 'completed') return `已清理 ${job.processed_items} 条索引`
+  if (!removalActive(job)) return `清理未完成，已清理 ${job.processed_items} 条索引`
+  if (job.total_items) return `已清理 ${job.processed_items} / ${job.total_items} 条索引`
+  return job.status === 'pending' ? '等待清理' : '正在核对待清理索引…'
+}
+
+const refreshRemovals = async () => {
+  const generation = ++removalGeneration
+  const owner = uid()
+  clearTimeout(removalPoll)
+  if (!isSuperuser.value) return
+
+  const poll = async () => {
+    try {
+      const jobs = await settingsApi.getGalleryRemovals(owner)
+      if (generation !== removalGeneration) return
+      if (removals.value.some(previous => removalActive(previous) && jobs.some(job =>
+        job.id === previous.id && !removalActive(job)))) invalidatePhotos()
+      removals.value = jobs
+      if (!jobs.some(removalActive)) return
+    } catch {
+      if (generation !== removalGeneration || !removals.value.some(removalActive)) return
+    }
+    removalPoll = setTimeout(poll, 2000)
+  }
+  await poll()
+}
+
+const startRemoval = async (path: string) => {
+  if (removingPath.value) return
+  const owner = uid()
+  removingPath.value = path
+  try {
+    const result = await settingsApi.removeDirectory(path, owner)
+    if (owner !== uid()) return
+    if (result?.task_id) {
+      removals.value = [{ id: result.task_id, path, status: 'pending', total_items: 0, processed_items: 0 },
+        ...removals.value.filter(job => job.id !== result.task_id)]
+    }
+    invalidatePhotos()
+    ElMessage.success(result?.task_id ? '文件夹已移除，正在后台清理索引' : '移除成功')
+    await Promise.all([reloadAll(), refreshRemovals()])
+  } catch {
+    if (owner !== uid()) return
+    ElMessage.error('提交移除失败')
+    await Promise.all([reloadAll(), refreshRemovals()])
+  } finally {
+    if (owner === uid()) removingPath.value = ''
+  }
+}
+
 const removeDir = async (path: string) => {
   if (removingPath.value) return
+  const owner = uid()
   try {
     await ElMessageBox.confirm(
       `确定要移除目录 "${path}" 吗？该目录下的所有照片索引及其缩略图将被删除（源文件不会被删除）。`,
@@ -664,20 +742,7 @@ const removeDir = async (path: string) => {
   } catch {
     return // 用户取消
   }
-  // 先调用后端，成功后再刷新列表，避免提前提示成功
-  removingPath.value = path
-  try {
-    await settingsApi.removeDirectory(path, uid())
-    invalidatePhotos()
-    ElMessage.success('移除成功')
-    await reloadAll()
-  } catch {
-    ElMessage.error('移除未完成，可重试或扫描全部文件夹以清理残留索引')
-    invalidatePhotos()
-    await reloadAll()
-  } finally {
-    removingPath.value = ''
-  }
+  if (owner === uid()) await startRemoval(path)
 }
 
 const addPattern = () => { filterConfig.filename_patterns.push('') }
@@ -743,6 +808,6 @@ onMounted(async () => {
       console.error(e)
     }
   }
-  await reloadAll()
+  await Promise.all([reloadAll(), refreshRemovals()])
 })
 </script>
