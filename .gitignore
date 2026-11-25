@@ -51,3 +51,4 @@ output/
 # Retired feedback checkout: preserve local databases, uploads and credentials.
 /package/requirement-platform/
 marketing/
+scripts/download-mirror/
