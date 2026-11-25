@@ -137,37 +137,34 @@ def test_accelerator_packaging_and_catalog_validate_versions(tmp_path, monkeypat
 
 @pytest.mark.parametrize("device", ["GPU", "NPU.0"])
 @pytest.mark.parametrize("model_type", ["TINY", "SMALL", "MEDIUM"])
-def test_desktop_ocr_injects_selected_sessions(monkeypatch, tmp_path, device, model_type):
+def test_desktop_ocr_uses_rapidocr_openvino_engine(monkeypatch, tmp_path, device, model_type):
+    import sys
+
     import rapidocr
     from app.services import ocr_service
-    from omegaconf import OmegaConf
 
     class FakeRapidOCR:
         def __init__(self, params):
-            self.cfg = self._load_config(None, params)
-
-        def _load_config(self, _path, params):
-            return OmegaConf.create({stage: {"model_path": params[f"{stage}.model_path"]} for stage in ("Det", "Cls", "Rec")})
+            self.params = params
 
     monkeypatch.setattr(rapidocr, "RapidOCR", FakeRapidOCR)
     monkeypatch.setenv("TS_AI_BACKEND", "openvino")
-    monkeypatch.setattr(desktop_device, "desktop_device", lambda: {
-        "backend": "openvino", "device": device, "provider": "OpenVINOExecutionProvider",
-    })
+    monkeypatch.setenv("OPENVINO_DEVICE", device)
+    monkeypatch.setitem(sys.modules, "openvino", SimpleNamespace(Core=object))
+    monkeypatch.setattr(ocr_service, "_ocr_engine_is_openvino", False)
     monkeypatch.setattr(ocr_service.ai_model_manager, "get_selected_spec", lambda _: {"runtime": {"modelType": model_type, "ocrVersion": "PPOCRV6", "clsOcrVersion": "PPOCRV4", "detFile": "det.onnx", "clsFile": "cls.onnx", "recFile": "rec.onnx"}})
     monkeypatch.setattr(ocr_service.ai_model_manager, "get_model_dir", lambda *_, **__: tmp_path)
-    monkeypatch.setattr(onnx_providers, "_make_session", lambda path, *_: SimpleNamespace(path=path, stage=None))
-    from app.services import openvino_npu
-    monkeypatch.setattr(openvino_npu, "OpenVINONPUSession",
-                        lambda path, device, *, ocr_stage, fixed_dimensions: SimpleNamespace(
-                            path=path, stage=ocr_stage, device=device,
-                        ))
+
+    def reject_session(*args, **kwargs):
+        pytest.fail("OCR sessions should be created by RapidOCR")
+
+    monkeypatch.setattr(onnx_providers, "create_inference_session", reject_session)
     result = ocr_service.load_paddleocr_model()
-    assert result.cfg.Det.session.path.endswith("det.onnx")
-    assert result.cfg.Rec.session.path.endswith("rec.onnx")
+    assert type(result) is FakeRapidOCR
+    assert ocr_service._ocr_engine_is_openvino
     for stage in ("Det", "Cls", "Rec"):
-        session = result.cfg[stage].session
-        assert session.stage == (stage if device.startswith("NPU") else None)
+        assert result.params[f"{stage}.engine_type"] is rapidocr.EngineType.OPENVINO
+        assert result.params[f"{stage}.model_path"] == tmp_path / f"{stage.lower()}.onnx"
 
 
 @pytest.mark.parametrize(("stage", "shape", "canvas", "output_shape", "cropped"), [
