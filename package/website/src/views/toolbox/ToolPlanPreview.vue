@@ -1,9 +1,8 @@
 <template>
-  <section class="space-y-5">
-    <div class="flex flex-wrap items-start justify-between gap-3">
+  <section class="space-y-5" :aria-busy="loading || taskActive">
+    <div v-if="!taskActive" class="flex flex-wrap items-start justify-between gap-3">
       <div class="text-sm" aria-live="polite">
-        <span v-if="scanning">正在查找 · {{ plan.summary.processed || 0 }} / {{ plan.summary.total || 0 }}</span>
-        <span v-else-if="isCleanup && isPreview">已选 {{ selectedCount }} 张</span>
+        <span v-if="isCleanup && isPreview">已选 {{ selectedCount }} 张</span>
         <span v-else-if="isPreview">{{ plan.summary.ready || 0 }} 项待处理</span>
         <span v-else>{{ labels[plan.status] || plan.status }} · {{ plan.summary.success || 0 }} 项</span>
         <span v-if="plan.summary.failed" class="ml-2 text-red-600 dark:text-red-400">失败 {{ plan.summary.failed }} 项</span>
@@ -20,13 +19,18 @@
       <el-button v-if="error" :loading="loading" @click="load">重试</el-button>
     </div>
     <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
-    <div v-loading="loading" class="space-y-2">
+    <div v-if="taskActive" role="status" class="flex min-h-40 flex-col items-center justify-center gap-3 py-8">
+      <Loader2 class="h-8 w-8 animate-spin text-primary-500 motion-reduce:animate-none" aria-hidden="true" />
+      <p class="text-sm">{{ taskStatusText }}</p>
+      <p v-if="scanning && plan.summary.total > 0" class="ts-muted text-sm">已处理 {{ plan.summary.processed || 0 }} / {{ plan.summary.total }} 张</p>
+    </div>
+    <div v-loading="loading && !taskActive" class="space-y-2">
       <template v-if="isCleanup">
         <section v-for="(group, groupIndex) in photoGroups" :key="group.key" class="py-3">
           <h3 v-if="plan.request.config.cleanup_mode !== 'quality'" class="ts-muted mb-3 text-sm">第 {{ (page - 1) * 40 + groupIndex + 1 }} 组</h3>
           <div :class="isGroupedCleanup ? 'flex gap-2 overflow-x-auto pb-2' : 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4'">
             <article v-for="item in group.items" :key="item.id" class="relative min-w-0" :class="isGroupedCleanup && 'w-48 shrink-0 sm:w-56'">
-              <el-image :src="thumbnailUrl(item.photo_id)" :preview-src-list="group.items.map(photo => thumbnailToFileUrl(thumbnailUrl(photo.photo_id)))" :initial-index="group.items.indexOf(item)" preview-teleported fit="cover" class="aspect-square w-full rounded-xl" :class="{ 'photo-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :alt="basename(item.source)" />
+              <ToolboxPhotoPreview :photo-id="item.photo_id" :photo-ids="group.items.map(photo => photo.photo_id)" class="aspect-square w-full rounded-xl" :class="{ 'photo-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :alt="basename(item.source)" />
               <button v-if="isPreview && item.status === 'candidate'" type="button" role="checkbox" class="photo-choice" :class="{ 'is-selected': isAsyncCleanup ? item.selected : selected.includes(item.id) }" :aria-checked="!!(isAsyncCleanup ? item.selected : selected.includes(item.id))" :disabled="selecting" :aria-label="`将 ${basename(item.source)} 移入回收站`" @click="toggle(item.id, !(isAsyncCleanup ? item.selected : selected.includes(item.id)))">
                 <span class="photo-choice-mark"><Check v-if="isAsyncCleanup ? item.selected : selected.includes(item.id)" :size="20" :stroke-width="3" /></span>
               </button>
@@ -38,7 +42,7 @@
           <div v-if="!isGroupedCleanup && group.groupId && references[group.groupId] && (references[group.groupId].total > 24 || references[group.groupId].items.some(photo => !group.items.some(item => item.photo_id === photo.photo_id)))" class="mt-2">
             <p class="ts-muted mb-2 text-xs">同组照片</p>
             <div class="flex gap-2 overflow-x-auto">
-              <el-image v-for="member in references[group.groupId].items.filter(photo => !group.items.some(item => item.photo_id === photo.photo_id))" :key="member.photo_id" :src="thumbnailUrl(member.photo_id)" :preview-src-list="references[group.groupId].items.map(photo => thumbnailToFileUrl(thumbnailUrl(photo.photo_id)))" :initial-index="references[group.groupId].items.indexOf(member)" preview-teleported fit="cover" class="h-24 w-24 shrink-0 rounded-lg" alt="同组参考照片" />
+              <ToolboxPhotoPreview v-for="member in references[group.groupId].items.filter(photo => !group.items.some(item => item.photo_id === photo.photo_id))" :key="member.photo_id" :photo-id="member.photo_id" :photo-ids="references[group.groupId].items.map(photo => photo.photo_id)" class="h-24 w-24 shrink-0 rounded-lg" alt="同组参考照片" />
             </div>
             <el-pagination v-if="references[group.groupId].total > 24" :current-page="referencePages[group.groupId] || 1" :page-size="24" :total="references[group.groupId].total" layout="prev, next" @current-change="page => loadReferences(group.groupId!, page)" />
           </div>
@@ -52,7 +56,7 @@
       <article v-for="item in rows" :key="item.id" class="ts-divider flex min-w-0 items-start gap-3 rounded-xl border p-3">
         <el-checkbox v-if="isCleanup && isPreview && item.status === 'candidate'" :model-value="isAsyncCleanup ? item.selected : selected.includes(item.id)" :disabled="selecting"
           :aria-label="`将 ${basename(item.source)} 移入回收站`" @update:model-value="toggle(item.id, !!$event)" />
-        <img :src="thumbnailUrl(item.photo_id)" :alt="basename(item.source)" loading="lazy" class="h-24 w-24 shrink-0 rounded-lg object-cover sm:h-32 sm:w-32" />
+        <ToolboxPhotoPreview :photo-id="item.photo_id" :alt="basename(item.source)" class="h-24 w-24 shrink-0 rounded-lg object-cover sm:h-32 sm:w-32" />
         <div class="min-w-0 flex-1 text-sm">
           <p class="break-all">{{ basename(item.source) }}</p>
           <p v-if="item.target" class="mt-1 break-all font-medium text-primary-600 dark:text-primary-400">→ {{ plan.kind === 'rename' ? basename(item.target) : item.target }}</p>
@@ -63,23 +67,23 @@
             <div v-if="item.detail.group_id && references[item.detail.group_id]" class="mt-2 space-y-2">
               <p>同组 {{ references[item.detail.group_id].total }} 项</p>
               <div class="flex flex-wrap gap-2"><figure v-for="member in references[item.detail.group_id].items" :key="member.photo_id">
-                <img :src="thumbnailUrl(member.photo_id)" alt="同组参考影像" loading="lazy" class="h-20 w-20 rounded-lg object-cover" />
+                <ToolboxPhotoPreview :photo-id="member.photo_id" alt="同组参考影像" class="h-20 w-20 rounded-lg object-cover" />
                 <figcaption v-if="!member.in_scope">范围外参考</figcaption><figcaption v-if="member.photo_id === references[item.detail.group_id].representative_id">保留参考</figcaption>
               </figure></div>
               <el-pagination :current-page="referencePages[item.detail.group_id] || 1" :page-size="24" :total="references[item.detail.group_id].total" layout="prev, next" @current-change="page => loadReferences(item.detail.group_id!, page)" />
             </div>
             <div v-if="item.detail.related_ids" class="mt-2 flex flex-wrap gap-2">
-              <img v-for="id in item.detail.related_ids.slice(0, 12)" :key="id" :src="thumbnailUrl(id)" alt="同组参考影像"
-                loading="lazy" class="h-20 w-20 rounded-lg object-cover" />
+              <ToolboxPhotoPreview v-for="id in item.detail.related_ids.slice(0, 12)" :key="id" :photo-id="id" alt="同组参考影像"
+                class="h-20 w-20 rounded-lg object-cover" />
             </div>
           </details>
         </div>
         <span class="ts-muted shrink-0 text-xs">{{ labels[item.status] || item.status }}</span>
       </article>
       </template>
-      <p v-if="!rows.length && !loading && !error" class="ts-muted py-8 text-center text-sm">没有这类结果</p>
+      <p v-if="!rows.length && !loading && !error && !taskActive" class="ts-muted py-8 text-center text-sm">没有这类结果</p>
     </div>
-    <div class="flex justify-center"><el-pagination v-model:current-page="page" :page-size="40" :total="total" layout="prev, pager, next" :pager-count="5" @current-change="load" /></div>
+    <div v-if="total > 0" class="flex justify-center"><el-pagination v-model:current-page="page" :page-size="40" :total="total" layout="prev, pager, next" :pager-count="5" @current-change="load" /></div>
     <div v-if="isPreview" class="plan-actions sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 py-3">
       <el-checkbox v-model="confirmed" class="plan-confirmation">已悉知变更情况</el-checkbox>
       <div class="flex flex-wrap justify-end gap-2">
@@ -98,10 +102,10 @@
   </section>
 </template>
 <script setup lang="ts">
+import ToolboxPhotoPreview from './ToolboxPhotoPreview.vue'
 import { computed, ref, watch } from 'vue'
-import { Check } from 'lucide-vue-next'
+import { Check, Loader2 } from 'lucide-vue-next'
 import { workflowApi, type ToolPlan, type ToolPlanItem } from '@/api/toolboxWorkflows'
-import { thumbnailUrl, thumbnailToFileUrl } from '@/utils/mediaUrl'
 const props = defineProps<{ plan: ToolPlan; executing: boolean }>()
 defineEmits<{ execute: [selected?: number[]]; back: []; stop: []; recover: [mode: 'retry' | 'undo']; again: [] }>()
 const labels: Record<string, string> = { preview: '待确认', queued: '排队中', running: '处理中', completed: '已完成', partial: '部分失败', stopped: '已停止', ready: '待确认', candidate: '待选', skipped: '跳过', success: '成功', failed: '失败' }
@@ -117,6 +121,8 @@ const resultFilters = computed(() => {
   return options
 })
 const scanning = computed(() => ['scan_queued', 'scanning'].includes(props.plan.status))
+const taskActive = computed(() => ['scan_queued', 'scanning', 'queued', 'running'].includes(props.plan.status))
+const taskStatusText = computed(() => ({ scan_queued: '等待开始查找…', scanning: '正在查找照片…', queued: '等待开始处理…', running: '正在处理照片…' } as Record<string, string>)[props.plan.status] || '')
 const serverSelected = ref(0), selecting = ref(false)
 const selectedCount = computed(() => isAsyncCleanup.value ? serverSelected.value : selected.value.length)
 const references = ref<Record<number, { total: number; representative_id: string; items: { photo_id: string; in_scope: boolean; source?: string; item?: ToolPlanItem | null }[] }>>({})

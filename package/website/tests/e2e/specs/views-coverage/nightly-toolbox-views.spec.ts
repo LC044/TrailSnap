@@ -188,6 +188,9 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
     await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
     const cards = page.locator('article').filter({ has: page.locator('details > summary', { hasText: '详情' }) })
     await expect(cards).toHaveCount(4)
+    // Toolbox thumbnails now open the same PhotoLightbox as albums.
+    await expect(cards.getByRole('button', { name: /^查看照片 / })).toHaveCount(4)
+    await expect(cards.locator('.el-image')).toHaveCount(0)
     await expect(cards.nth(0).getByText('质量分 12 / 综合评分 30', { exact: true })).toBeVisible()
     await expect(cards.nth(0).locator('[aria-label="质量分（0–100）12 / 综合评分（0–200）30"]')).toBeVisible()
     for (const index of [1, 2]) {
@@ -262,6 +265,8 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
       await page.goto('/toolbox/cleanup?plan=' + id)
       const cards = page.locator('article').filter({ has: page.locator('details > summary', { hasText: '详情' }) })
       await expect(cards).toHaveCount(5)
+      await expect(cards.getByRole('button', { name: /^查看照片 / })).toHaveCount(5)
+      await expect(cards.locator('.el-image')).toHaveCount(0)
       if (mode !== 'quality') {
         const boxes = await cards.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top))
         expect(new Set(boxes).size).toBe(1)
@@ -279,6 +284,8 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
         await expect(confirmation).toBeChecked()
         await expect(remove).toBeEnabled()
         await remove.click()
+        // Completion restores the selection summary; queued/running only show the central loader.
+        await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
         await expect(cards).toHaveCount(5 - index)
         await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
         await expect(remove).toBeDisabled()

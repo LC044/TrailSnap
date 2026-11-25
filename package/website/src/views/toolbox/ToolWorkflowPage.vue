@@ -12,7 +12,7 @@
     </ol>
     <p v-if="error" role="alert" class="mb-4 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
     <div class="space-y-5">
-      <div v-loading="busy" class="ts-surface min-w-0 p-4 md:p-6">
+      <div v-loading="busy || (checking && !scopeDialog)" :element-loading-text="checking ? '正在核对照片范围…' : '正在加载预览…'" :aria-busy="busy || checking" class="ts-surface min-w-0 p-4 md:p-6">
         <MediaScopeSelector v-if="step < 3" v-model:scope="scope" :count="scopeCount" :checking="checking" @check="checkScope(true)" />
         <div v-if="step < 3" class="ts-divider mt-6 space-y-5 border-t pt-6">
           <template v-if="['organize', 'rename', 'album'].includes(kind)">
@@ -46,24 +46,24 @@
 
     </div>
     <ResponsiveDialog v-model="scopeDialog" title="选择的照片" max-width="60rem" mobile-mode="fullscreen" mobile-back>
-      <p class="ts-muted mb-4 text-sm" aria-live="polite">
-        <template v-if="scopeCount === null || checking">加载中…</template>
-        <template v-else>共 {{ scopeCount.toLocaleString() }} 张</template>
+      <p v-if="scopeCount !== null && !checking" class="ts-muted mb-4 text-sm" aria-live="polite">
+        共 {{ scopeCount.toLocaleString() }} 张
       </p>
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div v-loading="checking" element-loading-text="正在加载照片…" :aria-busy="checking" class="grid min-h-32 grid-cols-2 gap-3 sm:grid-cols-4">
         <article v-for="photo in scopeRows" :key="photo.id" class="ts-divider min-w-0 rounded-xl border p-2">
-          <img :src="thumbnailUrl(photo.id)" :alt="photo.filename" loading="lazy" class="aspect-square w-full rounded-lg object-cover" />
+          <ToolboxPhotoPreview :photo-id="photo.id" :alt="photo.filename" class="aspect-square w-full rounded-lg object-cover" />
           <p class="my-2 truncate text-xs" :title="photo.filename">{{ photo.filename }}</p>
           <el-button size="small" class="w-full" @click="exclude(photo.id)">排除</el-button>
         </article>
       </div>
-      <p v-if="!scopeRows.length" class="ts-muted py-6 text-center">没有符合条件的影像</p>
+      <p v-if="!scopeRows.length && !checking" class="ts-muted py-6 text-center">没有符合条件的影像</p>
       <div class="mt-4 flex justify-center"><el-pagination v-model:current-page="scopePage" :page-size="40" :total="scopeCount || 0" layout="prev, pager, next" :pager-count="5" @current-change="checkScope(false)" /></div>
       <template #footer><div class="flex justify-end gap-2"><el-button v-if="scope.excluded_ids.length" @click="scope.excluded_ids = []; checkScope(false)">恢复</el-button><el-button type="primary" @click="scopeDialog = false">完成</el-button></div></template>
     </ResponsiveDialog>
   </AppPage>
 </template>
 <script setup lang="ts">
+import ToolboxPhotoPreview from './ToolboxPhotoPreview.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -77,7 +77,6 @@ import OrganizeRuleEditor from './OrganizeRuleEditor.vue'
 import RenameTemplateEditor from './RenameTemplateEditor.vue'
 import ToolPlanPreview from './ToolPlanPreview.vue'
 import { defaultConfig, emptyScope, renameTemplateError, workflowApi, type ScopeItem, type ToolKind, type ToolPlan } from '@/api/toolboxWorkflows'
-import { thumbnailUrl } from '@/utils/mediaUrl'
 import { useUserStore } from '@/stores/user'
 import { useAppBack } from '@/composables/useAppBack'
 const props = defineProps<{ kind: ToolKind; cleanupMode?: 'duplicate' | 'similar' | 'quality' }>()

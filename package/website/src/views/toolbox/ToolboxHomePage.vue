@@ -42,7 +42,7 @@
         <p v-if="detailError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ detailError }} <el-button @click="loadDetails">重试</el-button></p>
         <div ref="detailList" v-loading="detailLoading" class="space-y-3">
           <article v-for="item in detailRows" :key="item.id" class="ts-divider flex min-w-0 gap-3 border-b py-3">
-            <img :src="thumbnailUrl(item.photo_id)" alt="操作照片" class="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy" />
+            <ToolboxPhotoPreview :photo-id="item.photo_id" alt="操作照片" class="h-16 w-16 shrink-0 rounded-lg object-cover" />
             <div class="min-w-0 flex-1 text-sm">
               <p class="truncate" :title="basename(item.source)">{{ basename(item.source) }}</p>
               <p class="ts-muted mt-1">{{ resultLabels[item.status] || item.status }}</p>
@@ -69,11 +69,11 @@
   </AppPage>
 </template>
 <script setup lang="ts">
+import ToolboxPhotoPreview from './ToolboxPhotoPreview.vue'
 import { computed, nextTick, onBeforeUnmount, onActivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { FolderOpen, Tag, Images, Copy, Trash2, Clock3, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
-import { thumbnailUrl } from '@/utils/mediaUrl'
 import AppPage from '@/components/ui/AppPage.vue'
 import { workflowApi, type ToolKind, type ToolPlan, type ToolPlanItem } from '@/api/toolboxWorkflows'
 const router = useRouter()
