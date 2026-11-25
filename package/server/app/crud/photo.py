@@ -1443,6 +1443,23 @@ def _remove_photo_files(user_id: Optional[UUID], targets: List[tuple]) -> None:
         list(pool.map(_remove, targets))
 
 
+def delete_photo_chunk(db: Session, photo_ids: List[UUID]) -> set[UUID]:
+    """Delete one batch and return affected albums. The caller owns the transaction."""
+    album_ids = {
+        row[0]
+        for row in db.query(Album.id)
+        .join(AlbumPhoto, AlbumPhoto.album_id == Album.id)
+        .filter(AlbumPhoto.photo_id.in_(photo_ids))
+        .distinct()
+        .all()
+    }
+    _reassign_face_identity_defaults(db, photo_ids)
+    remove_photos_from_clusters(db, photo_ids)
+    # Foreign keys cascade metadata, faces, vectors, OCR, and photo relations.
+    db.query(Photo).filter(Photo.id.in_(photo_ids)).delete(synchronize_session=False)
+    return album_ids
+
+
 def batch_delete_photos_db(
     db: Session,
     photo_ids: List[UUID],
@@ -1506,21 +1523,7 @@ def batch_delete_photos_db(
             for row in rows
         ]
 
-        affected_album_ids.update(
-            row[0]
-            for row in db.query(Album.id)
-            .join(AlbumPhoto, AlbumPhoto.album_id == Album.id)
-            .filter(AlbumPhoto.photo_id.in_(chunk_ids))
-            .distinct()
-            .all()
-        )
-
-        _reassign_face_identity_defaults(db, chunk_ids)
-        remove_photos_from_clusters(db, chunk_ids)
-
-        # Single DELETE; FK cascades take care of faces / metadata / vectors /
-        # descriptions / colors / ocr / tag+album relations / declutter records.
-        db.query(Photo).filter(Photo.id.in_(chunk_ids)).delete(synchronize_session=False)
+        affected_album_ids.update(delete_photo_chunk(db, chunk_ids))
         db.commit()
 
         deleted_count += len(chunk_ids)

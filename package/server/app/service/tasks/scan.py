@@ -124,7 +124,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
             if task.payload.get('reconcile'):
                 # Always use the current DB configuration for a full scan,
                 # including an empty list (which still needs orphan cleanup).
-                from app.service.gallery_sync import lock_user, external_roots, managed_roots, path_key, owned_path_tasks, cancel_path_tasks, delete_index
+                from app.service.gallery_sync import active_removal_roots, lock_user, external_roots, managed_roots, path_key, owned_path_tasks, cancel_path_tasks, delete_index
                 key = lru_cache(maxsize=None)(path_key)
                 for (path,) in db.query(Photo.file_path).filter(Photo.owner_id == user.id).all():
                     key(path)
@@ -136,8 +136,9 @@ class ScanFolderStrategy(BaseTaskStrategy):
                 roots = external_roots(user)
                 allowed_keys = [key(root) for root in roots + managed_roots(user)]
                 cancel_path_tasks(db, user.id, lambda path: not _within_roots(key(path), allowed_keys))
+                cleanup_keys = allowed_keys + active_removal_roots(db, user.id)
                 orphaned = [p for p in db.query(Photo).filter(Photo.owner_id == user.id).all()
-                            if not _within_roots(key(p.file_path), allowed_keys)]
+                            if not _within_roots(key(p.file_path), cleanup_keys)]
                 total_deleted += delete_index(db, user.id, orphaned)
                 db.commit()
             if not roots:

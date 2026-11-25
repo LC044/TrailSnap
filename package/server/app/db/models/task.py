@@ -16,6 +16,7 @@ class TaskStatus(str, enum.Enum):
 class TaskType(str, enum.Enum):
     SCAN_PANORAMA = "SCAN_PANORAMA"
     SCAN_FOLDER = "SCAN_FOLDER"
+    REMOVE_GALLERY = "REMOVE_GALLERY"
     PROCESS_BASIC = "PROCESS_BASIC"  # Basic info, thumbnail, preview
     # PROCESS_IMAGE = "PROCESS_IMAGE"  # Deprecated or Full Legacy
     GENERATE_THUMBNAIL = "GENERATE_THUMBNAIL"
@@ -51,6 +52,7 @@ DEFAULT_PRIORITIES = {
     TaskType.SCAN_PANORAMA: 96,
     TaskType.SCAN_ALBUM: 100,
     TaskType.SCAN_FOLDER: 100,
+    TaskType.REMOVE_GALLERY: INTERACTIVE_TASK_PRIORITY,
     TaskType.PROCESS_BASIC: 99,
     TaskType.GENERATE_THUMBNAIL: 98,
     TaskType.EXTRACT_METADATA: 97,
@@ -81,6 +83,7 @@ DEFAULT_PRIORITIES = {
 CATEGORY_DESCRIPTION_MAP = {
     TaskType.SCAN_PANORAMA: "识别已拼接全景照片",
     TaskType.SCAN_FOLDER: '用于扫描文件夹中的文件',
+    TaskType.REMOVE_GALLERY: '清理已移除外部图库的索引和缩略图',
     TaskType.PROCESS_BASIC: '用于基本文件处理',
     TaskType.GENERATE_THUMBNAIL: '用于生成缩略图',
     TaskType.EXTRACT_METADATA: '用于提取文件元数据（GPS位置、拍摄参数等）',
@@ -107,6 +110,7 @@ CATEGORY_DESCRIPTION_MAP = {
 CATEGORY_NAME_MAP = {
     TaskType.SCAN_PANORAMA: "全景补识别",
     TaskType.SCAN_ALBUM: '扫描文件夹',
+    TaskType.REMOVE_GALLERY: '移除图库',
     TaskType.GENERATE_THUMBNAIL: '生成缩略图',
     TaskType.PROCESS_BASIC: '基本处理',
     TaskType.EXTRACT_METADATA: '元数据提取',

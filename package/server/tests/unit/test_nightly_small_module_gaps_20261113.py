@@ -122,7 +122,7 @@ def test_remove_gallery_rejects_an_invalid_path():
     db = MagicMock()
     for bad in ("", "   ", None, 42, "with\x00nul"):
         with pytest.raises(ValueError, match="请提供有效的文件夹绝对路径"):
-            gallery_sync.remove_gallery(db, uuid4(), bad)
+            gallery_sync.queue_gallery_removal(db, uuid4(), bad)
 
 
 # ---------------------------------------------------------------------------

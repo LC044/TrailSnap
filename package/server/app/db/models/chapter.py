@@ -27,7 +27,7 @@ class LifeChapter(Base):
     diary_entries = Column(JSON, nullable=True, default=dict)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=True)
-    cover_photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True)
+    cover_photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True, index=True)
     candidate_fingerprint = Column(String(64), nullable=True)
     evidence = Column(JSON, nullable=False, default=list)
     source_ids = Column(JSON, nullable=False, default=list)

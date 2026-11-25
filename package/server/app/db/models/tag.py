@@ -14,7 +14,7 @@ class PhotoTag(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tag_name = Column(String(50), nullable=False, index=True)
     type = Column(String(50), nullable=True)
-    cover_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True)
+    cover_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True, index=True)
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
     create_time = Column(DateTime, default=datetime.now)
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)

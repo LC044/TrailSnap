@@ -48,6 +48,25 @@ class ScanAllDirectoriesRequest(BaseModel):
     user_id: UUID | None = None
 
 
+class GalleryRemovalStatus(BaseModel):
+    id: UUID
+    path: str
+    status: TaskStatus
+    processed_items: int
+    total_items: int
+
+    @classmethod
+    def from_task(cls, task: Task):
+        return cls(id=task.id, path=task.payload['path'], status=task.status,
+                   processed_items=task.processed_items or 0, total_items=task.total_items or 0)
+
+
+class GalleryRemovalResponse(BaseModel):
+    primary: str
+    external: list[str]
+    task_id: UUID
+
+
 @router.get('/map/runtime', response_model=BaseResponse)
 def get_map_runtime(
     db: Session = Depends(get_db),
@@ -501,7 +520,7 @@ def add_directory(
     TaskManager.get_instance().add_task(db, TaskType.SCAN_FOLDER, {'scan_roots': [path], 'user_id': str(target_user.id)})
     return {'primary': get_storage_root(target_user.id, db), 'external': external}
 
-@router.delete('/directories')
+@router.delete('/directories', response_model=BaseResponse[GalleryRemovalResponse])
 def remove_directory(
     payload: dict, 
     db: Session = Depends(get_db),
@@ -521,13 +540,33 @@ def remove_directory(
         if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
     
-    from app.service.gallery_sync import remove_gallery
+    from app.service.gallery_sync import queue_gallery_removal
     try:
-        result = remove_gallery(db, target_user.id, path)
+        remaining, task = queue_gallery_removal(db, target_user.id, path)
     except ValueError as error:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(error)) from error
-    return {'primary': get_storage_root(target_user.id, db), **result}
+    if task.status == TaskStatus.PENDING:
+        TaskManager.get_instance().start_worker_if_needed()
+    return BaseResponse.success(data=GalleryRemovalResponse(
+        primary=get_storage_root(target_user.id, db), external=remaining, task_id=task.id,
+    ))
+
+
+@router.get('/directories/removals', response_model=BaseResponse[list[GalleryRemovalStatus]])
+def get_gallery_removals(
+    user_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    from app.service.gallery_sync import removal_tasks
+    tasks = removal_tasks(db, user_id or current_user.id)
+    active = tasks.filter(Task.status != TaskStatus.COMPLETED).order_by(Task.updated_at.desc()).all()
+    completed = tasks.filter(Task.status == TaskStatus.COMPLETED).order_by(Task.updated_at.desc()).first()
+    return BaseResponse.success(data=[GalleryRemovalStatus.from_task(task)
+                                     for task in active + ([completed] if completed else [])])
 
 
 @router.post('/directories/scan-all', response_model=BaseResponse[dict])

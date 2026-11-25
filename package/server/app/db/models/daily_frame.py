@@ -26,7 +26,7 @@ class DailyFrame(Base):
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     day = Column(Date, nullable=False)
     # Keep the selection when the source is permanently deleted. Do not cascade.
-    photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True)
+    photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True, index=True)
     mode = Column(String(8), nullable=False, default="still")
     start_seconds = Column(Float, nullable=False, default=0)
     caption = Column(String(120), nullable=False, default="")
