@@ -122,8 +122,8 @@ export const workflowApi = {
   async history(offset = 0, limit = 20, activeOnly = false) {
     return (await request.get<ToolPlan[]>(`${base}/plans`, { params: { offset, limit, active_only: activeOnly } })).data
   },
-  async items(id: string, offset = 0, status?: string) {
-    return (await request.get<PageResult<ToolPlanItem> & { selected_count?: number }>(`${base}/plans/${id}/items`, { params: { offset, status } })).data
+  async items(id: string, offset = 0, status?: string, groupBy = false) {
+    return (await request.get<PageResult<ToolPlanItem> & { selected_count?: number }>(`${base}/plans/${id}/items`, { params: { offset, status, group_by: groupBy } })).data
   },
   async selection(plan: ToolPlan, itemIds: number[], selected: boolean) {
     return (await request.put<{ selected_count: number }>(`${base}/plans/${plan.id}/selection`, {

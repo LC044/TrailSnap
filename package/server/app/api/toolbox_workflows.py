@@ -3,6 +3,7 @@ from uuid import UUID
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -73,19 +74,32 @@ def detail(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(ge
 
 @router.get("/plans/{plan_id}/items", response_model=BaseResponse[dict])
 def items(plan_id: UUID, offset: int = Query(0, ge=0), limit: int = Query(40, ge=1, le=100),
-          status: str | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+          status: str | None = None, group_by: bool = False, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     def load():
         plan = get_plan(db, user.id, plan_id)
         query = db.query(ToolboxPlanItem).filter(ToolboxPlanItem.plan_id == plan_id)
         if status:
             query = query.filter(ToolboxPlanItem.status == status)
+        grouped = (group_by and plan.kind == "cleanup"
+                   and plan.request.get("config", {}).get("cleanup_mode") in ("duplicate", "similar"))
+        if grouped:
+            # Page group seeds, then let the client fetch each group's members.
+            group_key = ToolboxPlanItem.detail["group_id"].as_integer()
+            seeds = query.with_entities(func.min(ToolboxPlanItem.id).label("id")).group_by(
+                func.coalesce(group_key, -ToolboxPlanItem.id)).subquery()
+            total = db.query(seeds).count()
+            page_ids = db.query(seeds.c.id).order_by(seeds.c.id).offset(offset).limit(limit)
+            page_rows = db.query(ToolboxPlanItem).filter(ToolboxPlanItem.id.in_(page_ids)).order_by(ToolboxPlanItem.id)
+        else:
+            total = query.count()
+            page_rows = query.order_by(ToolboxPlanItem.id).offset(offset).limit(limit)
         if plan.kind != "cleanup" or not plan.summary.get("phase"):
-            return {"total": query.count(), "items": [item_view(row) for row in query.order_by(ToolboxPlanItem.id).offset(offset).limit(limit)]}
+            return {"total": total, "items": [item_view(row) for row in page_rows]}
         from app.db.models.toolbox import CleanupSelection
         selected = db.query(CleanupSelection.item_id).filter_by(plan_id=plan_id)
-        rows = query.order_by(ToolboxPlanItem.id).offset(offset).limit(limit).all()
+        rows = page_rows.all()
         selected_ids = {pid for (pid,) in selected.filter(CleanupSelection.item_id.in_([r.id for r in rows]))}
-        return {"total": query.count(), "selected_count": selected.count(), "items": [
+        return {"total": total, "selected_count": selected.count(), "items": [
             {**item_view(row), "selected": row.id in selected_ids} for row in rows]}
     return response_call(db, load)
 

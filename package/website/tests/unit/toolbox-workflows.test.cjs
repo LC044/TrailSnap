@@ -232,15 +232,15 @@ test('active tasks open each cleanup mode and undo in the matching tool with its
   ctx.unmount()
 })
 
-test('similar group includes every member with independent details and selection', async () => {
+for (const cleanupMode of ['similar', 'duplicate']) test(cleanupMode + ' group includes every member with independent details and selection', async () => {
   const items = Array.from({ length: 5 }, (_, index) => ({
     id: index + 1, photo_id: 'similar-' + index, source: '/photos/' + index + '.jpg',
     target: '', status: 'candidate', selected: false, detail: { group_id: 8 },
   }))
   const plan = { id: 'similar-plan', kind: 'cleanup', version: 1, status: 'preview',
-    summary: { phase: 'done' }, request: { config: { cleanup_mode: 'similar' } } }
+    summary: { phase: 'done' }, request: { config: { cleanup_mode: cleanupMode } } }
   const workflowApi = {
-    items: async () => ({ total: 5, selected_count: 0, items: [items[0]] }),
+    items: async (...args) => { assert.equal(args[3], true); return { total: 1, selected_count: 0, items: [items[0]] } },
     members: async () => ({ total: 5, representative_id: items[0].photo_id,
       items: items.map((item, index) => ({ photo_id: item.photo_id, in_scope: index === 0, source: item.source, item })) }),
     selection: async () => ({ selected_count: 1 }),
@@ -256,5 +256,46 @@ test('similar group includes every member with independent details and selection
   await ctx.state.toggle(5, true)
   assert.equal(ctx.state.photoGroups.value[0].items[4].selected, true)
   assert.equal(ctx.state.selectedCount.value, 1)
+  ctx.unmount()
+})
+
+for (const mode of ['duplicate', 'similar']) test(mode + ' group paging ignores stale responses and errors independently per group', async () => {
+  const pending = []
+  const plan = { id: 'paging', kind: 'cleanup', status: 'preview', summary: { phase: 'done' },
+    request: { config: { cleanup_mode: mode } } }
+  const component = load('views/toolbox/ToolPlanPreview.vue', {
+    '@/api/toolboxWorkflows': { workflowApi: {
+      items: async () => ({ total: 0, items: [] }),
+      members: (id, group, offset) => new Promise((resolve, reject) => pending.push({ group, offset, resolve, reject })),
+    } }, '@/utils/mediaUrl': { thumbnailUrl: id => id },
+  }).default
+  const ctx = mount(component, { plan, executing: false })
+  await ctx.state.load()
+  const older = ctx.state.loadReferences(8, 2)
+  const newer = ctx.state.loadReferences(8, 3)
+  const otherGroup = ctx.state.loadReferences(9, 2)
+  const result = id => ({ total: 100, items: [{ photo_id: id }] })
+  pending[1].resolve(result('new'))
+  await newer
+  pending[0].resolve(result('old'))
+  await older
+  pending[2].resolve(result('other'))
+  await otherGroup
+  assert.equal(ctx.state.references.value[8].items[0].photo_id, 'new')
+  assert.equal(ctx.state.referencePages.value[8], 3)
+  assert.equal(ctx.state.referencePages.value[9], 2)
+  const staleFailure = ctx.state.loadReferences(8, 4)
+  const latest = ctx.state.loadReferences(8, 5)
+  pending[4].resolve(result('latest'))
+  await latest
+  pending[3].reject(new Error('stale failure'))
+  await staleFailure
+  assert.equal(ctx.state.error.value, '')
+  assert.equal(ctx.state.referencePages.value[8], 5)
+  const failed = ctx.state.loadReferences(8, 6)
+  pending[5].reject(new Error('current failure'))
+  await failed
+  assert.equal(ctx.state.error.value, '参考照片加载失败，请重试')
+  assert.equal(ctx.state.referencePages.value[8], 5)
   ctx.unmount()
 })
