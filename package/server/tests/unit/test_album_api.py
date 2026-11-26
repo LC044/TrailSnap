@@ -5,6 +5,7 @@ whether the cover is auto-populated. ``crud`` and ``app.crud.photo`` are
 patched so no Postgres is needed.
 """
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -12,6 +13,9 @@ from uuid import uuid4
 import pytest
 
 from app.api import album as album_api
+from app.db.models.album import Album
+from app.db.models.photo import FileType, Photo
+from app.db.models.user import User
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_album]
@@ -31,6 +35,39 @@ def _album(owner_id=None, **kwargs):
         cover=kwargs.get("cover"),
         description=kwargs.get("description"),
     )
+
+
+def test_create_album_with_selected_photos_is_atomic(face_sqlite_session, tmp_path):
+    db = face_sqlite_session
+    owner = User(username="owner", hashed_password="unused")
+    other = User(username="other", hashed_password="unused")
+    db.add_all([owner, other])
+    db.flush()
+
+    def photo(name, user, deleted=False):
+        row = Photo(owner_id=user.id, filename=name, file_path=str(tmp_path / name),
+                    file_type=FileType.image, is_deleted=deleted)
+        db.add(row)
+        return row
+
+    first, second = photo("first.jpg", owner), photo("second.jpg", owner)
+    private = photo("private.jpg", other)
+    deleted = photo("deleted.jpg", owner, deleted=True)
+    db.commit()
+
+    def create(name, photos):
+        payload = album_api.schemas.AlbumCreate(name=name, photo_ids=[item.id for item in photos])
+        return asyncio.run(album_api.create_album(payload, MagicMock(), db, owner))
+
+    for unavailable in (private, deleted):
+        assert create("Invalid", [first, unavailable]).code == 400
+    assert db.query(Album).count() == 0
+
+    result = create("Trip", [second, first, second])
+    assert result.code == 0
+    assert result.data.num_photos == 2
+    assert result.data.cover_id == second.id
+    assert {item.id for item in result.data.photos} == {first.id, second.id}
 
 
 # ----------------------------- GET /albums ----------------------------

@@ -15,6 +15,7 @@ class AlbumBase(BaseModel):
 
 class AlbumCreate(AlbumBase):
     shared_users: Optional[List[UUID]] = None
+    photo_ids: list[UUID] = Field(default_factory=list)
 
 class AlbumUpdate(AlbumBase):
     name: Optional[str] = None
