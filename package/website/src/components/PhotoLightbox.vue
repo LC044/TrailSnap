@@ -74,9 +74,6 @@
                             <el-dropdown-item v-if="panoramaActive" command="panoramaReset" :disabled="panoramaState.busy"><div class="flex items-center gap-2"><RotateCcw class="h-4 w-4" /><span>重置全景视角</span></div></el-dropdown-item>
                             <el-dropdown-item v-if="panoramaActive" command="panoramaFullscreen" :disabled="panoramaState.busy"><div class="flex items-center gap-2"><Maximize2 class="h-4 w-4" /><span>全景全屏</span></div></el-dropdown-item>
                             <el-dropdown-item v-if="panoramaActive && panoramaState.allowHigh" command="panoramaHigh" :disabled="panoramaState.busy"><div class="flex items-center gap-2"><Focus class="h-4 w-4" /><span>{{ panoramaState.high ? '标准全景画质' : '高清全景画质' }}</span></div></el-dropdown-item>
-                            <el-dropdown-item v-if="isTauriApp()" command="revealPhoto" :disabled="!image || revealingPhoto">
-                                <div class="flex items-center gap-2"><FolderOpen class="w-4 h-4" /><span>打开所在文件夹</span></div>
-                            </el-dropdown-item>
                             <el-dropdown-item v-if="image && !isCurrentVideo" command="similar"><div class="flex items-center gap-2"><ScanSearch class="h-4 w-4" /><span>搜索相似照片</span></div></el-dropdown-item>
                             <el-dropdown-item command="dailyFrame" :disabled="!canSetDailyFrame">
                                 <div class="flex items-center gap-2"><Film class="w-4 h-4" /><span>设为当天一帧</span></div>
@@ -726,7 +723,7 @@ import BackButton from '@/components/ui/BackButton.vue'
 import { ref, watch, computed, onUnmounted, nextTick, onMounted, defineAsyncComponent } from 'vue'
 import {
     X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, FolderPlus, Info, Globe2, RotateCcw,
-    ImagePlus, FolderOpen, ScanSearch,
+    ImagePlus, ScanSearch,
     ScanText,
     MoreHorizontal,
     Image as ImageIcon,
@@ -751,8 +748,6 @@ import {
 // 这里仅保留类型，运行时在 initPlayer 内 await import('xgplayer')。
 import type Player from 'xgplayer'
 import { albumService } from '@/api/album'
-import { isTauriApp } from '@/config/server'
-import { revealDesktopPhoto } from '@/api/desktopDataDirectory'
 import { ocrApi, type OCRRecord } from '@/api/ocr'
 import { faceApi, type PhotoFace } from '@/api/face'
 import PhotoFaceOverlay from './PhotoFaceOverlay.vue'
@@ -1618,19 +1613,6 @@ const toggleSidebar = () => {
     else openDetails()
 }
 
-const revealingPhoto = ref(false)
-const revealPhoto = async () => {
-    const photo = props.image
-    if (!photo || revealingPhoto.value) return
-    revealingPhoto.value = true
-    try {
-        const path = photo.file_path || (await albumService.getMetadata(photo.id)).file_path
-        if (!path) throw new Error('无法获取照片原文件路径')
-        await revealDesktopPhoto(path)
-    } catch (error) {
-        ElMessage.error(error instanceof Error ? error.message : String(error))
-    } finally { revealingPhoto.value = false }
-}
 const handleCommand = (command: string) => {
     if (command === 'similar' && props.image && !isCurrentVideo.value) {
         const photo = props.image.id
@@ -1647,7 +1629,6 @@ const handleCommand = (command: string) => {
     if (command === 'panoramaReset') { panoramaViewerRef.value?.resetView(); return }
     if (command === 'panoramaHigh') { panoramaViewerRef.value?.toggleHigh(); return }
     if (command === 'panoramaFullscreen') { panoramaViewerRef.value?.toggleFullscreen(); return }
-    if (command === 'revealPhoto') { void revealPhoto(); return }
     if (command === 'dailyFrame') {
         openDailyFrame()
     } else if (command === 'ocr') {

@@ -11,7 +11,7 @@ Open **Settings** in TrailSnap and choose a section. Some server-wide options ar
 ## My settings
 
 - **Profile (个人资料)**: manage your avatar, nickname and account details.
-- **Appearance and viewing (外观与浏览)**: choose the color scheme, theme and whether to load originals when opening photos. These preferences are saved automatically on the current device. A new device follows the system appearance and loads previews first; originals can still be opened manually.
+- **Appearance and viewing (外观与浏览)**: choose the color scheme, theme and whether to load originals when opening photos. These preferences are saved automatically on the current device. A new device follows the system appearance and loads originals when opening photos by default; turn this off to load previews first.
 - **External tool authorization (外部工具授权)**: manage [access tokens](./tokensetting.md) for MCP, CLI and other tools.
 
 ## Photos and libraries
