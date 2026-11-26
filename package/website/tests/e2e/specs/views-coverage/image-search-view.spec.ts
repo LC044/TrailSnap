@@ -59,7 +59,7 @@ test.describe('Nightly view coverage — image search @views-coverage', () => {
     await expect(page.getByText('支持不超过 20 MB 的图片，上传仅用于本次搜索。')).toBeVisible()
   })
 
-  test('ImageSearch 用图库照片搜索并展示相似照片数量', async ({ page }) => {
+  test('ImageSearch 用图库照片搜索并可选择结果', async ({ page }) => {
     await useFakeSession(page)
 
     const requests: string[] = []
@@ -79,6 +79,9 @@ test.describe('Nightly view coverage — image search @views-coverage', () => {
       timeout: 10_000,
     })
     expect(requests).toContain('p-1')
+    await page.getByRole('button', { name: '选择', exact: true }).click()
+    await page.locator('[data-photo-id="p-1"]').click()
+    await expect(page.getByTestId('photo-selection-bar').getByText('已选 1 项').locator('visible=true')).toBeVisible()
   })
 
   test('ImageSearch 搜索失败时展示错误提示与重试入口', async ({ page }) => {
