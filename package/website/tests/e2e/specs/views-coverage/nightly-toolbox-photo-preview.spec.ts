@@ -89,7 +89,7 @@ test.describe('P1 - Nightly view coverage round 2026-11-25 @views-coverage', () 
     await expect(previews).toHaveCount(3, { timeout: 30_000 })
 
     // Each preview shows the thumbnail of its own photo.
-    await expect(previews.nth(0).locator('img')).toHaveAttribute(
+    await expect(page.getByRole('checkbox', { name: /将 .* 移入回收站/ }).nth(0).locator('img')).toHaveAttribute(
       'src', /00000000-0000-0000-0000-000000000501\/thumbnail/,
     )
 
