@@ -4,6 +4,28 @@ description: "TrailSnap changelog: new features, refinements and fixes listed by
 
 # Changelog
 
+## 2026-11-25 (0.21.3)
+
+### New
+
+- Camera RAW previews and high-resolution viewing, with support for manually uploading RAW files into the library.
+- Desktop downloads now measure multiple sources and resume from breakpoints, and the download page uses a self-hosted mirror.
+
+### Improvements
+
+- The toolbox shows photo quality scores with clearer deletion guidance and support for consecutive cleanup batches.
+- Unified similar-photo grouping, with cleanup previews aligned to pagination to avoid mismatches after page changes.
+- Database query tuning: revised SQLite query plans and joins for faster category and search responses on large libraries.
+- Faster external gallery removal with cleanup progress, synced gallery migration versions, and a consistent photo viewer and loading feedback across entry points.
+- OCR now creates its inference session with RapidOCR's bundled OpenVINO engine.
+
+### Bug Fixes
+
+- Fix blank previews for small uploaded images.
+- Fix lost photo selection state after refresh.
+- Fix parsing of capture time from `YYYYMMDD_HH-MM-SS` filenames.
+- Fix a Linux desktop startup failure caused by broken paths to flattened sidecar libraries.
+
 ## 2026-11-24 (0.21.2)
 
 ### New

@@ -248,5 +248,10 @@
         "version": "0.21.2",
         "update_info": "- 首页「影像手记」杂志式改版，照片墙新增虚拟瀑布流与按月分块加载<br>- 位置相册全视图图鉴化改版，新增暖色调主题与照片右键、滑动/范围选择<br>- 默认本地多模态模型升级为 MiniCPM-V 4.7，文字识别默认改用 PP-OCRv6 tiny<br>- 桌面端按硬件自动配置 CUDA / OpenVINO，NPU 可运行 MiniCPM 文本推理<br>- 修复 Chinese-CLIP 在 NPU 上批量生成向量超时、月迹页加载缓慢等问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.21.2"
+    },
+    {
+        "version": "0.21.3",
+        "update_info": "- 支持相机 RAW 原片预览与高清查看，可手动上传 RAW 文件<br>- 桌面端下载支持多源测速与断点续传，官网下载页接入自建镜像<br>- 工具箱整理显示质量分数，清理预览与分页对齐，删除说明更清楚<br>- SQLite 查询与外部图库移除加速，大图库响应更快<br>- 修复小尺寸图片预览空白、照片刷新后选择丢失与特殊命名照片时间解析问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.21.3"
     }
 ]

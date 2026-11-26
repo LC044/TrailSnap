@@ -369,7 +369,7 @@ wheels = [
 
 [[package]]
 name = "trailsnap-cli"
-version = "0.21.2"
+version = "0.21.3"
 source = { editable = "." }
 
 [package.dev-dependencies]
