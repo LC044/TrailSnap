@@ -98,6 +98,34 @@ def test_embed_images_returns_list_of_floats(embedding_service):
         result = asyncio.run(service.embed_images(["iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"]))
     assert result == [[0.4, 0.5, 0.6]]
 
+
+def test_embed_images_keeps_positions_when_some_images_cannot_be_decoded(embedding_service, monkeypatch):
+    import asyncio
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    def png(width, color):
+        stream = io.BytesIO()
+        Image.new("RGB", (width, 1), color).save(stream, format="PNG")
+        return base64.b64encode(stream.getvalue()).decode("ascii")
+
+    def encode(images):
+        return np.array([image.getpixel((0, 0)) for image in images])
+
+    service, _, manager, downloader = embedding_service
+    downloader.is_ready.return_value = True
+    manager.get_model.return_value.encode_image.side_effect = encode
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1)
+
+    result = asyncio.run(service.embed_images([
+        png(1, "red"), "bm90LWFuLWltYWdl", png(3, "white"), png(1, "blue"),
+    ]))
+
+    assert result == [[255, 0, 0], [], [], [0, 0, 255]]
+
 # ---------------------------------------------------------------------------
 # _get_model_info: covers both the selected and default branches.
 # ---------------------------------------------------------------------------

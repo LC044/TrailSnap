@@ -127,6 +127,30 @@ def test_process_batch_persists_embedding_and_marks_photo(monkeypatch):
     db.commit.assert_called()
 
 
+def test_process_batch_enqueues_clip_only_for_photos_with_vectors(monkeypatch):
+    from app.service import clip_classification
+    from app.service.tasks import image_embedding as ie_mod
+
+    photos = [_make_photo(pid) for pid in ("p-1", "p-2", "p-3")]
+    tasks = [_build_task({"photo_id": photo.id}) for photo in photos]
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.side_effect = [photos, []]
+    response = _ai_response(embeddings=[[0.1, 0.2], [], [0.3, 0.4]])
+    response.headers = {"X-Embedding-Model": "test"}
+    session = _session_with(response)
+    _patch_ai_config(monkeypatch)
+    _patch_storage(monkeypatch)
+
+    with patch.object(ie_mod.aiohttp, "ClientSession", return_value=session), \
+         patch("builtins.open", mock_open(read_data=b"image-data")), \
+         patch.object(clip_classification, "enqueue_photos") as enqueue:
+        results = asyncio.run(ie_mod.ImageEmbeddingStrategy().process_batch(None, tasks, db))
+
+    assert [result["status"] for result in results] == ["completed", "failed", "completed"]
+    assert photos[1].processed_tasks == {}
+    enqueue.assert_called_once_with(db, [photos[0], photos[2]], model="test")
+
+
 # Photo lookup misses: record a "skipped" entry without calling AI
 
 

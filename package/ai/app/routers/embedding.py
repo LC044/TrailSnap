@@ -57,6 +57,7 @@ async def embed_images(request: ImageEmbeddingRequest, response: Response = None
     """
     Generate embeddings for multiple images using the loaded CLIP model.
     Input images should be base64 encoded strings.
+    A partially decoded batch returns an empty vector at each failed input position.
     """
     if not request.images:
         raise HTTPException(status_code=400, detail="No images provided")

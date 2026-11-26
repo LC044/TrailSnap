@@ -2,7 +2,7 @@
 
 from uuid import UUID
 import numpy as np
-from sqlalchemy import tuple_, or_
+from sqlalchemy import tuple_
 from app.db.models.task import Task, TaskType, TaskStatus, DEFAULT_PRIORITIES
 from app.db.models.photo import Photo, FileType
 from app.db.models.image_vector import ImageVector
@@ -133,12 +133,8 @@ class ClipClassificationStrategy(BaseTaskStrategy):
         if not task.owner_id:
             raise ValueError("CLIP 分类任务必须指定所属用户")
         if "photo_id" not in payload:
-            if payload.get("wait_for_embeddings") and db.query(Task.id).filter(
-                Task.type == TaskType.IMAGE_EMBEDDING,
-                Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
-                or_(Task.owner_id == task.owner_id, Task.owner_id.is_(None)),
-            ).first():
-                raise RuntimeError("等待 AI 模型：图片特征重建完成后自动继续分类")
+            # Photo tasks handle missing embeddings individually. Older upgrade
+            # scans may still carry wait_for_embeddings in their payload.
             svc.ensure_presets(db, task.owner_id)
             # Initialization must release its writer before any AI request.
             db.commit()

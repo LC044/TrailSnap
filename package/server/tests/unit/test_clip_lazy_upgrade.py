@@ -151,7 +151,7 @@ def test_upgrade_queue_is_idempotent_and_lazy(face_sqlite_session):
     assert db.query(Task).one().status == TaskStatus.COMPLETED
 
 
-def test_upgrade_waits_for_legacy_rebuild_and_merges_photo_job(face_sqlite_session, monkeypatch):
+def test_upgrade_scan_merges_photo_job_while_legacy_rebuild_is_pending(face_sqlite_session, monkeypatch):
     db = face_sqlite_session
     owner, photo = add_owner(db)
     legacy = Task(type=TaskType.IMAGE_EMBEDDING, payload={"force": True, "model": "test"})
@@ -161,16 +161,12 @@ def test_upgrade_waits_for_legacy_rebuild_and_merges_photo_job(face_sqlite_sessi
     db.commit()
     root = db.query(Task).filter_by(type=TaskType.CLASSIFY_IMAGE_CLIP).one()
     strategy = ClipClassificationStrategy()
-    with pytest.raises(RuntimeError, match="图片特征重建"):
-        asyncio.run(strategy.process(None, root, db))
-    assert db.query(ClipCategory).count() == 0
-    legacy.status = TaskStatus.COMPLETED
-    db.commit()
     photo_task = svc.enqueue_photo(db, photo)
     db.commit()
     monkeypatch.setattr(svc, "selected_embedding_model", lambda *a: "test")
     result = asyncio.run(strategy.process(None, root, db))
     assert result == {"generated_tasks": 0, "photos_checked": 1}
+    assert legacy.status == TaskStatus.PENDING
     assert db.query(Task).filter(Task.photo_id == photo.id).one().id == photo_task.id
     assert photo_task.payload["model"] == "test"
 

@@ -8,8 +8,8 @@ the following paths deserve explicit regression tests:
 
 * ``process_batch`` - photo-scoped tasks are grouped per owner and a failing
   batch is reported as ``failed`` instead of raising out of the worker loop;
-* ``process`` - a task without an owner is rejected, a task that waits for the
-  image-embedding model stays resumable, and a photo that no longer exists
+* ``process`` - a task without an owner is rejected, legacy scan markers are
+  ignored, and a photo that no longer exists
   (or turned into a video) is skipped instead of failing;
 * ``process_photos`` - a photo without a matching embedding is deferred, and
   the deferred photo is re-queued as an IMAGE_EMBEDDING task so the
@@ -106,13 +106,15 @@ def test_process_rejects_a_task_without_an_owner():
         asyncio.run(_strategy().process(MagicMock(), _task(owner_id=None), db))
 
 
-def test_process_stays_resumable_while_the_embedding_model_is_still_running():
+def test_process_ignores_legacy_embedding_wait_marker():
     db = MagicMock()
-    db.query.return_value = _FakeQuery([SimpleNamespace(id="pending-1")])
+    db.query.return_value = _FakeQuery([])
     task = _task(payload={"wait_for_embeddings": True})
 
-    with pytest.raises(RuntimeError):
-        asyncio.run(_strategy().process(MagicMock(), task, db))
+    with patch.object(strategy_module.svc, "ensure_presets"):
+        result = asyncio.run(_strategy().process(MagicMock(), task, db))
+    assert result == {"generated_tasks": 0}
+    db.query.assert_called_once_with(strategy_module.ClipCategory)
 
 
 def test_process_skips_a_photo_that_no_longer_exists():
