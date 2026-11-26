@@ -187,16 +187,29 @@ class EmbeddingService:
         wrapper = model_manager.get_model("clip_image")
         try:
             images = []
-            for b64 in images_base64:
-                if ',' in b64:
-                    b64 = b64.split(',')[1]
-                image_data = base64.b64decode(b64)
-                image = Image.open(io.BytesIO(image_data)).convert("RGB")
+            positions = []
+            first_decode_error = None
+            for index, b64 in enumerate(images_base64):
+                try:
+                    image_data = base64.b64decode(b64.split(',', 1)[-1])
+                    image = Image.open(io.BytesIO(image_data)).convert("RGB")
+                except (ValueError, OSError,
+                        Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+                    logging.warning("Cannot decode image embedding input %d: %s", index, exc)
+                    if first_decode_error is None:
+                        first_decode_error = exc
+                    continue
                 images.append(image)
-                
-            # Encode images
+                positions.append(index)
+
+            if first_decode_error is not None and not images:
+                raise first_decode_error
+
             image_embs = await asyncio.to_thread(wrapper.encode_image, images)
-            return image_embs.tolist()
+            embeddings = [[] for _ in images_base64]
+            for index, embedding in zip(positions, image_embs.tolist(), strict=True):
+                embeddings[index] = embedding
+            return embeddings
         except Exception as e:
             logging.error(f"Error in image embedding: {e}\n{traceback.format_exc()}")
             raise e

@@ -234,7 +234,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                     if resp.status == 200:
                         result = await resp.json()
                         # Response is List[List[float]]
-                        if result and len(result) > 0:
+                        if result and result[0]:
                             embedding = result[0]
                             
                             # Save Embedding
