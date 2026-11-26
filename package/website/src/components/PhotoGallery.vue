@@ -1490,6 +1490,7 @@ defineExpose({
   scrollToPhoto,
   enterSelectionMode,
   exitSelectionMode,
+  selectPhotos: selectAllIds,
   isSelectionMode,
   updateVisibleBlocks,
   checkAndLoadVisibleMonths
