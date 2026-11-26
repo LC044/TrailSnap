@@ -189,7 +189,8 @@ const mobileFilterRef = ref<{ clearAll: () => void } | null>(null)
 onClickOutside(filterPanelRef, () => {
   if (!mobileMenu.value) showFilterPanel.value = false
 }, {
-  ignore: [filterButtonRef]
+  // 高级筛选的下拉选项挂载在面板外，点击选项仍属于面板内操作。
+  ignore: [filterButtonRef, '.photo-filter-options-popper']
 })
 
 // Methods
