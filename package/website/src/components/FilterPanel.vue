@@ -82,7 +82,8 @@
         <div v-for="group in advancedGroups" :key="group.key" class="space-y-1.5">
           <h3 class="filter-group-label">{{ group.label }}</h3>
           <el-select multiple filterable clearable collapse-tags collapse-tags-tooltip
-            class="filter-select w-full" :popper-style="popperStyle" @visible-change="raiseOptions"
+            class="filter-select w-full" popper-class="photo-filter-options-popper"
+            :popper-style="popperStyle" @visible-change="raiseOptions"
             :model-value="selectedFilters[group.key] || []" :aria-label="group.label"
             :placeholder="`选择${group.label}`" @update:model-value="values => updateFilter(group.key, values)">
             <el-option v-for="value in group.options" :key="value" :value="value"
