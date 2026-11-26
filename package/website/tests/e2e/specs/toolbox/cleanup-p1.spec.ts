@@ -6,7 +6,7 @@ import { ensureAuthSession } from '../../helpers/auth'
  * REQ-238 工具箱重构后，/toolbox/cleanup 不再直连 /api/toolbox/cleanup 列表接口，
  * 而是与整理/重命名共用 ToolWorkflowPage 的「选择范围 → 设置规则 → 预览并执行」工作流。
  * 旧页面的空态文案、排序下拉和列表接口都不存在了，这里改为验证新页面的范围契约：
- * 默认不预选全库、范围来源可切换、范围核对失败时页面仍可用。
+ * 默认范围为全部、范围来源可切换、范围核对失败时页面仍可用。
  */
 
 test.describe('P1 - 低质量照片清理工作流 @toolbox-cleanup', () => {
@@ -14,20 +14,18 @@ test.describe('P1 - 低质量照片清理工作流 @toolbox-cleanup', () => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
 
-  test('默认不预选全库，需显式选择范围后才能设置规则', async ({ page }) => {
-    await page.goto('/toolbox/cleanup')
+  test('默认全部，可在查找前缩小范围', async ({ page }) => {
+    await page.goto('/toolbox/cleanup?new=1')
     await expect(page).toHaveURL(/\/toolbox\/cleanup/)
     await expect(page.locator('h1.ts-page-title', { hasText: '低质量照片' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '查找设置' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
-    await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '相册' }))
-      .toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '相册', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
+    await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '全部', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeEnabled()
   })
 
   test('切换范围来源会更新范围摘要并解锁下一步', async ({ page }) => {
-    await page.goto('/toolbox/cleanup')
+    await page.goto('/toolbox/cleanup?new=1')
     const sources = page.getByRole('group', { name: '范围来源' })
 
     await sources.getByRole('button', { name: '文件夹' }).click()
@@ -46,7 +44,7 @@ test.describe('P1 - 低质量照片清理工作流 @toolbox-cleanup', () => {
       status: 500, contentType: 'application/json', body: '{}',
     }))
 
-    await page.goto('/toolbox/cleanup')
+    await page.goto('/toolbox/cleanup?new=1')
     await page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '全部' }).click()
     await page.getByRole('button', { name: '查看', exact: true }).click()
 

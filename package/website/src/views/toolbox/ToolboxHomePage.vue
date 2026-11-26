@@ -12,17 +12,22 @@
         <span class="text-sm text-primary-600 dark:text-primary-400">{{ plan.stop_requested ? '请求停止中' : labels[plan.status] }}<ChevronRight class="ml-1 inline h-4 w-4" /></span>
       </button>
     </section>
-    <section class="workbench-grid" aria-label="照片工具">
-      <RouterLink v-for="tool in [...otherTools, ...mainTools, { path: '/toolbox/albums', title: '批量创建相册', icon: Images }]" :key="tool.path" :to="tool.path" class="workbench-tool">
-        <span class="workbench-tool-icon"><component :is="tool.icon" class="h-6 w-6" /></span>
-        <h2 class="min-w-0 flex-1 font-semibold">{{ tool.title }}</h2>
-        <ChevronRight class="ts-muted h-5 w-5 shrink-0" />
-      </RouterLink>
-    </section>
+    <div class="space-y-6">
+      <section v-for="group in toolGroups" :key="group.title" :aria-label="group.title">
+        <h2 class="ts-section-title mb-3">{{ group.title }}</h2>
+        <div class="workbench-grid">
+          <RouterLink v-for="tool in group.tools" :key="tool.path" :to="tool.path" class="workbench-tool">
+            <span class="workbench-tool-icon"><component :is="tool.icon" class="h-6 w-6" /></span>
+            <h3 class="min-w-0 flex-1 font-semibold">{{ tool.title }}</h3>
+            <ChevronRight class="ts-muted h-4 w-4" />
+          </RouterLink>
+        </div>
+      </section>
+    </div>
     <details id="history" ref="historyPanel" class="mt-7" :open="historyOpen || !!error" @toggle="historyOpen = ($event.target as HTMLDetailsElement).open">
       <summary id="history-heading" class="cursor-pointer py-3 font-semibold">操作记录</summary>
       <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
-      <div v-else class="ts-surface overflow-hidden">
+      <div class="ts-surface overflow-hidden">
         <button v-for="plan in history" :key="plan.id" type="button" class="ts-divider flex w-full items-center gap-3 border-b p-4 text-left last:border-b-0" @click="viewRecord(plan)">
           <Clock3 class="h-5 w-5 shrink-0 text-primary-500" />
           <div class="min-w-0 flex-1">
@@ -30,17 +35,23 @@
             <time class="ts-muted text-xs">{{ dateLabel(plan.created_at) }}</time>
           </div><ChevronRight class="ts-muted h-4 w-4" />
         </button>
-        <p v-if="!history.length && !loading" class="ts-muted p-6 text-center text-sm">暂无操作记录</p>
+        <p v-if="!history.length && !loading && !error" class="ts-muted p-6 text-center text-sm">暂无操作记录</p>
       </div>
-      <div v-if="page > 1 || history.length >= historyPageSize" class="mt-3 flex justify-center gap-2"><el-button aria-label="上一页" :disabled="page === 1 || loading" @click="page--; load()"><ChevronLeft class="h-4 w-4" /></el-button><el-button aria-label="下一页" :disabled="history.length < historyPageSize || loading" @click="page++; load()"><ChevronRight class="h-4 w-4" /></el-button></div>
+      <p v-if="loading" role="status" class="ts-muted py-3 text-center text-sm">正在加载操作记录…</p>
+      <el-button v-else-if="error" @click="load">重试</el-button>
+      <AutoLoadSentinel v-else-if="historyOpen && hasMoreHistory" @load="load" />
     </details>
     <ResponsiveDialog v-model="recordOpen" title="操作详情" mobile-mode="fullscreen" mobile-back>
       <template v-if="record">
+        <div class="mb-4 flex flex-wrap justify-end gap-2">
+          <el-button v-if="!isActive(record)" :disabled="deletingRecord" @click="showDeleteRecord = true">删除计划</el-button>
+          <el-button type="primary" :disabled="deletingRecord" @click="open(record)">{{ actionLabel(record) }}</el-button>
+        </div>
         <p class="font-medium">{{ titles[record.kind] }}</p>
         <p class="ts-muted mt-1 text-sm">{{ dateLabel(record.created_at) }}</p>
         <p class="my-4 text-sm">处理 {{ record.summary.success || 0 }} 项 · 跳过 {{ record.summary.skipped || 0 }} 项 · 失败 {{ record.summary.failed || 0 }} 项</p>
         <p v-if="detailError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ detailError }} <el-button @click="loadDetails">重试</el-button></p>
-        <div ref="detailList" v-loading="detailLoading" class="space-y-3">
+        <div v-loading="detailLoading && !detailRows.length" class="space-y-3">
           <article v-for="item in detailRows" :key="item.id" class="ts-divider flex min-w-0 gap-3 border-b py-3">
             <ToolboxPhotoPreview :photo-id="item.photo_id" alt="操作照片" class="h-16 w-16 shrink-0 rounded-lg object-cover" />
             <div class="min-w-0 flex-1 text-sm">
@@ -54,27 +65,29 @@
               </details>
             </div>
           </article>
-          <p v-if="!detailRows.length && !detailLoading" class="ts-muted py-4 text-sm">暂无明细</p>
+          <p v-if="!detailRows.length && !detailLoading && !detailError" class="ts-muted py-4 text-sm">暂无明细</p>
         </div>
 
-      </template>
-      <template #footer>
-        <div class="flex items-center justify-center gap-4">
-          <el-button aria-label="上一页" :disabled="detailPage <= 1 || detailLoading" @click="detailPage--; loadDetails()"><ChevronLeft class="h-4 w-4" /></el-button>
-          <span class="ts-muted text-sm">{{ detailPage }} / {{ Math.max(1, Math.ceil(detailTotal / detailPageSize)) }}</span>
-          <el-button aria-label="下一页" :disabled="detailPage * detailPageSize >= detailTotal || detailLoading" @click="detailPage++; loadDetails()"><ChevronRight class="h-4 w-4" /></el-button>
-        </div>
+        <p v-if="detailLoading && detailRows.length" role="status" class="ts-muted py-3 text-center text-sm">正在加载更多明细…</p>
+        <AutoLoadSentinel v-if="recordOpen && detailRows.length < detailTotal && !detailLoading && !detailError" @load="loadDetails" />
       </template>
     </ResponsiveDialog>
+    <ConfirmDialog v-model:visible="showDeleteRecord" title="删除计划"
+      :message="deletePlanMessage"
+      confirm-text="删除计划" @confirm="deleteRecord" />
   </AppPage>
 </template>
 <script setup lang="ts">
+import AutoLoadSentinel from '@/components/ui/AutoLoadSentinel.vue'
 import ToolboxPhotoPreview from './ToolboxPhotoPreview.vue'
-import { computed, nextTick, onBeforeUnmount, onActivated, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onActivated, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { FolderOpen, Tag, Images, Copy, Trash2, Clock3, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { FolderOpen, Tag, Images, Copy, Trash2, Clock3, ChevronRight } from 'lucide-vue-next'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import AppPage from '@/components/ui/AppPage.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { ElMessage } from 'element-plus'
+import { actionLabel, dateLabel, isActive, labels, deletePlanMessage } from './toolPlanDisplay'
 import { workflowApi, type ToolKind, type ToolPlan, type ToolPlanItem } from '@/api/toolboxWorkflows'
 const router = useRouter()
 const route = useRoute()
@@ -89,21 +102,19 @@ function showHistory() {
 onMounted(() => { if (historyPanel.value && router.currentRoute.value.hash === '#history') showHistory() })
 const titles: Record<string, string> = { organize: '整理文件夹', rename: '批量修改文件名', album: '批量创建相册', cleanup: '照片清理', metadata: '拍摄信息修复', undo: '恢复原路径' }
 const paths: Record<ToolKind, string> = { organize: '/toolbox/organize', rename: '/toolbox/rename', album: '/toolbox/albums', cleanup: '/toolbox/duplicate', metadata: '/toolbox/time-from-filename' }
-const labels: Record<string, string> = { queued: '排队中', running: '处理中', completed: '完成', partial: '部分失败', failed: '失败', stopped: '已停止' }
-Object.assign(labels, { preview: '待确认', scan_queued: '等待扫描', scanning: '扫描中', scan_stopped: '扫描已停止', scan_failed: '扫描失败' })
-const mainTools = [
-  { path: '/toolbox/organize', title: '整理文件夹', icon: FolderOpen },
-  { path: '/toolbox/rename', title: '批量修改文件名', icon: Tag },
+const toolGroups = [
+  { title: '照片清理', tools: [
+    { path: '/toolbox/duplicate', title: '重复照片', icon: Copy },
+    { path: '/toolbox/similar', title: '相似照片', icon: Images },
+    { path: '/toolbox/cleanup', title: '低质量照片', icon: Trash2 },
+  ] },
+  { title: '照片整理', tools: [
+    { path: '/toolbox/organize', title: '整理文件夹', icon: FolderOpen },
+    { path: '/toolbox/rename', title: '批量修改文件名', icon: Tag },
+    { path: '/toolbox/albums', title: '批量创建相册', icon: Images },
+    { path: '/toolbox/time-from-filename', title: '修正拍摄信息', icon: Clock3 },
+  ] },
 ]
-const otherTools = [
-  { path: '/toolbox/duplicate', title: '重复照片', icon: Copy },
-  { path: '/toolbox/similar', title: '相似照片', icon: Images },
-  { path: '/toolbox/cleanup', title: '低质量照片', icon: Trash2 },
-  { path: '/toolbox/time-from-filename', title: '修正拍摄信息', icon: Clock3 },
-]
-const compactDetails = ref(typeof window !== 'undefined' && window.innerWidth < 768)
-const detailPageSize = computed(() => compactDetails.value ? 10 : 20)
-const detailList = ref<HTMLElement>()
 const basename = (path: string) => path.split(/[\\/]/).at(-1) || path
 const resetScroll = () => {
   if (typeof document === 'undefined') return
@@ -112,58 +123,115 @@ const resetScroll = () => {
 onActivated(() => nextTick(resetScroll))
 const historyPageSize = 10
 const recordOpen = ref(false), record = ref<ToolPlan | null>(null)
-const detailRows = ref<ToolPlanItem[]>([]), detailPage = ref(1), detailTotal = ref(0)
+const showDeleteRecord = ref(false), deletingRecord = ref(false)
+const detailRows = ref<ToolPlanItem[]>([]), detailTotal = ref(0)
 const detailLoading = ref(false), detailError = ref('')
 const resultLabels: Record<string, string> = { ready: '未执行', candidate: '未执行', success: '已处理', skipped: '已跳过', failed: '处理失败' }
 let detailVersion = 0
 const loadDetails = async () => {
-  if (!record.value) return
+  if (!record.value || detailLoading.value) return
   const version = ++detailVersion
   detailLoading.value = true; detailError.value = ''
   try {
-    const result = await workflowApi.items(record.value.id, (detailPage.value - 1) * detailPageSize.value)
+    const result = await workflowApi.items(record.value.id, detailRows.value.length)
     if (version !== detailVersion) return
-    detailRows.value = result.items.slice(0, detailPageSize.value); detailTotal.value = result.total
-    await nextTick()
-    detailList.value?.closest('.responsive-dialog-body')?.scrollTo({ top: 0 })
+    detailRows.value.push(...result.items)
+    detailTotal.value = result.items.length ? result.total : detailRows.value.length
   } catch { if (version === detailVersion) detailError.value = '明细加载失败' }
   finally { if (version === detailVersion) detailLoading.value = false }
 }
 const viewRecord = (plan: ToolPlan) => {
-  compactDetails.value = typeof window !== 'undefined' && window.innerWidth < 768
-  record.value = plan; detailPage.value = 1; detailRows.value = []; detailTotal.value = 0
+  detailVersion++
+  detailLoading.value = false
+  record.value = plan; detailRows.value = []; detailTotal.value = 0
   recordOpen.value = true; loadDetails()
 }
 const historyOpen = ref(route.query.history === '1')
-const history = ref<ToolPlan[]>([]), page = ref(1), loading = ref(false), error = ref('')
+const history = ref<ToolPlan[]>([]), loading = ref(false), error = ref('')
+const hasMoreHistory = ref(true)
+let historyOffset = 0
+let historyVersion = 0
 const active = ref<ToolPlan[]>([])
-let loadVersion = 0
 const load = async () => {
-  const version = ++loadVersion
+  if (loading.value || !hasMoreHistory.value) return
   loading.value = true
+  const version = historyVersion
+  error.value = ''
   try {
-    const [records, running] = await Promise.all([
-      workflowApi.history((page.value - 1) * historyPageSize, historyPageSize), workflowApi.history(0, 100, true),
-    ])
-    if (version !== loadVersion) return
-    history.value = records; active.value = running; error.value = ''
-  } catch { if (version === loadVersion) error.value = '操作记录加载失败，请重试。' }
-  finally { if (version === loadVersion) loading.value = false }
+    const records = await workflowApi.history(historyOffset, historyPageSize)
+    if (version !== historyVersion) return
+    historyOffset += records.length
+    const known = new Set(history.value.map(plan => plan.id))
+    history.value.push(...records.filter(plan => !known.has(plan.id)))
+    hasMoreHistory.value = records.length === historyPageSize
+  } catch {
+    if (version === historyVersion) error.value = '操作记录加载失败，请重试。'
+  } finally {
+    if (version === historyVersion) loading.value = false
+  }
 }
-watch(historyOpen, value => { if (value) load() })
+const loadActive = async () => {
+  try {
+    const running = await workflowApi.history(0, 100, true)
+    if (!disposed) active.value = running
+  } catch {
+    // Keep the last known tasks while polling retries.
+  }
+}
 const open = (plan: ToolPlan) => {
   const kind = plan.kind === 'undo' ? plan.request.config.kind : plan.kind
   const cleanupPaths = { duplicate: '/toolbox/duplicate', similar: '/toolbox/similar', quality: '/toolbox/cleanup' }
   const path = kind === 'cleanup' ? cleanupPaths[plan.request.config.cleanup_mode] || paths.cleanup : paths[kind]
   router.push({ path, query: { plan: plan.id } })
 }
-const dateLabel = (value: string) => new Date(value.endsWith('Z') ? value : value + 'Z').toLocaleString()
+const deleteRecord = async () => {
+  const plan = record.value
+  if (!plan || deletingRecord.value || isActive(plan)) return
+  deletingRecord.value = true
+  try {
+    await workflowApi.deletePlan(plan.id)
+    recordOpen.value = false
+    historyVersion++
+    historyOffset = 0
+    history.value = []
+    hasMoreHistory.value = true
+    loading.value = false
+    void load()
+    ElMessage.success('计划已删除')
+  } catch {
+    // The request layer displays the server's reason.
+  } finally {
+    deletingRecord.value = false
+  }
+}
 let timer: ReturnType<typeof setTimeout> | undefined, disposed = false
-const poll = () => { timer = setTimeout(async () => { if (!disposed && !loading.value && (active.value.length || historyOpen.value)) await load(); if (!disposed) poll() }, 4000) }
+const poll = () => {
+  timer = setTimeout(async () => {
+    if (!disposed) await Promise.all([loadActive(), refreshHistory()])
+    if (!disposed) poll()
+  }, 4000)
+}
+const refreshHistory = async () => {
+  if (!historyOpen.value || !historyOffset || loading.value) return
+  const offset = historyOffset
+  const version = historyVersion
+  try {
+    const latest = await workflowApi.history(0, historyPageSize)
+    if (disposed || loading.value || offset !== historyOffset || version !== historyVersion) return
+    const firstKnown = latest.findIndex(plan => plan.id === history.value[0]?.id)
+    if (firstKnown < 0) return
+    const latestIds = new Set(latest.map(plan => plan.id))
+    history.value = [...latest, ...history.value.filter(plan => !latestIds.has(plan.id))]
+    historyOffset += firstKnown
+    if (firstKnown) hasMoreHistory.value = true
+  } catch {
+    // Keep the loaded history while polling retries.
+  }
+}
 onMounted(async () => {
-  await load(); poll()
-  await nextTick()
-  resetScroll()
+  void load()
+  await loadActive()
+  if (!disposed) poll()
 })
 onBeforeUnmount(() => { disposed = true; clearTimeout(timer) })
 </script>

@@ -86,6 +86,8 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
     await waitForApp(page)
 
     await expect(page.getByRole('heading', { name: '工具箱' })).toBeVisible()
+    await expect(page.getByRole('region', { name: '照片清理' }).getByRole('link', { name: '重复照片' })).toBeVisible()
+    await expect(page.getByRole('region', { name: '照片整理' }).getByRole('link', { name: '整理文件夹' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '整理文件夹' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '重复照片' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '我的常用模板' })).toHaveCount(0)
@@ -108,18 +110,19 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
   })
 
   test('MediaScopeSelector requires an explicit scope choice before the next step', async ({ page }) => {
-    await page.goto('/toolbox/organize', { waitUntil: 'domcontentloaded' })
+    await page.goto('/toolbox/organize?new=1', { waitUntil: 'domcontentloaded' })
     await waitForApp(page)
 
     await expect(page.locator('summary').filter({ hasText: /^选择照片$/ })).toBeVisible()
     await expect(page.getByRole('heading', { name: '整理方式' })).toBeVisible()
 
     const sources = page.getByRole('group', { name: '范围来源' })
-    for (const label of ['相册', '文件夹', '手动选', '全部']) {
+    for (const label of ['相册', '文件夹', '手动选', '按日期筛选', '全部']) {
       await expect(sources.getByRole('button', { name: label })).toBeVisible()
     }
 
-    // Nothing is preselected: the next step stays disabled until the user picks a scope.
+    await expect(sources.getByRole('button', { name: '全部' })).toHaveAttribute('aria-pressed', 'true')
+    // A destination and processing mode are still required.
     await expect(page.getByRole('button', { name: '预览', exact: true })).toBeDisabled()
 
     // "全部" must warn about the blast radius instead of silently covering the library.
@@ -131,7 +134,7 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
 
   test('OrganizeRuleEditor renders rules without saved schemes', async ({ page }) => {
     await stubScopePreview(page)
-    await page.goto('/toolbox/organize', { waitUntil: 'domcontentloaded' })
+    await page.goto('/toolbox/organize?new=1', { waitUntil: 'domcontentloaded' })
     await waitForApp(page)
 
     const sources = page.getByRole('group', { name: '范围来源' })
@@ -176,7 +179,7 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
       })
     })
 
-    await page.goto('/toolbox/cleanup', { waitUntil: 'domcontentloaded' })
+    await page.goto('/toolbox/cleanup?new=1', { waitUntil: 'domcontentloaded' })
     await waitForApp(page)
 
     const sources = page.getByRole('group', { name: '范围来源' })
@@ -263,7 +266,7 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
         return route.fallback()
       })
       await page.goto('/toolbox/cleanup?plan=' + id)
-      const cards = page.locator('article').filter({ has: page.locator('details > summary', { hasText: '详情' }) })
+      const cards = page.locator('article').filter({ has: page.getByRole('checkbox', { name: /移入回收站/ }) })
       await expect(cards).toHaveCount(5)
       await expect(cards.getByRole('button', { name: /^查看照片 / })).toHaveCount(5)
       await expect(cards.locator('.el-image')).toHaveCount(0)
@@ -271,25 +274,34 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
         const boxes = await cards.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top))
         expect(new Set(boxes).size).toBe(1)
         for (let index = 0; index < 5; index++) {
-          await cards.nth(index).locator('summary').click()
-          await expect(cards.nth(index).locator('details')).toContainText('/photos/batch-' + (index + 1) + '.jpg')
+          const path = '/photos/batch-' + (index + 1) + '.jpg'
+          if (mode === 'similar') await cards.nth(index).locator('summary').click()
+          await expect(cards.nth(index).getByText(path, { exact: true })).toBeVisible()
         }
       }
       const remove = page.getByRole('button', { name: '删除', exact: true })
+      await expect(page.getByRole('checkbox', { name: '已悉知变更情况', exact: true })).toHaveCount(0)
       for (const index of [1, 2]) {
-        await page.getByRole('checkbox', { name: '将 batch-' + index + '.jpg 移入回收站', exact: true }).click()
-        const confirmation = page.getByRole('checkbox', { name: '已悉知变更情况', exact: true })
-        await expect(confirmation).not.toBeChecked()
-        await page.locator('label.plan-confirmation').getByText('已悉知变更情况', { exact: true }).click()
-        await expect(confirmation).toBeChecked()
+        const photo = page.getByRole('checkbox', { name: '将 batch-' + index + '.jpg 移入回收站', exact: true })
+        await photo.click()
         await expect(remove).toBeEnabled()
         await remove.click()
+        const confirmation = page.getByRole('dialog', { name: '确认移入回收站' })
+        await expect(confirmation.getByText('将选中的 1 张照片移入回收站？')).toBeVisible()
+        if (index === 1) {
+          await confirmation.getByRole('button', { name: '取消', exact: true }).click()
+          await expect(confirmation).toBeHidden()
+          expect(executions).toBe(0)
+          await expect(photo).toBeChecked()
+          await remove.click()
+        }
+        await confirmation.getByRole('button', { name: '移入回收站', exact: true }).click()
         // Completion restores the selection summary; queued/running only show the central loader.
         await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
         await expect(cards).toHaveCount(5 - index)
         await expect(page.getByText('已选 0 张', { exact: true })).toBeVisible()
         await expect(remove).toBeDisabled()
-        await expect(page.getByRole('checkbox', { name: '已悉知变更情况', exact: true })).not.toBeChecked()
+        await expect(confirmation).toBeHidden()
       }
       expect(executions).toBe(2)
       await expect(page).toHaveURL(new RegExp('plan=' + id))

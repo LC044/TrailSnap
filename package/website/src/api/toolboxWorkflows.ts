@@ -1,6 +1,9 @@
 import request from '@/utils/request'
+import type { FilterState } from '@/types/album'
 
 export type ToolKind = 'organize' | 'rename' | 'album' | 'cleanup' | 'metadata'
+export type ResumableCleanupMode = 'duplicate' | 'similar'
+export interface PlanFilter { kind: ToolKind; cleanup_mode?: ToolConfig['cleanup_mode'] }
 export interface MediaScope {
   source: 'albums' | 'folders' | 'filter' | 'selected' | 'all'
   album_ids: string[]
@@ -12,6 +15,7 @@ export interface MediaScope {
   end_date: string | null
   upload_time_fallback: boolean
   media_type: 'image' | 'video' | 'all'
+  filters?: Partial<FilterState> | null
 }
 export interface OrganizeRule {
   strategy: 'time' | 'location' | 'person' | 'category'
@@ -62,6 +66,7 @@ export interface ToolPlan {
   expires_at: string
   finished_at: string | null
   stop_requested: boolean
+  cleanup_freshness?: 'current' | 'changed' | 'unknown' | 'expired' | null
 }
 export interface ToolPlanItem {
   id: number
@@ -77,7 +82,7 @@ export interface ScopeItem { id: string; filename: string; photo_time: string | 
 export interface PageResult<T> { total: number; items: T[] }
 
 export const emptyScope = (): MediaScope => ({
-  source: 'albums', album_ids: [], folders: [], include_children: true, photo_ids: [], excluded_ids: [],
+  source: 'all', album_ids: [], folders: [], include_children: true, photo_ids: [], excluded_ids: [],
   start_date: null, end_date: null, upload_time_fallback: false, media_type: 'image',
 })
 export const defaultConfig = (kind: ToolKind): ToolConfig => ({
@@ -91,7 +96,7 @@ export const defaultConfig = (kind: ToolKind): ToolConfig => ({
 
 export function renameTemplateError(template: string): string {
   const allowed = new Set(['date', 'time', 'year', 'month', 'day', 'hour', 'minute', 'second',
-    'city', 'location', 'province', 'district', 'original', 'index', 'sequence3', 'sequence4',
+    'city', 'location', 'country', 'province', 'district', 'person', 'category', 'original', 'index', 'sequence3', 'sequence4',
     'camera', 'lens', 'iso', 'extension'])
   const unknown = [...template.matchAll(/\{([^{}]*)\}/g)].map(match => match[1]).filter(key => !allowed.has(key))
   if (unknown.length) return `未知变量：${unknown.join('、')}`
@@ -115,12 +120,19 @@ export const workflowApi = {
       scope, config: { ...defaultConfig('album'), rules: [rule] },
     })).data
   },
-  async preview(scope: MediaScope, config: ToolConfig) {
-    return (await request.post<ToolPlan>(`${base}/plans`, { scope, config }, { timeout: 120000 })).data
+  async preview(scope: MediaScope, config: ToolConfig, reuseCleanup = false) {
+    return (await request.post<ToolPlan>(`${base}/plans`, { scope, config }, { timeout: 120000, params: { reuse_cleanup: reuseCleanup } })).data
   },
-  async plan(id: string) { return (await request.get<ToolPlan>(`${base}/plans/${id}`)).data },
-  async history(offset = 0, limit = 20, activeOnly = false) {
-    return (await request.get<ToolPlan[]>(`${base}/plans`, { params: { offset, limit, active_only: activeOnly } })).data
+  async plan(id: string, checkCleanup = false) {
+    return (await request.get<ToolPlan>(`${base}/plans/${id}`, checkCleanup ? {
+      params: { check_cleanup: true }, timeout: 120000,
+    } : undefined)).data
+  },
+  async history(offset = 0, limit = 20, activeOnly = false, filter?: PlanFilter) {
+    return (await request.get<ToolPlan[]>(`${base}/plans`, { params: { offset, limit, active_only: activeOnly, ...filter } })).data
+  },
+  async deletePlan(id: string) {
+    return (await request.delete<{ id: string }>(`${base}/plans/${id}`)).data
   },
   async items(id: string, offset = 0, status?: string, groupBy = false) {
     return (await request.get<PageResult<ToolPlanItem> & { selected_count?: number }>(`${base}/plans/${id}/items`, { params: { offset, status, group_by: groupBy } })).data
