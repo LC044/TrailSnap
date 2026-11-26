@@ -82,7 +82,8 @@
         <div v-for="group in advancedGroups" :key="group.key" class="space-y-1.5">
           <h3 class="filter-group-label">{{ group.label }}</h3>
           <el-select multiple filterable clearable collapse-tags collapse-tags-tooltip
-            class="filter-select w-full" :popper-style="popperStyle" @visible-change="raiseOptions"
+            class="filter-select w-full" popper-class="photo-filter-options-popper"
+            :popper-style="popperStyle" @visible-change="raiseOptions"
             :model-value="selectedFilters[group.key] || []" :aria-label="group.label"
             :placeholder="`选择${group.label}`" @update:model-value="values => updateFilter(group.key, values)">
             <el-option v-for="value in group.options" :key="value" :value="value"
@@ -95,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { usePhotoStore, usePhotosPageStore } from '@/stores/photoStore'
+import { usePhotoStore } from '@/stores/photoStore'
 import { computed, nextTick, ref } from 'vue'
 import { Check, ChevronDown, Loader2, RotateCcw, Search, Settings2, SlidersHorizontal } from 'lucide-vue-next'
 import { useZIndex } from 'element-plus'
@@ -103,7 +104,8 @@ import { nextDialogZIndex } from '@/utils/pickerDate'
 import PersonAvatar from '@/components/PersonAvatar.vue'
 
 const props = defineProps<{
-  store?: ReturnType<typeof usePhotoStore> | ReturnType<typeof usePhotosPageStore>
+  store?: Pick<ReturnType<typeof usePhotoStore>, 'availableFilters' | 'selectedFilters' | 'loading' | 'error' | 'loadPhotos'>
+    & Partial<Pick<ReturnType<typeof usePhotoStore>, 'searchFilters'>>
 }>()
 const store = props.store || usePhotoStore()
 const availableFilters = computed(() => store.availableFilters)
