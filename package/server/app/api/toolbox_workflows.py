@@ -1,9 +1,10 @@
 """Scoped toolbox API. New routes always return the shared response envelope."""
 from uuid import UUID
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -14,9 +15,11 @@ from app.schemas.toolbox import ExecuteRequest, MediaScope, OrganizeRule, PlanRe
 from app.service.toolbox_scope import resolve_browser_folder, scope_preview
 from app.service.toolbox_plans import create_plan, group_options, item_view, plan_view, validate_template
 from app.service.toolbox_execution import get_plan, recovery_plan, start_plan
+from app.service.cleanup_resume import RESUMABLE_MODES, freshness, latest_preview, reusable_preview
 from app.service.task_manager import TaskManager
 
 router = APIRouter()
+ACTIVE_PLAN_STATUSES = ("queued", "running", "scan_queued", "scanning")
 
 
 def response_call(db, operation):
@@ -25,6 +28,10 @@ def response_call(db, operation):
     except ValueError as error:
         db.rollback()
         return BaseResponse.fail(code=400, msg=str(error))
+
+
+def lock_plan_owner(db, user):
+    db.query(User).filter(User.id == user.id).update({User.is_active: User.is_active}, synchronize_session=False)
 
 
 @router.get("/folders/resolve", response_model=BaseResponse[dict])
@@ -45,10 +52,14 @@ def options(request: PlanRequest, db: Session = Depends(get_db), user: User = De
 
 
 @router.post("/plans", response_model=BaseResponse[dict])
-def preview(request: PlanRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def preview(request: PlanRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user), reuse_cleanup: bool = False):
     if request.config.kind == "cleanup":
         from app.service.cleanup_scan import enqueue_scan
         def enqueue():
+            if reuse_cleanup and request.config.cleanup_mode in RESUMABLE_MODES:
+                saved = reusable_preview(db, user, request)
+                if saved:
+                    return {**plan_view(saved), "cleanup_freshness": "current"}
             plan = enqueue_scan(db, user, request)
             TaskManager.get_instance().start_worker_if_needed()
             return plan_view(plan)
@@ -59,17 +70,53 @@ def preview(request: PlanRequest, db: Session = Depends(get_db), user: User = De
 @router.get("/plans", response_model=BaseResponse[list])
 def history(offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100),
             active_only: bool = False,
-            db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+            db: Session = Depends(get_db), user: User = Depends(get_current_user),
+            kind: Literal["cleanup", "organize", "rename", "album", "metadata"] | None = None,
+            cleanup_mode: Literal["duplicate", "similar", "quality"] | None = None):
     query = db.query(ToolboxPlan).filter(ToolboxPlan.owner_id == user.id)
     if active_only:
-        query = query.filter(ToolboxPlan.status.in_(["queued", "running", "scan_queued", "scanning"]))
-    rows = query.order_by(ToolboxPlan.created_at.desc()).offset(offset).limit(limit).all()
+        query = query.filter(ToolboxPlan.status.in_(ACTIVE_PLAN_STATUSES))
+    if kind:
+        query = query.filter(or_(ToolboxPlan.kind == kind,
+            and_(ToolboxPlan.kind == "undo", ToolboxPlan.request["config"]["kind"].as_string() == kind)))
+    if cleanup_mode:
+        query = query.filter(ToolboxPlan.kind == "cleanup", ToolboxPlan.request["config"]["cleanup_mode"].as_string() == cleanup_mode)
+    rows = query.order_by(ToolboxPlan.created_at.desc(), ToolboxPlan.id.desc()).offset(offset).limit(limit).all()
     return BaseResponse.success([plan_view(row) for row in rows])
 
 
+@router.get("/cleanup/latest", response_model=BaseResponse[dict | None])
+def latest_cleanup(mode: Literal["duplicate", "similar"], db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    def load():
+        plan = latest_preview(db, user, mode)
+        return plan_view(plan) if plan else None
+    return response_call(db, load)
+
+
 @router.get("/plans/{plan_id}", response_model=BaseResponse[dict])
-def detail(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return response_call(db, lambda: plan_view(get_plan(db, user.id, plan_id)))
+def detail(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user), check_cleanup: bool = False):
+    def load():
+        plan = get_plan(db, user.id, plan_id)
+        result = plan_view(plan)
+        if check_cleanup and plan.kind == "cleanup":
+            result["cleanup_freshness"] = freshness(db, user, plan)
+        return result
+    return response_call(db, load)
+
+
+@router.delete("/plans/{plan_id}", response_model=BaseResponse[dict])
+def delete_plan(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    def remove():
+        # Share the owner lock with execution and selection edits.
+        lock_plan_owner(db, user)
+        plan = get_plan(db, user.id, plan_id)
+        db.refresh(plan)
+        if plan.status in ACTIVE_PLAN_STATUSES:
+            raise ValueError("请先停止任务并等待结束，再删除计划")
+        db.delete(plan)
+        db.commit()
+        return {"id": str(plan_id)}
+    return response_call(db, remove)
 
 
 @router.get("/plans/{plan_id}/items", response_model=BaseResponse[dict])
@@ -128,6 +175,7 @@ def stop(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_
 @router.post("/plans/{plan_id}/retry", response_model=BaseResponse[dict])
 def retry(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     def recover():
+        lock_plan_owner(db, user)
         plan = get_plan(db, user.id, plan_id)
         if plan.status in {"scan_stopped", "scan_failed"}:
             from app.service.cleanup_scan import queue_scan
@@ -226,7 +274,10 @@ def export_plan(plan_id: UUID, db: Session = Depends(get_db), user: User = Depen
 
 @router.post("/plans/{plan_id}/undo", response_model=BaseResponse[dict])
 def undo(plan_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return response_call(db, lambda: plan_view(recovery_plan(db, user, get_plan(db, user.id, plan_id), undo=True)))
+    def recover():
+        lock_plan_owner(db, user)
+        return plan_view(recovery_plan(db, user, get_plan(db, user.id, plan_id), undo=True))
+    return response_call(db, recover)
 
 
 @router.get("/preferences", response_model=BaseResponse[dict])

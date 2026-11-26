@@ -15,6 +15,7 @@ from app.db.models.user import User
 from app.db.models.toolbox import (ToolboxPlan, ToolboxPlanItem, CleanupScope,
     CleanupGroup, CleanupMember, CleanupHash)
 from app.schemas.toolbox import PlanRequest, ToolConfig, MediaScope
+from app.service.cleanup_resume import RESUMABLE_MODES, catalog_state, frozen_hash_state, request_key
 from app.service.toolbox_scope import scope_query, allowed_directory, is_below, canonical
 
 BATCH = 250
@@ -33,10 +34,12 @@ def enqueue_scan(db, user, request):
             allowed_directory(db, user, path)
     upper = query.order_by(Photo.id.desc()).with_entities(Photo.id).first()
     reference_upper = db.query(Photo.id).filter(Photo.owner_id == user.id, Photo.is_deleted.is_(False)).order_by(Photo.id.desc()).first()
+    summary = {"total": 0, "processed": 0, "snapshot_upper": str(upper[0]) if upper else None,
+               "reference_upper": str(reference_upper[0]) if reference_upper else None, "phase": "snapshot"}
+    if request.config.cleanup_mode in RESUMABLE_MODES:
+        summary["cleanup_request_key"] = request_key(request)
     plan = ToolboxPlan(id=uuid4(), owner_id=user.id, kind="cleanup", status="scan_queued", version=1,
-        request=request.model_dump(mode="json"), summary={"total": 0, "processed": 0,
-            "snapshot_upper": str(upper[0]) if upper else None,
-            "reference_upper": str(reference_upper[0]) if reference_upper else None, "phase": "snapshot"},
+        request=request.model_dump(mode="json"), summary=summary,
         expires_at=datetime.utcnow() + timedelta(days=7))
     db.add(plan)
     db.flush()
@@ -304,12 +307,17 @@ def run_scan(db, plan_id):
     try:
         checkpoint(db, plan)
         if plan.summary["phase"] == "snapshot":
+            if plan.summary.get("cleanup_request_key") and not plan.summary.get("catalog_state"):
+                checkpoint(db, plan, catalog_state=catalog_state(db, user, request, snapshot=plan.summary))
             snapshot(db, plan, user, request)
         if plan.summary["phase"] == "hash":
             hash_population(db, plan)
         if plan.summary["phase"] == "groups":
             if request.config.cleanup_mode == "duplicate":
                 duplicate_groups(db, plan)
+                if plan.summary.get("catalog_state"):
+                    checkpoint(db, plan, catalog_state={**plan.summary["catalog_state"],
+                        **frozen_hash_state(db, plan, request.config.compare_all)})
             elif request.config.cleanup_mode == "similar":
                 similar_groups(db, plan, request.config)
             checkpoint(db, plan, phase="items")
