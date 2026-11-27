@@ -7,12 +7,14 @@ on:
     paths:
       - 'package/ai/**'
       - '.github/workflows/docker-build-push-ai.yml'
+      - '!package/ai/tests/**'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
     paths:
       - 'package/ai/**'
       - '.github/workflows/docker-build-push-ai.yml'
+      - '!package/ai/tests/**'
   schedule:
     # 凌晨 4 点（北京时间，UTC+8）= UTC 20:00；每日构建并推送 AI 镜像（cpu/gpu/openvino）
     - cron: '0 20 * * *'

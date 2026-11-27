@@ -8,6 +8,7 @@ on:
       - 'package/server/**'
       - '.github/workflows/docker-build-push-server.yml'
       - '.github/scripts/mirror-server-image.sh'
+      - '!package/server/tests/**'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
@@ -15,6 +16,7 @@ on:
       - 'package/server/**'
       - '.github/workflows/docker-build-push-server.yml'
       - '.github/scripts/mirror-server-image.sh'
+      - '!package/server/tests/**'
   schedule:
     # 凌晨 4 点（北京时间，UTC+8）= UTC 20:00；每日构建并推送后端镜像
     - cron: '0 20 * * *'

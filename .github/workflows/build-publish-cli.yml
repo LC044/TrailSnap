@@ -8,6 +8,7 @@ on:
       - 'package/trailsnap-cli/**'
       - 'scripts/release_assets.py'
       - '.github/workflows/build-publish-cli.yml'
+      - '!package/trailsnap-cli/tests/**'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
@@ -15,6 +16,7 @@ on:
       - 'package/trailsnap-cli/**'
       - 'scripts/release_assets.py'
       - '.github/workflows/build-publish-cli.yml'
+      - '!package/trailsnap-cli/tests/**'
   workflow_dispatch:
 
 concurrency:

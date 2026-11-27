@@ -7,6 +7,7 @@ on:
     paths: &package_paths
       - 'package/ai/**'
       - 'package/desktop/**'
+      - 'package/fnos/**'
       - 'package/server/**'
       - 'package/trailsnap-cli/**'
       - 'package/website/**'
@@ -69,6 +70,7 @@ jobs:
       server: ${{ steps.scope.outputs.server }}
       ai: ${{ steps.scope.outputs.ai }}
       website: ${{ steps.scope.outputs.website }}
+      fnos: ${{ steps.scope.outputs.fnos }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'pull_request' || github.event_name == 'push'
@@ -84,7 +86,7 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
-          shared=false cli=false server=false ai=false website=false
+          shared=false cli=false server=false ai=false website=false fnos=false
           case "$GITHUB_EVENT_NAME" in
             pull_request) range="$PR_BASE...$PR_HEAD" ;;
             push) range="$PUSH_BEFORE..$GITHUB_SHA" ;;
@@ -105,11 +107,12 @@ jobs:
                 package/server/*) server=true ;;
                 package/ai/*) ai=true ;;
                 package/website/*) website=true ;;
+                package/fnos/*) fnos=true ;;
               esac
             done < "$changed_paths"
           fi
 
-          for scope in shared cli server ai website; do
+          for scope in shared cli server ai website fnos; do
             printf '%s=%s\n' "$scope" "${!scope}" >> "$GITHUB_OUTPUT"
           done
 
@@ -373,6 +376,25 @@ jobs:
       - name: Run website unit tests
         shell: pwsh
         run: ./tests/scripts/run-tests.ps1 -Layer unit -Component website -Level smoke -EnvFile tests/.env.test.ci
+
+  # 纯测试 PR 不触发安装包构建，fnOS 验证独立于打包运行。
+  fnos-unit:
+    name: fnOS unit (unittest)
+    needs: changes
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.fnos == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - name: Verify fnOS packaging and runtime
+        shell: pwsh
+        run: ./tests/scripts/run-tests.ps1 -EnvFile tests/.env.test.ci -Layer unit -Component fnos -Level all
 
   # ==========================================================================
   # 前端 E2E - 复用 tests/scripts/e2e-up/run/down 流程（与本地 run-tests.ps1 一致）
