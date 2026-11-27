@@ -99,6 +99,12 @@ python -m uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload --timeout-
 
 启动后访问 Swagger 文档: http://localhost:8000/docs
 
+### 外部图库自动扫描
+
+服务启动约 30 秒后会为已注册的外部图库安排一次增量扫描。运行期间，文件监控会合并短时间内的变动并安排增量扫描。监控不可用时会降低频率检查图库，离线目录会保留照片记录。扫描可在任务管理页查看。
+
+两项功能默认开启。在服务数据目录的 `system_config.json` 中将 `scan_on_startup` 或 `watch_external_galleries` 设为 `false`，重启后关闭对应功能。启动扫描补录新增文件，已有局部扫描时会等待其完成。运行期监控将已见过的挂载记录保存在数据目录的 `gallery-watch/` 下。首次启用时，已有索引但当前无法确认的文件会保留记录，直到再次看到原文件或由用户手动确认清理。
+
 ## 数据库迁移
 
 本项目使用 **Alembic** 进行数据库版本控制。

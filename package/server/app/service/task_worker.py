@@ -679,6 +679,11 @@ class TaskWorker:
                     and TaskStrategyFactory.get_strategy(t)
                     and TaskStrategyFactory.get_strategy(t).task_category == cat
                 ])
+                if TaskType.SCAN_FOLDER in cat_types and db.query(Task.id).filter(
+                    Task.type == TaskType.SCAN_FOLDER,
+                    or_(Task.status == TaskStatus.PROCESSING, Task.id.in_(reserved_task_ids)),
+                ).first() is not None:
+                    cat_types = [task_type for task_type in cat_types if task_type != TaskType.SCAN_FOLDER]
                 if not cat_types:
                     continue
 
@@ -778,6 +783,8 @@ class TaskWorker:
                     query = query.filter(Task.id.notin_(list(reserved_task_ids)))
                 fetch_limit = min(512 if chosen_type == TaskType.CLASSIFY_IMAGE_CLIP else FETCH_BATCH_SIZE,
                                   prefetch_limit - queued_items)
+                if chosen_type == TaskType.SCAN_FOLDER:
+                    fetch_limit = 1
                 tasks = (query.order_by(Task.priority.desc(), Task.created_at.asc())
                               .limit(fetch_limit)
                               .all())
@@ -983,6 +990,13 @@ class TaskWorker:
         db = SessionLocal()
         db.expire_on_commit = False
         try:
+            if task_type == TaskType.SCAN_FOLDER:
+                crud_task.lock_gallery_scan_queue(db)
+                if db.query(Task.id).filter(
+                    Task.type == TaskType.SCAN_FOLDER, Task.status == TaskStatus.PROCESSING,
+                ).first() is not None:
+                    return [], None
+                task_ids = task_ids[:1]
             tasks = [t for t in crud_task.get_tasks_by_ids(db, task_ids)
                      if t.status in {TaskStatus.PENDING, TaskStatus.PENDING.value}]
             if not tasks:

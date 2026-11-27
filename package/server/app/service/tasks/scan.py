@@ -18,6 +18,7 @@ from app.core.config_manager import config_manager
 from app.service.live_photo import live_photo_service
 from app.utils.image_loading import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.service.disk_budget import disk_budget, media_io
+from app.service.gallery_availability import directory_identity, gallery_mounts, mount_inventory, unavailable_mounts
 
 
 def _within_roots(path: str, roots: List[str]) -> bool:
@@ -47,11 +48,13 @@ def _is_folder_excluded(name: str, compiled_patterns: List[re.Pattern]) -> bool:
     return False
 
 @media_io('path')
-def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None, exclude_folder_patterns: Optional[List[re.Pattern]] = None, *, recursive: bool = True, strict: bool = False) -> Set[str]:
+def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None, exclude_folder_patterns: Optional[List[re.Pattern]] = None, *, recursive: bool = True, strict: bool = False, skip_mounts: frozenset[str] = frozenset()) -> Set[str]:
     found = set()
     try:
         with os.scandir(path) as it:
             for entry in it:
+                if skip_mounts and os.path.normcase(entry.path) in skip_mounts:
+                    continue
                 if entry.is_file(follow_symlinks=False):
                     if os.path.splitext(entry.name)[1].lower() in exts:
                         # Apply filters
@@ -82,7 +85,8 @@ def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optiona
                     # Skip excluded folders (e.g. NAS @eaDir / #recycle) regardless of filter enable
                     if _is_folder_excluded(entry.name, exclude_folder_patterns or []):
                         continue
-                    found.update(scan_directory_recursive(entry.path, exts, filter_settings, exclude_folder_patterns, strict=strict))
+                    found.update(scan_directory_recursive(entry.path, exts, filter_settings, exclude_folder_patterns,
+                                                          strict=strict, skip_mounts=skip_mounts))
     except OSError:
         from app.service.storage_paths import portable_enabled
         if strict or portable_enabled():
@@ -99,7 +103,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
     async def process(self, worker, task: Task, db: Session):
         worker.scan_status['message'] = "Scanning folders..."
         scan_roots = task.payload.get('scan_roots')
-        user_id = task.payload.get('user_id')
+        user_id = task.payload.get('user_id') or getattr(task, 'owner_id', None)
 
         users_to_process = []
         if user_id:
@@ -144,7 +148,15 @@ class ScanFolderStrategy(BaseTaskStrategy):
             if not roots:
                 continue
             
-            res = await self._scan_for_user(worker, db, user, roots)
+            watch_scopes = task.payload.get('watch_scopes')
+            if task.payload.get('import_only'):
+                res = await self._scan_for_user(worker, db, user, roots, import_only=True)
+            elif watch_scopes:
+                guards = task.payload.get('watch_guards') or {}
+                scopes = {path: {**scope, **guards.get(scope['root'], {})} for path, scope in watch_scopes.items()}
+                res = await self._scan_for_user(worker, db, user, roots, watch_scopes=scopes)
+            else:
+                res = await self._scan_for_user(worker, db, user, roots)
             total_new += res.get('new_files', 0)
             total_deleted += res.get('deleted_files', 0)
             skipped_roots.extend(res.get('skipped_roots', []))
@@ -155,7 +167,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
             worker.scan_status['message'] = f'扫描完成，{len(skipped_roots)} 个目录不可读取，已保留其照片记录'
         return result
 
-    async def _scan_for_user(self, worker, db: Session, user: User, scan_roots: List[str]) -> Dict[str, Any]:
+    async def _scan_for_user(self, worker, db: Session, user: User, scan_roots: List[str], *, watch_scopes=None, import_only=False) -> Dict[str, Any]:
         from app.service.gallery_sync import contains, external_roots, lock_user, path_key, cancel_path_tasks
         path_key = lru_cache(maxsize=None)(path_key)
         def contains(root, path):
@@ -173,10 +185,64 @@ class ScanFolderStrategy(BaseTaskStrategy):
         filter_config = merged_config.filter.model_dump()
         exclude_folder_patterns = _compile_folder_patterns(filter_config.get('exclude_folders'))
 
+        @lru_cache(maxsize=None)
+        def watch_scope_error(root, expected_identity):
+            try:
+                if directory_identity(root) != expected_identity:
+                    return 'registered gallery filesystem changed'
+            except OSError as error:
+                return str(error)
+
+        def check_watch_scope(scope):
+            reason = watch_scope_error(scope['root'], tuple(scope['identity']))
+            if reason is not None:
+                raise OSError(reason)
+
+        def inspect_mounts(inventory, skipped, before=None, previous_identities=None):
+            observed = {}
+            unavailable = set()
+            identities = {}
+            for scope in (watch_scopes or {}).values():
+                root = scope['root']
+                if root in observed:
+                    continue
+                current = gallery_mounts(root, inventory)
+                expected = {**((before or {}).get(root, {})), **(scope.get('mounts') or {})}
+                unavailable.update(unavailable_mounts(root, expected, inventory))
+                observed[root] = current
+                root_key = path_key(root)
+                # A newly mounted child may hide indexed files underneath it.
+                # Wait for the watcher to record the new mount before reconciling it.
+                unavailable.update(
+                    mount for mount in current.keys() - (scope.get('mounts') or {})
+                    if mount != root_key and _within_roots(mount, [root_key])
+                )
+                for mount in current:
+                    if mount == root_key or mount in identities or mount in unavailable:
+                        continue
+                    if not _within_roots(mount, [root_key]):
+                        continue
+                    try:
+                        identities[mount] = directory_identity(mount)
+                    except OSError:
+                        unavailable.add(mount)
+                    else:
+                        if mount in (previous_identities or {}) and identities[mount] != previous_identities[mount]:
+                            unavailable.add(mount)
+            for path in sorted(unavailable):
+                if not any(item['path'] == path for item in skipped):
+                    reason = 'registered gallery mount is unavailable'
+                    logging.warning('Gallery scan skipped %s: %s', path, reason)
+                    skipped.append({'path': path, 'reason': reason})
+            return observed, identities, frozenset(unavailable)
+
         def parallel_scan_wrapper():
             found_files = set()
             readable = []
             skipped = []
+            observed_mounts, mount_identities, offline_mounts = inspect_mounts(
+                mount_inventory() if watch_scopes else {}, skipped,
+            )
             roots = sorted(set(os.path.abspath(root) for root in scan_roots), key=len)
             unique_roots = []
             for root in roots:
@@ -185,19 +251,40 @@ class ScanFolderStrategy(BaseTaskStrategy):
                     unique_roots.append(root)
             for root in unique_roots:
                 try:
+                    scope = (watch_scopes or {}).get(root)
+                    if scope:
+                        check_watch_scope(scope)
+                        relative = os.path.relpath(root, scope['root'])
+                        if relative != '.' and any(_is_folder_excluded(part, exclude_folder_patterns)
+                                                   for part in relative.split(os.sep)):
+                            continue
+                    if any(contains(mount, root) for mount in offline_mounts):
+                        continue
+                    root_key = path_key(root)
+                    skipped_mount_paths = frozenset(
+                        os.path.normcase(os.path.join(root, os.path.relpath(mount, root_key)))
+                        for mount in offline_mounts if _within_roots(mount, [root_key])
+                    )
                     # Treat a failed subtree as a failed root. Never diff an
                     # incomplete listing against DB records as if it were empty.
-                    root_files = scan_directory_recursive(root, EXTS, filter_config, exclude_folder_patterns, recursive=False, strict=True)
+                    root_files = scan_directory_recursive(
+                        root, EXTS, filter_config, exclude_folder_patterns, recursive=False,
+                        strict=True, skip_mounts=skipped_mount_paths,
+                    )
                     work_items = []
                     with os.scandir(root) as it:
                         for entry in it:
+                            if skipped_mount_paths and os.path.normcase(entry.path) in skipped_mount_paths:
+                                continue
                             if entry.is_dir(follow_symlinks=False):
                                 # Skip excluded folders at the top level too
                                 if _is_folder_excluded(entry.name, exclude_folder_patterns):
                                     continue
                                 work_items.append(entry.path)
                     with concurrent.futures.ThreadPoolExecutor(max_workers=disk_budget.limit) as executor:
-                        futures = [executor.submit(scan_directory_recursive, item, EXTS, filter_config, exclude_folder_patterns, strict=True) for item in set(work_items)]
+                        futures = [executor.submit(scan_directory_recursive, item, EXTS, filter_config,
+                                                   exclude_folder_patterns, strict=True, skip_mounts=skipped_mount_paths)
+                                   for item in set(work_items)]
                         for future in concurrent.futures.as_completed(futures):
                             root_files.update(future.result())
                     found_files.update(root_files)
@@ -205,9 +292,11 @@ class ScanFolderStrategy(BaseTaskStrategy):
                 except OSError as error:
                     logging.warning('Gallery scan skipped %s: %s', root, error)
                     skipped.append({'path': root, 'reason': str(error)})
-            return found_files, readable, skipped
+            return found_files, readable, skipped, observed_mounts, mount_identities, offline_mounts
 
-        files_on_disk, readable, skipped = await loop.run_in_executor(None, parallel_scan_wrapper)
+        files_on_disk, readable, skipped, observed_mounts, mount_identities, offline_mounts = (
+            await loop.run_in_executor(None, parallel_scan_wrapper)
+        )
 
         # Removal may happen while filesystem work runs. Revalidate before any
         # enqueue or deletion, and release the lock before more filesystem work.
@@ -224,6 +313,16 @@ class ScanFolderStrategy(BaseTaskStrategy):
         disk_keys = {path_key(path) for path in files_on_disk}
         existing_keys = {path_key(path) for path in existing_files}
         new_files = {path for path in files_on_disk if path_key(path) not in existing_keys}
+        if import_only:
+            # A readable mount placeholder can look like a complete listing.
+            # A cold-start scan can import new paths without reconciling missing ones.
+            await self._create_tasks_for_new_files(str(user.id), new_files, loop, db)
+            worker.scan_status['total_files'] += len(new_files)
+            result = {'new_files': len(new_files), 'deleted_files': 0}
+            if skipped:
+                result['skipped_roots'] = skipped
+            return result
+
         deleted_files = {path for path in existing_files if path_key(path) not in disk_keys}
 
         for lp in live_photo_to_add:
@@ -256,10 +355,50 @@ class ScanFolderStrategy(BaseTaskStrategy):
             if path:
                 cached_key(path)
         db.commit()
+        unverified = set()
+        if watch_scopes:
+            # Probe once per registered root and outside the DB write lock.
+            watch_scope_error.cache_clear()
+            _, _, still_offline = inspect_mounts(mount_inventory(), skipped, observed_mounts, mount_identities)
+            offline_mounts |= still_offline
+            unverified = {
+                path for scope in watch_scopes.values() if scope
+                for path in scope.get('unverified', [])
+            }
+            online = []
+            for root in scan_roots:
+                scope = watch_scopes.get(root)
+                try:
+                    if scope:
+                        check_watch_scope(scope)
+                except OSError as error:
+                    logging.warning('Gallery scan skipped %s: %s', root, error)
+                    skipped.append({'path': root, 'reason': str(error)})
+                else:
+                    online.append(root)
+            scan_roots = online
+
+        def mount_is_available(path):
+            return not _within_roots(cached_key(path), offline_mounts)
+
         user = lock_user(db, user.id)
         allowed_roots = [path_key(root) for root in external_roots(user)]
         def still_allowed(path):
             return _within_roots(cached_key(path), allowed_roots)
+
+        if watch_scopes:
+            scan_roots = [
+                root for root in scan_roots
+                if root not in watch_scopes or path_key(watch_scopes[root]['root']) in allowed_roots
+            ]
+            online_keys = [cached_key(root) for root in scan_roots]
+            new_files = {path for path in new_files if _within_roots(cached_key(path), online_keys)
+                         and mount_is_available(path)}
+            # Tasks persisted by an older server have no mount evidence.
+            if any('mounts' not in scope for scope in watch_scopes.values()):
+                unverified.update(existing_keys)
+            deleted_files = {path for path in deleted_files if _within_roots(cached_key(path), online_keys)
+                             and cached_key(path) not in unverified and mount_is_available(path)}
         new_files = {path for path in new_files if still_allowed(path)}
 
         logging.info(f"Scan result for user {user.id}: {len(new_files)} new, {len(deleted_files)} deleted")
@@ -270,7 +409,8 @@ class ScanFolderStrategy(BaseTaskStrategy):
         # DB lock; completion also rechecks the filesystem and configured roots.
         scan_root_keys = [path_key(root) for root in scan_roots]
         cancel_path_tasks(db, user.id, lambda path: _within_roots(cached_key(path), scan_root_keys)
-                          and cached_key(path) not in disk_keys)
+                          and cached_key(path) not in disk_keys and cached_key(path) not in unverified
+                          and mount_is_available(path))
         db.commit()
         self._handle_deleted_files(str(user.id), deleted_files, db, worker)
         await self._create_tasks_for_new_files(str(user.id), new_files, loop, db)

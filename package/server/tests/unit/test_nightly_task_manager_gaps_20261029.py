@@ -139,10 +139,10 @@ def test_add_task_merges_scan_roots_of_pending_scan(manager):
                                status=TaskStatus.PENDING.value, owner_id=uuid4(),
                                payload={"scan_roots": ["/a"]})
     db = MagicMock()
-    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = existing
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [existing]
     with patch.object(manager, "start_worker_if_needed"), \
          patch.object(manager, "publish_task_update"):
-        out = manager.add_task(db, TaskType.SCAN_FOLDER.value, {"scan_roots": ["/b"]}, 0, uuid4())
+        out = manager.add_task(db, TaskType.SCAN_FOLDER.value, {"scan_roots": ["/b"]}, 0, existing.owner_id)
     assert out is existing
     assert existing.payload["scan_roots"] == ["/a", "/b"]
     db.commit.assert_called_once()

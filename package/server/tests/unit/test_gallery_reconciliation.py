@@ -1,5 +1,7 @@
 """REQ-163: real directory/SQLite contracts for removal and reconciliation."""
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from types import SimpleNamespace
 from uuid import uuid4
@@ -14,6 +16,9 @@ from app.db.models.photo import Photo, FileType
 from app.db.models.task import Task, TaskStatus, TaskType
 from app.db.models.user import User
 from app.service import gallery_sync
+from app.service.gallery_availability import directory_identity
+from app.service.gallery_watch import GalleryWatch
+from app.service.task_manager import TaskManager
 from app.service.tasks.scan import ScanFolderStrategy
 from app.service.tasks.basic import BasicTaskStrategy
 from app.service.tasks import gallery_removal
@@ -161,6 +166,216 @@ def test_full_scan_adds_missing_deletes_stale_and_orphans_and_deduplicates_tasks
     assert {t.payload['file_path'] for t in tasks} == {str(root / 'new.jpg'), str(sibling / 'another.png')}
     scan(db, user)
     assert db.query(Task).filter(Task.type == TaskType.PROCESS_BASIC).count() == 2
+
+
+def watched_scan(db, user, root, folders, identity, *, mounts=None, unverified=()):
+    scopes = {str(folder): {'root': str(root), 'identity': list(identity),
+                            'mounts': mounts or {}, 'unverified': list(unverified)} for folder in folders}
+    task = SimpleNamespace(payload={'user_id': str(user.id), 'scan_roots': list(scopes), 'watch_scopes': scopes})
+    return asyncio.run(ScanFolderStrategy().process(worker(), task, db))
+
+
+def test_watched_move_cleans_old_index_and_queues_destination_once(library, monkeypatch):
+    db, user, root, _ = library
+    source_dir, dest_dir = root / 'source', root / 'destination'
+    source_dir.mkdir()
+    dest_dir.mkdir()
+    original = source_dir / 'old.jpg'
+    original.write_bytes(b'photo')
+    old_id = photo(db, user, original).id
+    destination = dest_dir / 'new.jpg'
+    original.rename(destination)
+    thumbnails_deleted = []
+    monkeypatch.setattr('app.service.storage.delete_thumbnails',
+                        lambda owner, photo_id: thumbnails_deleted.append(photo_id))
+
+    identity = directory_identity(str(root))
+    assert watched_scan(db, user, root, [source_dir, dest_dir], identity) == {'new_files': 1, 'deleted_files': 1}
+    watched_scan(db, user, root, [source_dir, dest_dir], identity)
+    db.expire_all()
+    assert db.get(Photo, old_id) is None
+    assert thumbnails_deleted == [old_id]
+    queued = db.query(Task).filter(Task.type == TaskType.PROCESS_BASIC).one()
+    assert queued.payload['file_path'] == str(destination)
+    assert destination.read_bytes() == b'photo'
+
+
+def test_watched_scan_preserves_records_when_mount_changes_during_enumeration(library, monkeypatch):
+    from app.service.tasks import scan as scanner
+
+    db, user, root, _ = library
+    old_id = photo(db, user, root / 'indexed.jpg').id
+    identity = directory_identity(str(root))
+    observations = iter([identity, (identity[0] + 1, identity[1])])
+    monkeypatch.setattr(scanner, 'directory_identity', lambda path: next(observations))
+
+    result = watched_scan(db, user, root, [root], identity)
+    assert result['deleted_files'] == 0
+    assert result['skipped_roots'][0]['path'] == str(root)
+    assert db.get(Photo, old_id) is not None
+
+
+@pytest.mark.parametrize('disconnect_during_scan', [False, True])
+def test_watched_scan_protects_disconnected_submount_and_reconciles_other_files(
+    library, monkeypatch, disconnect_during_scan,
+):
+    from app.service.tasks import scan as scanner
+
+    db, user, root, _ = library
+    child = root / 'mount'
+    child.mkdir()
+    (child / 'placeholder.jpg').touch()
+    (root / 'new.jpg').touch()
+    old_id = photo(db, user, child / 'indexed.jpg').id
+    deleted_id = photo(db, user, root / 'deleted.jpg').id
+    mount_key = gallery_sync.path_key(str(child))
+    mounts = {mount_key: ['nas:/gallery', 'nfs']}
+    observations = iter([mounts if disconnect_during_scan else {}, {}])
+    monkeypatch.setattr(scanner, 'mount_inventory', lambda: next(observations))
+
+    result = watched_scan(db, user, root, [root], directory_identity(str(root)), mounts=mounts)
+    assert result['deleted_files'] == 1
+    assert result['skipped_roots'][0]['path'] == mount_key
+    assert db.get(Photo, old_id) is not None
+    assert db.get(Photo, deleted_id) is None
+    assert db.query(Task).filter(Task.type == TaskType.PROCESS_BASIC).one().payload['file_path'] == str(root / 'new.jpg')
+
+
+def test_watched_scan_preserves_unverified_legacy_files_in_nonempty_placeholder(library):
+    db, user, root, _ = library
+    (root / 'placeholder.txt').touch()
+    missing = root / 'indexed.jpg'
+    old_id = photo(db, user, missing).id
+    result = watched_scan(
+        db, user, root, [root], directory_identity(str(root)), unverified=[gallery_sync.path_key(str(missing))],
+    )
+    assert result['deleted_files'] == 0
+    assert db.get(Photo, old_id) is not None
+
+
+def test_startup_import_preserves_missing_gallery_records(library):
+    db, user, root, sibling = library
+    old_id = photo(db, user, root / 'indexed.jpg').id
+    (sibling / 'new.jpg').write_bytes(b'new')
+    task = SimpleNamespace(payload={'import_only': True})
+    result = asyncio.run(ScanFolderStrategy().process(worker(), task, db))
+    assert result == {'new_files': 1, 'deleted_files': 0}
+    assert db.get(Photo, old_id) is not None
+    queued = db.query(Task).filter(Task.type == TaskType.PROCESS_BASIC).one()
+    assert queued.payload['file_path'] == str(sibling / 'new.jpg')
+
+
+def test_watched_scan_respects_mixed_case_excluded_directory(library):
+    db, user, root, _ = library
+    excluded = root / '@eaDir'
+    excluded.mkdir()
+    (excluded / 'preview.jpg').write_bytes(b'preview')
+    watch = GalleryWatch(str(root))
+    watch.mark(str(excluded))
+
+    result = watched_scan(db, user, root, watch.dirty, directory_identity(str(root)))
+    assert result == {'new_files': 0, 'deleted_files': 0}
+    assert db.query(Task).filter(Task.type == TaskType.PROCESS_BASIC).count() == 0
+
+
+@pytest.mark.parametrize('status', [TaskStatus.PENDING, TaskStatus.PROCESSING])
+def test_automatic_scan_waits_for_manual_scan(library, monkeypatch, status):
+    db, user, root, _ = library
+    manager = TaskManager()
+    monkeypatch.setattr(manager, 'start_worker_if_needed', lambda: None)
+    task = manager.add_task(db, TaskType.SCAN_FOLDER, {'user_id': str(user.id), 'scan_roots': [str(root)]})
+    task.status = status
+    db.commit()
+    assert not manager.try_enqueue_gallery_scan(db, {})
+    assert not manager.try_enqueue_gallery_scan(db, {'import_only': True})
+    assert not manager.try_enqueue_gallery_scan(db, {'user_id': str(user.id), 'scan_roots': [str(root)]})
+    assert db.query(Task).filter(Task.type == TaskType.SCAN_FOLDER).count() == 1
+    task.status = TaskStatus.COMPLETED
+    db.commit()
+    assert manager.try_enqueue_gallery_scan(db, {'import_only': True})
+    assert manager.try_enqueue_gallery_scan(db, {'import_only': True})
+    assert db.query(Task).filter(Task.type == TaskType.SCAN_FOLDER).count() == 2
+
+
+def test_global_scan_reuses_pending_startup_task_and_enables_cleanup(library, monkeypatch):
+    db, _, _, _ = library
+    manager = TaskManager()
+    monkeypatch.setattr(manager, 'start_worker_if_needed', lambda: None)
+    assert manager.try_enqueue_gallery_scan(db, {'import_only': True})
+    startup = db.query(Task).filter(Task.type == TaskType.SCAN_FOLDER).one()
+
+    full = manager.add_task(db, TaskType.SCAN_FOLDER, {})
+
+    assert full.id == startup.id
+    assert not full.payload.get('import_only')
+    assert manager.try_enqueue_gallery_scan(db, {'import_only': True})
+    assert db.query(Task).filter(Task.type == TaskType.SCAN_FOLDER).count() == 1
+
+
+def test_manual_scan_queues_one_followup_and_worker_waits_for_running_startup(library, monkeypatch):
+    from sqlalchemy.orm import Session
+    from app.service import task_worker
+
+    db, user, _, _ = library
+    manager = TaskManager()
+    monkeypatch.setattr(manager, 'start_worker_if_needed', lambda: None)
+    assert manager.try_enqueue_gallery_scan(db, {'import_only': True})
+    startup = db.query(Task).filter(Task.type == TaskType.SCAN_FOLDER).one()
+    startup.status = TaskStatus.PROCESSING
+    db.commit()
+    payload = {'user_id': str(user.id), 'reconcile': True}
+    manual = manager.add_task(db, TaskType.SCAN_FOLDER, payload, owner_id=user.id)
+    assert manager.add_task(db, TaskType.SCAN_FOLDER, payload, owner_id=user.id).id == manual.id
+    assert manual.id != startup.id
+
+    bind = db.get_bind()
+    monkeypatch.setattr(task_worker, 'SessionLocal', lambda: Session(bind))
+    scan_worker = task_worker.TaskWorker.__new__(task_worker.TaskWorker)
+    scan_worker.paused_categories = set()
+    scan_worker.import_priority_active = False
+    scan_worker.scan_status = worker().scan_status
+    monkeypatch.setattr(scan_worker, '_publish_task_row', lambda task: None)
+    infos = [{'id': manual.id, 'type': TaskType.SCAN_FOLDER}]
+    assert scan_worker._execute_batch_sync(infos) == ([], None)
+    db.refresh(manual)
+    assert manual.status == TaskStatus.PENDING
+
+    startup.status = TaskStatus.COMPLETED
+    db.commit()
+    results, _ = scan_worker._execute_batch_sync(infos)
+    assert results[0]['status'] == TaskStatus.COMPLETED
+
+
+def test_sqlite_manual_scan_can_enqueue_while_automatic_scan_waits_for_writer(library, monkeypatch):
+    from sqlalchemy.orm import Session
+    from app.crud import task as crud_task
+
+    db, user, _, _ = library
+    owner_id = user.id
+    bind = db.get_bind()
+    manager = TaskManager()
+    monkeypatch.setattr(manager, 'start_worker_if_needed', lambda: None)
+    gallery_sync.lock_user(db, owner_id)
+    automatic_waiting = threading.Event()
+    lock_queue = crud_task.lock_gallery_scan_queue
+
+    def signal_lock(session):
+        if session is not db:
+            automatic_waiting.set()
+        lock_queue(session)
+
+    def submit_automatic():
+        with Session(bind) as other:
+            other.connection().exec_driver_sql('PRAGMA busy_timeout=1000')
+            return manager.try_enqueue_gallery_scan(other, {'import_only': True})
+
+    monkeypatch.setattr(crud_task, 'lock_gallery_scan_queue', signal_lock)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        automatic = executor.submit(submit_automatic)
+        assert automatic_waiting.wait(2)
+        manager.add_task(db, TaskType.SCAN_FOLDER, {'user_id': str(owner_id), 'reconcile': True}, owner_id=owner_id)
+        assert automatic.result(timeout=3) is False
+    assert db.query(Task).filter(Task.type == TaskType.SCAN_FOLDER).count() == 1
 
 
 def test_empty_config_still_cleans_orphans(library):
