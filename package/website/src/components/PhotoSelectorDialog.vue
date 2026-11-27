@@ -16,6 +16,10 @@
       embedded
       mobile-dialog-header
       :single-select="singleSelect"
+      :auto-load="autoLoad"
+      :enable-filters="enableFilters"
+      :allowed-file-types="allowedFileTypes"
+      :initial-selected-ids="initialSelectedIds"
       :busy="busy"
       @select="$emit('select', $event)"
       @cancel="!busy && (visible = false)"
@@ -27,7 +31,16 @@
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import PhotoSelector from '@/components/PhotoSelector.vue'
 const visible = defineModel<boolean>({ required: true })
-defineProps<{ title: string; store?: any; singleSelect?: boolean; busy?: boolean }>()
+defineProps<{
+  title: string
+  store?: any
+  singleSelect?: boolean
+  busy?: boolean
+  autoLoad?: boolean
+  enableFilters?: boolean
+  allowedFileTypes?: string[]
+  initialSelectedIds?: string[]
+}>()
 defineEmits<{ select: [ids: string[]] }>()
 </script>
 

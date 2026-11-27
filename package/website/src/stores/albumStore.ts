@@ -105,8 +105,8 @@ export const useAlbumStore = defineStore('album', () => {
       }
   }
 
-  const createCustomAlbum = async (title: string, description?: string) => {
-      const newAlbum = await albumService.createAlbum({ name: title, description: description || '' });
+  const createCustomAlbum = async (title: string, description?: string, photoIds?: string[]) => {
+      const newAlbum = await albumService.createAlbum({ name: title, description: description || '', photo_ids: photoIds });
       apiAlbums.value.push(newAlbum);
       return newAlbum.id;
   }

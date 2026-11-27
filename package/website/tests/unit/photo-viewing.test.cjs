@@ -29,15 +29,15 @@ function fixture(saved) {
   return { preferences, props, viewer, data, stores, scope }
 }
 
-test('default preview and enabled preference persist across new sessions', () => {
+test('default loads the original and the preference persists across new sessions', () => {
   const f = fixture()
-  assert.equal(f.preferences.autoViewOriginal, false)
-  assert.equal(f.viewer.displayImageSrc.value, '/a/preview')
-  f.preferences.autoViewOriginal = true
+  assert.equal(f.preferences.autoViewOriginal, true)
   assert.equal(f.viewer.displayImageSrc.value, '/a/original')
+  f.preferences.autoViewOriginal = false
+  assert.equal(f.viewer.displayImageSrc.value, '/a/preview')
   pinia.setActivePinia(pinia.createPinia())
   const reloaded = f.stores.usePhotoViewingStore()
-  assert.equal(reloaded.autoViewOriginal, true)
+  assert.equal(reloaded.autoViewOriginal, false)
   reloaded.autoViewOriginal = true
   assert.equal(f.data.get('trailsnap_auto_view_original'), 'true')
   f.scope.stop()
@@ -78,7 +78,7 @@ test('storage failure preserves usable session controls', () => {
   })
   pinia.setActivePinia(pinia.createPinia())
   const preferences = stores.usePhotoViewingStore()
-  assert.equal(preferences.autoViewOriginal, false)
+  assert.equal(preferences.autoViewOriginal, true)
   preferences.autoViewOriginal = false
   assert.equal(preferences.autoViewOriginal, false)
 })

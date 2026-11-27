@@ -183,6 +183,7 @@ export interface Album {
 
 export interface CreateAlbumDto {
   name: string;
+  photo_ids?: string[];
   description?: string;
   type?: string;
   condition?: AlbumCondition;

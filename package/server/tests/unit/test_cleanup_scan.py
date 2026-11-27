@@ -111,6 +111,78 @@ def test_duplicate_hash_reuse_change_failure_and_pagination(lib):
     assert third.summary["hashed"] == 1
 
 
+def test_duplicate_preview_reuse_preserves_selection_and_explicit_rescan(lib, monkeypatch):
+    a, b = lib.photo("a.jpg"), lib.photo("b.jpg")
+    scope = MediaScope(source="selected", photo_ids=[a.id, b.id])
+    saved = scan(lib, scope=scope)
+    item = lib.db.query(ToolboxPlanItem).filter_by(plan_id=saved.id, photo_id=a.id).one()
+    chosen = api.selection(saved.id, CleanupSelectionRequest(version=saved.version, item_ids=[item.id], selected=True),
+                           db=lib.db, user=lib.user)
+    assert chosen.data["selected_count"] == 1
+    assert api.latest_cleanup("duplicate", db=lib.db, user=lib.user).data["id"] == str(saved.id)
+    assert api.latest_cleanup("duplicate", db=lib.db, user=lib.other).data is None
+
+    monkeypatch.setattr(api.TaskManager, "get_instance", lambda: SimpleNamespace(start_worker_if_needed=lambda: None))
+    request = PlanRequest(scope=MediaScope(source="selected", photo_ids=[b.id, a.id]),
+                          config=ToolConfig(kind="cleanup"))
+    reused = api.preview(request, db=lib.db, user=lib.user, reuse_cleanup=True).data
+    assert reused["id"] == str(saved.id)
+    assert reused["cleanup_freshness"] == "current"
+    assert lib.db.query(CleanupSelection).filter_by(plan_id=saved.id).count() == 1
+    new = api.preview(request, db=lib.db, user=lib.user).data
+    assert new["id"] != str(saved.id) and new["status"] == "scan_queued"
+
+    b.md5 = "changed"
+    lib.db.commit()
+    assert api.detail(saved.id, db=lib.db, user=lib.user, check_cleanup=True).data["cleanup_freshness"] == "changed"
+    assert api.preview(request, db=lib.db, user=lib.user, reuse_cleanup=True).data["id"] != str(saved.id)
+
+    from datetime import datetime, timedelta
+    saved.expires_at = datetime.utcnow() - timedelta(days=1)
+    lib.db.commit()
+    assert api.latest_cleanup("duplicate", db=lib.db, user=lib.user).data is None
+    assert api.detail(saved.id, db=lib.db, user=lib.user, check_cleanup=True).data["cleanup_freshness"] == "expired"
+
+
+def test_similar_preview_checks_threshold_and_vector_revisions(lib):
+    a = lib.photo("a.jpg", vector=unit_vector())
+    lib.photo("b.jpg", vector=unit_vector())
+    from app.service.cleanup_resume import reusable_preview
+
+    plan = scan(lib, "similar", similarity=.97)
+    request = PlanRequest.model_validate(plan.request)
+    assert reusable_preview(lib.db, lib.user, request).id == plan.id
+    request.config.similarity = .98
+    assert reusable_preview(lib.db, lib.user, request) is None
+    request.config.similarity = .97
+
+    lib.db.get(ImageVector, a.id).embedding = unit_vector(1).tolist()
+    lib.db.commit()
+    assert reusable_preview(lib.db, lib.user, request) is None
+    assert api.detail(plan.id, db=lib.db, user=lib.user, check_cleanup=True).data["cleanup_freshness"] == "changed"
+
+
+def test_plan_history_is_scoped_and_only_inactive_owned_plans_can_be_deleted(lib):
+    a, b = lib.photo("a.jpg"), lib.photo("b.jpg")
+    saved = scan(lib)
+    similar = enqueue_scan(lib.db, lib.user, PlanRequest(
+        scope=MediaScope(source="all"), config=ToolConfig(kind="cleanup", cleanup_mode="similar"),
+    ))
+    item = lib.db.query(ToolboxPlanItem).filter_by(plan_id=saved.id, photo_id=a.id).one()
+    api.selection(saved.id, CleanupSelectionRequest(version=saved.version, item_ids=[item.id], selected=True),
+                  db=lib.db, user=lib.user)
+
+    history = api.history(offset=0, limit=1, kind="cleanup", cleanup_mode="duplicate", db=lib.db, user=lib.user)
+    assert [plan["id"] for plan in history.data] == [str(saved.id)]
+    assert api.delete_plan(saved.id, db=lib.db, user=lib.other).code != 0
+    assert api.delete_plan(similar.id, db=lib.db, user=lib.user).code != 0
+    assert api.delete_plan(saved.id, db=lib.db, user=lib.user).data == {"id": str(saved.id)}
+    for model in (ToolboxPlanItem, CleanupScope, CleanupGroup, CleanupMember, CleanupSelection):
+        assert lib.db.query(model).filter_by(plan_id=saved.id).count() == 0
+    assert api.detail(saved.id, db=lib.db, user=lib.user).code != 0
+    assert all(not lib.db.get(Photo, photo.id).is_deleted and Path(photo.file_path).exists() for photo in [a, b])
+
+
 @pytest.mark.parametrize("scan_mode", ["fast", "complete"])
 def test_similar_model_owner_isolation_no_transitive_merge(lib, scan_mode):
     a = lib.photo("a.jpg", vector=unit_vector(0), pid=UUID(int=1))
@@ -175,6 +247,7 @@ def test_index_initialization_failure_releases_cache_and_lock(lib, monkeypatch):
 def test_scope_external_references_and_safe_execution(lib, monkeypatch):
     a, b = lib.photo("a.jpg"), lib.photo("b.jpg")
     plan = scan(lib, scope=MediaScope(source="selected", photo_ids=[a.id]), compare_all=True)
+    assert api.detail(plan.id, db=lib.db, user=lib.user, check_cleanup=True).data["cleanup_freshness"] == "current"
     row = lib.db.query(ToolboxPlanItem).filter_by(plan_id=plan.id).one()
     assert row.photo_id == a.id
     response = api.selection(plan.id, CleanupSelectionRequest(version=plan.version, item_ids=[row.id], selected=True), db=lib.db, user=lib.user)

@@ -3,6 +3,8 @@
     <header class="ts-browse-header flex items-center gap-3">
       <BackButton label="返回" @click="goBack" />
       <h1 class="journal-page-title">以图搜图</h1>
+      <button v-if="photos.length && !gallery?.isSelectionMode" type="button"
+        class="ts-button ts-button-secondary ml-auto" @click="gallery?.enterSelectionMode()">选择</button>
     </header>
     <section class="image-search-source" aria-label="搜索来源" @dragover.prevent @drop.prevent="dropFile">
       <div v-if="!previewUrl" class="image-search-mark" aria-hidden="true"><ScanSearch /></div>
@@ -23,33 +25,45 @@
       <p v-else-if="searched" role="status" class="ts-muted text-sm">{{ photos.length ? `找到 ${photos.length} 张相似照片，按相似度排序（最多 100 张）` : '未找到相似照片，请尝试其他图片' }}</p>
       <p v-else class="ts-muted text-xs">支持不超过 20 MB 的图片，上传仅用于本次搜索。</p>
     </section>
-    <FlatPhotoGallery v-if="photos.length" :photos="photos" :loading="loading" :show-action-bar="false" :selectable="false" @click-photo="openPhoto" />
+    <FlatPhotoGallery v-if="photos.length" ref="gallery" :photos="photos" :loading="loading" delete-label="移入回收站" context-add-to-album
+      @click-photo="openPhoto" @add-to-album="addToAlbum" @batch-delete="deletePhotos"
+      @batch-edit-time="editTime" @batch-edit-location="editLocation" />
     <PhotoLightbox :visible="visible" :initial-details="lightboxInitialDetails" :image="photos[index] ?? null" :images="photos" :current-index="index"
       :has-prev="index > 0" :has-next="index < photos.length - 1" @close="close" @prev="prev" @next="next" @select="value => index = value" />
     <ResponsiveDialog v-model="showPicker" title="选择搜索图片" max-width="64rem" mobile-mode="fullscreen" custom-mobile-header panel-class="image-search-picker">
       <div class="min-h-0 flex-1 md:h-[72dvh] md:flex-none"><PhotoSelector v-if="showPicker" title="选择搜索图片" is-selector single-select embedded mobile-dialog-header @select="selectPhoto" @cancel="showPicker = false" /></div>
     </ResponsiveDialog>
+    <AlbumSelector v-model:visible="showAlbumSelector" :photo-ids="albumPhotoIds" @success="gallery?.exitSelectionMode()" />
+    <TimeBatchEditor v-if="showTimeEditor" v-model="showTimeEditor" :photo-ids="editPhotoIds" @updated="search" />
+    <LocationBatchEditor v-if="showLocationEditor" v-model="showLocationEditor" :photo-ids="editPhotoIds" :photos="photos" @success="search" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Upload, Images, ScanSearch } from 'lucide-vue-next'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import BackButton from '@/components/ui/BackButton.vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import PhotoSelector from '@/components/PhotoSelector.vue'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
+import AlbumSelector from '@/components/AlbumSelector.vue'
+import TimeBatchEditor from '@/components/TimeBatchEditor.vue'
+import LocationBatchEditor from '@/components/LocationBatchEditor.vue'
 import { useAppBack } from '@/composables/useAppBack'
 import { usePhotoViewer } from '@/composables/usePhotoViewer'
 import { mapPhotoToImage } from '@/stores/photoStore'
+import { useUiStore } from '@/stores/uiStore'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 import searchService from '@/api/search'
+import { albumService } from '@/api/album'
 import type { AlbumImage } from '@/types/album'
 
 const route = useRoute()
 const router = useRouter()
+const uiStore = useUiStore()
 const goBack = useAppBack('/mobile-search')
 const fileInput = ref<HTMLInputElement | null>(null)
 const showPicker = ref(false)
@@ -61,6 +75,43 @@ const photos = ref<AlbumImage[]>([])
 const loading = ref(false)
 const searched = ref(false)
 const error = ref('')
+const gallery = ref<InstanceType<typeof FlatPhotoGallery>>()
+const showAlbumSelector = ref(false)
+const albumPhotoIds = ref<string[]>([])
+const editPhotoIds = ref<string[]>([])
+const showTimeEditor = ref(false)
+const showLocationEditor = ref(false)
+const addToAlbum = (ids: string[]) => {
+  albumPhotoIds.value = ids
+  showAlbumSelector.value = true
+}
+const editTime = (ids: string[]) => {
+  editPhotoIds.value = ids
+  showTimeEditor.value = true
+}
+const editLocation = (ids: string[]) => {
+  editPhotoIds.value = ids
+  showLocationEditor.value = true
+}
+let deleting = false
+const deletePhotos = async (ids: string[], preserveSelection = false) => {
+  if (deleting || !ids.length) return
+  deleting = true
+  try {
+    await ElMessageBox.confirm(`将选中的 ${ids.length} 张照片移入回收站？`, '移入回收站', {
+      confirmButtonText: '移入回收站', cancelButtonText: '取消', type: 'warning',
+    })
+    await albumService.batchUpdatePhotos({ photo_ids: ids, action: 'delete' })
+    const removed = new Set(ids)
+    photos.value = photos.value.filter(photo => !removed.has(photo.id))
+    if (!preserveSelection) gallery.value?.exitSelectionMode()
+    ElMessage.success('已移入回收站')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('移入回收站失败')
+  } finally {
+    deleting = false
+  }
+}
 const { visible, index, open, close, prev, next } = usePhotoViewer(photos)
 const lightboxInitialDetails = ref(false)
 const openPhoto = (photo: AlbumImage, details = false) => {
@@ -75,6 +126,8 @@ const search = async () => {
   const current = ++requestId
   loading.value = true
   error.value = ''
+  close()
+  gallery.value?.exitSelectionMode()
   photos.value = []
   searched.value = false
   try {
@@ -133,7 +186,11 @@ watch(() => route.query.photo, (value) => {
   previewUrl.value = thumbnailUrl(value, 'small')
   void search()
 }, { immediate: true })
-onUnmounted(() => { ++requestId; releasePreview() })
+onBeforeUnmount(() => {
+  ++requestId
+  if (gallery.value?.isSelectionMode) uiStore.setSelectionActive(false)
+  releasePreview()
+})
 </script>
 
 <style>

@@ -14,7 +14,8 @@ function harness(service = {}) {
   let cleanup
   const context = { ref, watch, useRoute: () => route, useRouter: () => ({ async replace(value) { route.query = value.query || {} } }),
     useAppBack: () => () => {}, usePhotoViewer: () => ({ visible: ref(false), index: ref(0), open() {}, close() {}, prev() {}, next() {} }),
-    onUnmounted(fn) { cleanup = fn }, mapPhotoToImage: photo => photo, thumbnailUrl: id => `/thumbnail/${id}`,
+    useUiStore: () => ({ setSelectionActive() {} }),
+    onBeforeUnmount(fn) { cleanup = fn }, mapPhotoToImage: photo => photo, thumbnailUrl: id => `/thumbnail/${id}`,
     URL: { createObjectURL(file) { uploads.push(file); return `blob:${uploads.length}` }, revokeObjectURL(url) { revoked.push(url) } },
     searchService: { async searchByImage() { return [] }, async searchByPhoto() { return [] }, ...service } }
   vm.createContext(context)

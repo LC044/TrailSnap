@@ -73,6 +73,12 @@ def scope_query(db, user, scope: MediaScope):
         query = query.filter(Photo.id.notin_(scope.excluded_ids))
     if scope.media_type != "all":
         query = query.filter(Photo.file_type == FileType(scope.media_type))
+    if scope.filters:
+        filters = {key: values for key, values in scope.filters.model_dump().items() if values}
+        if filters:
+            from app.crud.photo import _build_photo_filter_query
+            matches = _build_photo_filter_query(db, user_id=user.id, **filters).with_entities(Photo.id)
+            query = query.filter(Photo.id.in_(matches))
     date_column = func.coalesce(Photo.photo_time, Photo.upload_time) if scope.upload_time_fallback else Photo.photo_time
     if scope.start_date:
         query = query.filter(date_column >= datetime.combine(scope.start_date, time.min))

@@ -22,7 +22,8 @@ test.describe('P1 - 视图合同补测 @views-coverage', () => {
     await page.goto('/toolbox');
 
     await expect(page.locator('h1.ts-page-title', { hasText: '工具箱' })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('region', { name: '照片工具' })).toBeVisible();
+    await expect(page.getByRole('region', { name: '照片清理' })).toBeVisible();
+    await expect(page.getByRole('region', { name: '照片整理' })).toBeVisible();
     await expect(page.getByRole('region', { name: '清理与修复' })).toHaveCount(0);
 
     // 重构后首页按用途分组：整理与命名 3 张 + 清理与修复 4 张，共 7 个入口。

@@ -336,7 +336,7 @@ async def execute_plan(worker, task, db):
                                            Photo.is_deleted.is_(False)).first()
             if not photo:
                 raise ValueError("影像已删除或无权限")
-            if canonical(photo.file_path) != canonical(item.source) or fingerprint(photo) != item.fingerprint:
+            if canonical(photo.file_path) != canonical(item.source) or not matches_fingerprint(photo, item.fingerprint):
                 raise ValueError("原文件或影像信息已变化，请重新预览")
             if item.status == "running":
                 raise ValueError("上次操作中断，需要人工核对文件状态")
@@ -391,6 +391,12 @@ class SimpleUndo:
     action = "move"
 
 
+def matches_fingerprint(photo, expected):
+    rename_fields = expected.get("rename_metadata")
+    current = fingerprint(photo, rename_fields) if rename_fields else fingerprint(photo)
+    return current == expected
+
+
 def recovery_plan(db, user, original, *, undo=False):
     if original.status in {"queued", "running"}:
         raise ValueError("请等待原任务结束")
@@ -422,7 +428,7 @@ def recovery_plan(db, user, original, *, undo=False):
                 item.detail = {"recovery_of": row.id}
             if original.kind in {"rename", "organize"} and os.path.lexists(target):
                 raise ValueError("恢复/重试目标已占用，不会覆盖")
-            if not undo and fingerprint(photo) != row.fingerprint:
+            if not undo and not matches_fingerprint(photo, row.fingerprint):
                 raise ValueError("源影像已变化，请重新预览")
             ready += 1
         except (ValueError, OSError) as error:

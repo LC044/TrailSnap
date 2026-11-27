@@ -7,7 +7,7 @@ const ts = require('typescript')
 const vue = require('vue')
 const compiler = require('vue/compiler-sfc')
 
-function load(filename, dependencies = {}, storage = {}) {
+function load(filename, dependencies = {}, storage = {}, crypto = { randomUUID: () => 'context-id' }) {
   let source = fs.readFileSync(path.resolve(__dirname, '../../src', filename), 'utf8')
   if (filename.endsWith('.vue')) {
     source = compiler.compileScript(compiler.parse(source).descriptor, { id: filename }).content
@@ -20,9 +20,10 @@ function load(filename, dependencies = {}, storage = {}) {
     name => {
       if (name === 'vue') return vue
       if (name === 'lucide-vue-next' || name.endsWith('.vue')) return {}
+      if (name === './toolPlanDisplay') return load('views/toolbox/toolPlanDisplay.ts')
       if (name in dependencies) return dependencies[name]
       throw new Error(name)
-    }, module, module.exports, storage, { randomUUID: () => 'context-id' },
+    }, module, module.exports, storage, crypto,
   )
   return module.exports
 }
@@ -49,15 +50,19 @@ const deferred = () => {
   return { promise, resolve }
 }
 
-test('cleanup saves cross-page selection on server and loads references by page', async () => {
+test('cleanup retains server selection while appending results and references', async () => {
   const calls = []
   const plan = vue.reactive({ id: 'scan-one', kind: 'cleanup', version: 1, status: 'preview',
     summary: { phase: 'done', total: 30001, candidate: 20001 },
     request: { scope: api().emptyScope(), config: api().defaultConfig('cleanup') } })
   const workflowApi = {
-    items: async () => ({ total: 20001, selected_count: 10001, items: [{ id: 7, selected: false, photo_id: 'photo', source: '/a.jpg', status: 'candidate', detail: { group_id: 2 } }] }),
+    items: async (_id, offset) => {
+      calls.push(['items', offset])
+      return { total: 2, selected_count: offset ? 10002 : 10001,
+        items: [{ id: 7 + offset, selected: false, photo_id: 'photo-' + offset, status: 'candidate', detail: { group_id: 2 + offset } }] }
+    },
     selection: async (...args) => { calls.push(['selection', ...args]); return { selected_count: 10002 } },
-    members: async (...args) => { calls.push(['members', ...args]); return { total: 3000, representative_id: 'representative', items: [{ photo_id: 'reference', in_scope: false }] } },
+    members: async (...args) => { calls.push(['members', ...args]); return { total: 3000, representative_id: 'representative', items: [{ photo_id: 'reference-' + args[2], in_scope: false }] } },
   }
   const component = load('views/toolbox/ToolPlanPreview.vue', {
     '@/api/toolboxWorkflows': { workflowApi }, '@/utils/mediaUrl': { thumbnailUrl: id => id },
@@ -68,19 +73,24 @@ test('cleanup saves cross-page selection on server and loads references by page'
   assert.equal(ctx.state.selectedCount.value, 10001)
   await ctx.state.toggle(7, true)
   assert.equal(ctx.state.selectedCount.value, 10002)
-  assert.equal(ctx.state.rows.value[0].selected, true)
+  assert.equal(ctx.state.isSelected(ctx.state.rows.value[0]), true)
   assert.deepEqual(calls.find(call => call[0] === 'selection').slice(2), [[7], true])
   assert.equal(ctx.state.photoGroups.value.length, 1)
   assert.equal(ctx.state.photoGroups.value[0].groupId, 2)
-  assert.ok(calls.some(call => call[0] === 'members' && call[3] === 0))
-  await ctx.state.loadReferences(2, 3)
-  assert.deepEqual(calls.at(-1), ['members', 'scan-one', 2, 48])
-  assert.equal(ctx.state.references.value[2].items[0].in_scope, false)
+  await ctx.state.load()
+  assert.deepEqual(calls.filter(call => call[0] === 'items'), [['items', 0], ['items', 1]])
+  assert.deepEqual(ctx.state.rows.value.map(item => item.id), [7, 8])
+  assert.equal(ctx.state.isSelected(ctx.state.rows.value[0]), true)
+  await ctx.state.loadReferences(2)
+  await ctx.state.loadReferences(2)
+  assert.deepEqual(calls.filter(call => call[0] === 'members').map(call => call[3]), [0, 1])
+  assert.deepEqual(ctx.state.references.value[2].items.map(item => item.photo_id), ['reference-0', 'reference-1'])
   ctx.unmount()
 })
 
 test('new scope is empty, and directory cancellation does not select a folder', async () => {
   const scope = api().emptyScope()
+  assert.equal(scope.source, 'all')
   const updates = []
   const component = load('views/toolbox/MediaScopeSelector.vue', {
     '@/api/album': { albumService: {} },
@@ -90,7 +100,7 @@ test('new scope is empty, and directory cancellation does not select a folder', 
   const ctx = mount(component, { scope, count: null, checking: false }, {
     'onUpdate:scope': value => updates.push(value),
   })
-  assert.equal(ctx.state.valid.value, false)
+  assert.equal(ctx.state.valid.value, true)
   ctx.state.folderPicker.value = true
   await vue.nextTick()
   ctx.state.folderPicker.value = false
@@ -156,14 +166,34 @@ test('selection entry freezes explicit deduplicated IDs and account context', ()
   const saved = new Map()
   const entry = load('utils/toolboxEntry.ts', {
     '@/api/toolboxWorkflows': api(),
-  }, { setItem: (key, value) => saved.set(key, JSON.parse(value)) })
+  }, { setItem: (key, value) => saved.set(key, value), getItem: key => saved.get(key) })
   const calls = []
   entry.openToolForSelection({ push: value => calls.push(value) }, 'owner', ['a', 'a', 'b'], 'organize')
-  assert.deepEqual(saved.get('trailsnap:toolbox:context:context-id').scope.photo_ids, ['a', 'b'])
-  assert.equal(saved.get('trailsnap:toolbox:context:context-id').owner, 'owner')
+  assert.deepEqual(entry.readToolboxScope('context-id', 'owner').photo_ids, ['a', 'b'])
+  assert.equal(entry.readToolboxScope('context-id', 'other'), null)
+  const expired = JSON.parse(saved.get('trailsnap:toolbox:context:context-id'))
+  expired.created -= 16 * 60 * 1000
+  saved.set('trailsnap:toolbox:context:context-id', JSON.stringify(expired))
+  assert.equal(entry.readToolboxScope('context-id', 'owner'), null)
   assert.equal(calls[0].path, '/toolbox/organize')
   entry.openToolForSelection({ push: value => calls.push(value) }, 'owner', [], 'rename')
   assert.equal(calls.length, 1)
+})
+
+test('selection and folder shortcuts work on HTTP with session storage blocked', () => {
+  const blocked = () => { throw new Error('session storage unavailable') }
+  let nextByte = 1
+  const entry = load('utils/toolboxEntry.ts', { '@/api/toolboxWorkflows': api() },
+    { setItem: blocked, getItem: blocked }, { getRandomValues: bytes => bytes.fill(nextByte++) })
+  const router = { push: value => value }
+  const organize = entry.openToolForSelection(router, 'owner', ['a'], 'organize')
+  const rename = entry.openToolForFolder(router, 'owner', 'E:/Photos', 'rename')
+  assert.equal(organize.path, '/toolbox/organize')
+  assert.equal(rename.path, '/toolbox/rename')
+  assert.notEqual(organize.query.context, rename.query.context)
+  assert.deepEqual(entry.readToolboxScope(organize.query.context, 'owner').photo_ids, ['a'])
+  assert.deepEqual(entry.readToolboxScope(rename.query.context, 'owner').folders, ['E:/Photos'])
+  assert.equal(entry.readToolboxScope(organize.query.context, 'other'), null)
 })
 
 test('organize preserves file decisions and normalizes removed advanced settings', () => {
@@ -181,6 +211,14 @@ test('organize preserves file decisions and normalizes removed advanced settings
   assert.equal(ctx.state.currentPreset.value, 'year-city')
   config.rules[1].groups = ['city-id']
   assert.equal(ctx.state.currentPreset.value, undefined)
+  for (const [id, path] of [
+    ['year', '2025'], ['day', '2025/05/04'], ['country-province-city', '中国/浙江省/杭州市'],
+    ['city-district', '杭州市/西湖区'], ['person', '小林'], ['category', '旅行'],
+  ]) {
+    ctx.state.applyPreset(id)
+    assert.equal(ctx.state.currentPreset.value, id)
+    assert.equal(ctx.state.exampleTarget.value, `/photos/${path}/IMG_0001.jpg`)
+  }
   ctx.unmount()
 })
 
@@ -218,6 +256,7 @@ test('rename style switches between simple choices and custom rules without accu
 test('active tasks open each cleanup mode and undo in the matching tool with its plan', () => {
   const calls = []
   const component = load('views/toolbox/ToolboxHomePage.vue', {
+    'element-plus': {},
     '@/utils/mediaUrl': { thumbnailUrl: id => id },
     'vue-router': { useRouter: () => ({ push: value => calls.push(value) }), useRoute: () => ({ query: {} }) },
     '@/api/toolboxWorkflows': { workflowApi: { history: async () => [] } },
@@ -252,14 +291,15 @@ for (const cleanupMode of ['similar', 'duplicate']) test(cleanupMode + ' group i
   const ctx = mount(component, { plan, executing: false })
   await ctx.state.load()
   assert.equal(ctx.state.photoGroups.value.length, 1)
+  await ctx.state.loadReferences(8)
   assert.deepEqual(ctx.state.photoGroups.value[0].items.map(item => item.source), items.map(item => item.source))
   await ctx.state.toggle(5, true)
-  assert.equal(ctx.state.photoGroups.value[0].items[4].selected, true)
+  assert.equal(ctx.state.isSelected(ctx.state.photoGroups.value[0].items[4]), true)
   assert.equal(ctx.state.selectedCount.value, 1)
   ctx.unmount()
 })
 
-for (const mode of ['duplicate', 'similar']) test(mode + ' group paging ignores stale responses and errors independently per group', async () => {
+for (const mode of ['duplicate', 'similar']) test(mode + ' group paging serializes requests and retries the failed offset independently', async () => {
   const pending = []
   const plan = { id: 'paging', kind: 'cleanup', status: 'preview', summary: { phase: 'done' },
     request: { config: { cleanup_mode: mode } } }
@@ -271,31 +311,31 @@ for (const mode of ['duplicate', 'similar']) test(mode + ' group paging ignores 
   }).default
   const ctx = mount(component, { plan, executing: false })
   await ctx.state.load()
-  const older = ctx.state.loadReferences(8, 2)
-  const newer = ctx.state.loadReferences(8, 3)
-  const otherGroup = ctx.state.loadReferences(9, 2)
-  const result = id => ({ total: 100, items: [{ photo_id: id }] })
-  pending[1].resolve(result('new'))
-  await newer
-  pending[0].resolve(result('old'))
-  await older
-  pending[2].resolve(result('other'))
-  await otherGroup
-  assert.equal(ctx.state.references.value[8].items[0].photo_id, 'new')
-  assert.equal(ctx.state.referencePages.value[8], 3)
-  assert.equal(ctx.state.referencePages.value[9], 2)
-  const staleFailure = ctx.state.loadReferences(8, 4)
-  const latest = ctx.state.loadReferences(8, 5)
-  pending[4].resolve(result('latest'))
-  await latest
-  pending[3].reject(new Error('stale failure'))
-  await staleFailure
-  assert.equal(ctx.state.error.value, '')
-  assert.equal(ctx.state.referencePages.value[8], 5)
-  const failed = ctx.state.loadReferences(8, 6)
-  pending[5].reject(new Error('current failure'))
+  const first = ctx.state.loadReferences(8)
+  await ctx.state.loadReferences(8)
+  const otherGroup = ctx.state.loadReferences(9)
+  assert.deepEqual(pending.map(({ group, offset }) => [group, offset]), [[8, 0], [9, 0]])
+  const result = id => ({ total: 2, items: [{ photo_id: id }] })
+  pending[0].resolve(result('first'))
+  pending[1].resolve(result('other'))
+  await Promise.all([first, otherGroup])
+  const failed = ctx.state.loadReferences(8)
+  pending[2].reject(new Error('current failure'))
   await failed
-  assert.equal(ctx.state.error.value, '参考照片加载失败，请重试')
-  assert.equal(ctx.state.referencePages.value[8], 5)
+  assert.equal(ctx.state.memberErrors.value[8], true)
+  assert.equal(ctx.state.canLoadMembers(9), true)
+  assert.deepEqual(ctx.state.references.value[8].items.map(item => item.photo_id), ['first'])
+  const retry = ctx.state.loadReferences(8)
+  assert.equal(pending[3].offset, 1)
+  pending[3].resolve(result('second'))
+  await retry
+  assert.equal(ctx.state.memberErrors.value[8], false)
+  assert.equal(ctx.state.canLoadMembers(8), false)
+  assert.deepEqual(ctx.state.references.value[8].items.map(item => item.photo_id), ['first', 'second'])
+  const stale = ctx.state.loadReferences(9)
+  ctx.state.resetResults()
+  pending[4].resolve(result('stale'))
+  await stale
+  assert.equal(ctx.state.references.value[9], undefined)
   ctx.unmount()
 })

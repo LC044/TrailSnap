@@ -26,11 +26,17 @@ router = APIRouter()
 
 @router.post("", response_model=BaseResponse[schemas.Album])
 async def create_album(album: schemas.AlbumCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if album.photo_ids and album.type != 'user':
+        return BaseResponse.fail(code=400, msg="只能将所选照片加入普通相册")
     query_embedding = None
     if album.type == 'smart' and album.description:
         query_embedding = await async_get_embedding(album.description, current_user.id, db)
 
-    db_album = crud.create_album(db=db, album=album, query_embedding=query_embedding, user_id=current_user.id)
+    try:
+        db_album = crud.create_album(db=db, album=album, query_embedding=query_embedding, user_id=current_user.id)
+    except ValueError as error:
+        db.rollback()
+        return BaseResponse.fail(code=400, msg=str(error))
     
     # Trigger async scan for conditional/smart albums
     if db_album.type in ['conditional', 'smart']:

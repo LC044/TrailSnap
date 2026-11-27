@@ -153,9 +153,11 @@
               @selection-change="handleSelectionChange"
             />
             <div v-if="!displayStore.timelineStats && displayStore.hasMore" class="mt-4 flex justify-center">
-              <button type="button" class="ts-button ts-button-secondary" :disabled="displayStore.loading" @click="loadMore">
+              <button v-if="!autoLoad" type="button" class="ts-button ts-button-secondary" :disabled="displayStore.loading" @click="loadMore">
                 {{ displayStore.loading ? '加载中…' : '加载更多照片' }}
               </button>
+              <p v-else-if="displayStore.loading" role="status" class="ts-muted text-sm">正在加载更多照片…</p>
+              <AutoLoadSentinel v-else-if="!displayStore.error" @load="loadMore" />
             </div>
           </div>
 
@@ -202,6 +204,7 @@ import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useUiStore } from '@/stores/uiStore'
 import { usePhotoPickerSearchStore } from '@/stores/photoPickerSearchStore'
+import AutoLoadSentinel from '@/components/ui/AutoLoadSentinel.vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import MobileSearch from '@/views/search/MobileSearch.vue'
@@ -227,9 +230,11 @@ const props = defineProps<{
   embedded?: boolean
   mobileDialogHeader?: boolean
   singleSelect?: boolean
+  autoLoad?: boolean
   busy?: boolean
   enableFilters?: boolean
   allowedFileTypes?: string[]
+  initialSelectedIds?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -378,6 +383,7 @@ onMounted(async () => {
   try {
     if (props.isSelector) {
       galleryRef.value?.enterSelectionMode()
+      if (props.initialSelectedIds?.length) galleryRef.value?.selectPhotos(props.initialSelectedIds)
     }
     // Initial Load for selector
     await albumStore.fetchAlbums()
