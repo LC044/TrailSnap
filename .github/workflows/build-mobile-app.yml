@@ -8,6 +8,12 @@ on:
       - 'package/website/**'
       - 'scripts/release_assets.py'
       - '.github/workflows/build-mobile-app.yml'
+      - '!package/website/tests/**'
+      - '!package/website/e2e-system/**'
+      - '!package/website/playwright/**'
+      - '!package/website/playwright.config.ts'
+      - '!package/website/android/app/src/test/**'
+      - '!package/website/android/app/src/androidTest/**'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
@@ -15,6 +21,12 @@ on:
       - 'package/website/**'
       - 'scripts/release_assets.py'
       - '.github/workflows/build-mobile-app.yml'
+      - '!package/website/tests/**'
+      - '!package/website/e2e-system/**'
+      - '!package/website/playwright/**'
+      - '!package/website/playwright.config.ts'
+      - '!package/website/android/app/src/test/**'
+      - '!package/website/android/app/src/androidTest/**'
   workflow_dispatch:
 
 concurrency:

@@ -36,6 +36,10 @@ PostgreSQL 用例从 `TS_DB_URL` 所指的测试服务器创建独立随机数�
 
 设置 `TS_TEST_DESKTOP_PORTABLE_TEMPLATE` 可验收最终 Windows ZIP 的多实例、异常恢复、更新提交、目录搬移与冻结后端复制实例。设置 `TS_TEST_DESKTOP_CONVERTED_INSTANCE` 可复用已转换的测试副本验证最终二进制启动；该目录必须位于仓库 `tests/.cache/desktop-portable/`，不会允许指向用户原库。
 
+### 定时 CI 值守
+
+Codex 每天四轮修复失败或补测试，在独立 worktree 中编辑，推送值守 PR 触发 [GitHub Actions Tests 工作流](../.github/workflows/tests.yml)，不在本地跑 CI。监控脚本每 5 分钟检查当前 PR 提交，只输出结果摘要。前三轮不合并，20:00（北京时间）轮在检查通过后收尾合并。详见 [定时测试交付清单](scripts/NIGHTLY-CI-DELIVERY.md)。
+
 ### 脚本结构（`tests/scripts/`）
 
 ```

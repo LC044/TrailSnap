@@ -12,8 +12,17 @@ on:
       - 'package/ai/**'
       - 'scripts/release_assets.py'
       - 'package/fnos/**'
-      - 'tests/scripts/run-tests.ps1'
       - '.github/workflows/build-desktop.yml'
+      - '!package/server/tests/**'
+      - '!package/ai/tests/**'
+      - '!package/website/tests/**'
+      - '!package/website/e2e-system/**'
+      - '!package/website/playwright/**'
+      - '!package/website/playwright.config.ts'
+      - '!package/website/android/app/src/test/**'
+      - '!package/website/android/app/src/androidTest/**'
+      - '!package/desktop/launcher/tests/**'
+      - '!package/fnos/tests/**'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
@@ -24,8 +33,17 @@ on:
       - 'package/ai/**'
       - 'scripts/release_assets.py'
       - 'package/fnos/**'
-      - 'tests/scripts/run-tests.ps1'
       - '.github/workflows/build-desktop.yml'
+      - '!package/server/tests/**'
+      - '!package/ai/tests/**'
+      - '!package/website/tests/**'
+      - '!package/website/e2e-system/**'
+      - '!package/website/playwright/**'
+      - '!package/website/playwright.config.ts'
+      - '!package/website/android/app/src/test/**'
+      - '!package/website/android/app/src/androidTest/**'
+      - '!package/desktop/launcher/tests/**'
+      - '!package/fnos/tests/**'
 
 concurrency:
   group: ${{ startsWith(github.ref, 'refs/tags/v') && format('desktop-release-{0}', github.ref_name) || format('{0}-{1}', github.workflow, github.ref) }}

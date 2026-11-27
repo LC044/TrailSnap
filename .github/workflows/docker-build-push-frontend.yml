@@ -7,12 +7,24 @@ on:
     paths:
       - 'package/website/**'
       - '.github/workflows/docker-build-push-frontend.yml'
+      - '!package/website/tests/**'
+      - '!package/website/e2e-system/**'
+      - '!package/website/playwright/**'
+      - '!package/website/playwright.config.ts'
+      - '!package/website/android/app/src/test/**'
+      - '!package/website/android/app/src/androidTest/**'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
     paths:
       - 'package/website/**'
       - '.github/workflows/docker-build-push-frontend.yml'
+      - '!package/website/tests/**'
+      - '!package/website/e2e-system/**'
+      - '!package/website/playwright/**'
+      - '!package/website/playwright.config.ts'
+      - '!package/website/android/app/src/test/**'
+      - '!package/website/android/app/src/androidTest/**'
   schedule:
     # 凌晨 4 点（北京时间，UTC+8）= UTC 20:00；每日构建并推送前端镜像
     - cron: '0 20 * * *'
