@@ -23,6 +23,12 @@
           <!-- Desktop Buttons -->
           <div class="hidden md:flex items-center gap-3 flex-shrink-0">
             <a
+              href="https://feedback.trailsnap.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-sm font-medium text-neutral-dark dark:text-gray-300 hover:text-primary transition-colors"
+            >{{ lang === 'zh-CN' ? '帮助反馈' : 'Help' }}</a>
+            <a
               href="https://github.com/LC044/TrailSnap"
               target="_blank"
               rel="noopener noreferrer"
@@ -54,6 +60,10 @@
         <a href="https://github.com/LC044/TrailSnap" target="_blank" rel="noopener noreferrer" class="inline-flex w-fit items-center gap-2 text-neutral-dark transition-colors hover:text-primary dark:text-gray-300" @click="isMobileMenuOpen = false">
           <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.168 6.839 9.49.5.092.683-.217.683-.483 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.004.07 1.532 1.03 1.532 1.03.892 1.529 2.341 1.087 2.91.831.091-.646.349-1.087.635-1.338-2.22-.253-4.555-1.11-4.555-4.942 0-1.092.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.805c.85.004 1.705.115 2.504.337 1.909-1.294 2.748-1.025 2.748-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.591 1.028 2.683 0 3.842-2.339 4.686-4.566 4.934.359.31.678.92.678 1.852 0 1.337-.012 2.416-.012 2.744 0 .268.18.58.688.482A10.002 10.002 0 0022 12c0-5.523-4.477-10-10-10z" /></svg>
           GitHub
+        </a>
+        <a href="https://feedback.trailsnap.cn/" target="_blank" rel="noopener noreferrer" class="inline-flex w-fit items-center gap-2 text-neutral-dark transition-colors hover:text-primary dark:text-gray-300" @click="isMobileMenuOpen = false">
+          {{ lang === 'zh-CN' ? '帮助反馈' : 'Help' }}
+          <span aria-hidden="true">↗</span>
         </a>
         <div class="flex space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
           <button class="flex-1 py-2.5 rounded-xl bg-primary text-white font-bold shadow-sm" @click="goLink(lang === 'zh-CN' ? '/download' : '/en/download')">{{ t.nav.download }}</button>
