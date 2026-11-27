@@ -29,7 +29,8 @@
     "@leelaa/vitepress-plugin-extended": "^1.0.7",
     "lucide-vue-next": "^0.562.0",
     "markdown-it-mathjax3": "^4.3.2",
-    "nprogress": "^0.2.0"
+    "nprogress": "^0.2.0",
+    "qrcode": "1.5.4"
   },
   "pnpm": {
     "overrides": {

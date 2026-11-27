@@ -173,6 +173,10 @@ onBeforeUnmount(() => {
         </nav>
         <div class="nav-actions">
           <a class="nav-doc" href="/docs/guide/install">文档 <span aria-hidden="true">↗</span></a>
+          <a class="nav-feedback" href="https://feedback.trailsnap.cn/" target="_blank" rel="noopener">帮助反馈 <span aria-hidden="true">↗</span></a>
+          <a class="nav-gh" href="https://github.com/LC044/TrailSnap" target="_blank" rel="noopener" aria-label="在 GitHub 查看行影集源码" title="GitHub">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.168 6.839 9.49.5.092.683-.217.683-.483 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.004.07 1.532 1.03 1.532 1.03.892 1.529 2.341 1.087 2.91.831.091-.646.349-1.087.635-1.338-2.22-.253-4.555-1.11-4.555-4.942 0-1.092.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.805c.85.004 1.705.115 2.504.337 1.909-1.294 2.748-1.025 2.748-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.591 1.028 2.683 0 3.842-2.339 4.686-4.566 4.934.359.31.678.92.678 1.852 0 1.337-.012 2.416-.012 2.744 0 .268.18.58.688.482A10.002 10.002 0 0022 12c0-5.523-4.477-10-10-10z" /></svg>
+          </a>
           <button class="theme-toggle" type="button" :aria-pressed="isDark" :aria-label="themeLabel" @click="toggleTheme">
             <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4 8.5 8.5 0 1 0 20 14.2Z" /></svg>
             <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" /><path d="M12 2v2.4M12 19.6V22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2 12h2.4M19.6 12H22M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" /></svg>
@@ -199,6 +203,10 @@ onBeforeUnmount(() => {
         <div class="mobile-menu-foot">
           <a class="btn btn-primary" href="/download" @click="closeMenu">下载行影集 <span class="btn-arrow" aria-hidden="true">↓</span></a>
           <a class="mobile-demo" href="https://demo.trailsnap.cn" target="_blank" rel="noopener">或先在线体验 <span aria-hidden="true">↗</span></a>
+          <div class="mobile-menu-links">
+            <a href="https://github.com/LC044/TrailSnap" target="_blank" rel="noopener" @click="closeMenu">GitHub <span aria-hidden="true">↗</span></a>
+            <a href="https://feedback.trailsnap.cn/" target="_blank" rel="noopener" @click="closeMenu">需求平台 <span aria-hidden="true">↗</span></a>
+          </div>
         </div>
       </div>
     </div>

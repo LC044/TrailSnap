@@ -16,7 +16,7 @@
             <aside class="release-card" aria-live="polite">
               <span>LATEST RELEASE</span>
               <strong>{{ releaseName || (isEnglish ? 'Checking…' : '正在检查…') }}</strong>
-              <small>{{ isEnglish ? 'Windows · macOS · Linux · fnOS' : 'Windows · macOS · Linux · 飞牛 fnOS' }}</small>
+              <small>{{ isEnglish ? 'Windows · macOS · Linux · fnOS · Android' : 'Windows · macOS · Linux · 飞牛 fnOS · Android' }}</small>
             </aside>
           </div>
           <div role="tablist" :aria-label="copy.badge" class="install-tabs">
@@ -95,6 +95,54 @@
           </article>
           <InstallPrompt class="nas-prompt" :title="copy.nasPromptTitle" :description="copy.nasPromptDescription" :prompt="nasPrompt" :copy-label="copy.copyPrompt" :copied-label="copy.promptCopied" :error-label="copy.copyFailed" :show-label="copy.showPrompt" :hide-label="copy.hidePrompt" />
         </section>
+
+        <section v-show="activeMode === 'mobile'" id="mobile" role="tabpanel" aria-labelledby="mobile-tab" tabindex="0">
+          <aside class="mobile-notice" role="note">
+            <span class="notice-mark" aria-hidden="true">!</span>
+            <div>
+              <h2>{{ copy.mobileNoticeTitle }}</h2>
+              <p>{{ copy.mobileNoticeBody }}</p>
+              <div class="notice-links">
+                <a :href="docLink('/docs/guide/install')">{{ copy.mobileNoticeDeploy }} <span aria-hidden="true">↗</span></a>
+                <a :href="docLink('/docs/guide/mobile-app')">{{ copy.mobileNoticeConnect }} <span aria-hidden="true">↗</span></a>
+              </div>
+            </div>
+          </aside>
+
+          <article class="download-card mobile-card">
+            <div class="platform-heading">
+              <span class="platform-icon"><Smartphone :size="32" aria-hidden="true" /></span>
+              <div><h2>{{ copy.mobileTitle }}</h2><p>{{ copy.mobileDescription }}</p></div>
+            </div>
+            <div class="format-tags"><span>Android 8.0+</span><span>.apk</span><span>{{ copy.mobileClientOnly }}</span></div>
+            <a :href="apkUrl" class="primary-action" :aria-busy="loadingPlatform === 'mobile'" @click="onApkDownload">
+              <Download :size="18" aria-hidden="true" />{{ loadingPlatform === 'mobile' ? copy.preparing : hasApk ? copy.mobileDownload : copy.mobileBrowse }}
+            </a>
+            <p v-if="mobileAccel" class="accel-options">
+              <span>{{ copy.accelHint }}</span>
+              <a :href="mobileAccel" target="_blank" rel="noopener noreferrer">{{ copy.accelLines[0] }} <ArrowUpRight :size="13" aria-hidden="true" /></a>
+            </p>
+            <p v-if="!hasApk" class="preflight-link" role="status">{{ copy.mobilePending }}</p>
+            <p class="mobile-note">{{ copy.mobileIos }}</p>
+            <p class="mirror-download">{{ copy.mobileGuideHint }} <a :href="docLink('/docs/guide/mobile-app')">{{ copy.mobileGuide }} <ArrowUpRight :size="13" aria-hidden="true" /></a></p>
+            <figure v-if="apkQr" class="apk-qr">
+              <img :src="apkQr" :alt="copy.mobileQrAlt" width="112" height="112">
+              <figcaption>
+                <strong>{{ copy.mobileQrTitle }}</strong>
+                <span>{{ copy.mobileQrHint }}</span>
+              </figcaption>
+            </figure>
+          </article>
+
+          <article class="download-card mobile-card">
+            <div class="platform-heading">
+              <span class="platform-icon"><Server :size="32" aria-hidden="true" /></span>
+              <div><h2>{{ copy.mobileStepsTitle }}</h2><p>{{ copy.mobileStepsDescription }}</p></div>
+            </div>
+            <ol class="deployment-steps"><li v-for="(step, index) in copy.mobileSteps" :key="step.title"><span class="step-number">{{ index + 1 }}</span><div><h3>{{ step.title }}</h3><p>{{ step.description }}</p></div></li></ol>
+            <a :href="docLink('/docs/guide/install')" class="primary-action">{{ copy.mobileDeployAction }} <ArrowUpRight :size="17" aria-hidden="true" /></a>
+          </article>
+        </section>
       </div>
     </main>
     <ContactFooter />
@@ -106,12 +154,12 @@ import { useData } from 'vitepress'
 import InstallPrompt from './InstallPrompt.vue'
 import ContactFooter from './ContactFooter.vue'
 import SiteChrome from './SiteChrome.vue'
-import { ArrowRight, ArrowUpRight, Download, Server } from 'lucide-vue-next'
+import { ArrowRight, ArrowUpRight, Download, Server, Smartphone } from 'lucide-vue-next'
 import '../landing/home.css'
 import '../landing/subpage.css'
 
 type PlatformKey = 'windows' | 'macos' | 'linux'
-type InstallMode = 'nas' | 'desktop'
+type InstallMode = 'nas' | 'desktop' | 'mobile'
 type DownloadKind = 'installer' | 'portable' | 'appimage' | 'deb'
 type ReleaseAsset = { name: string; browser_download_url: string }
 
@@ -127,6 +175,7 @@ const apiUnavailable = ref(false)
 const activeMode = ref<InstallMode>('desktop')
 const selectedPlatform = ref<PlatformKey | ''>('')
 const featuredDownload = ref<HTMLAnchorElement | null>(null)
+const apkQr = ref('')
 
 async function selectPlatform(platform: PlatformKey) {
   selectedPlatform.value = platform
@@ -162,7 +211,28 @@ const translations = {
     copyPrompt: '复制提示词', promptCopied: '已复制，粘贴给 AI 助手', copyFailed: '复制失败，请展开提示词后选中文字手动复制',
     aiTitle: '装好后，再按需开启 AI 功能',
     aiDescription: '安装包已包含 AI 运行环境，随应用统一更新。人脸识别、文字识别和语义搜索所需模型按需下载',
-    aiGuide: '了解内置 AI 与模型准备'
+    aiGuide: '了解内置 AI 与模型准备',
+    mobileEntry: '移动端 App',
+    mobileNoticeTitle: '先部署服务，才能使用 App',
+    mobileNoticeBody: '行影集 App 只是手机上的客户端，本身不含照片库。请先在电脑或 NAS 上部署 TrailSnap，再在 App 里填写服务器地址登录；没有部署服务，App 无法使用。',
+    mobileNoticeDeploy: '查看部署指南',
+    mobileNoticeConnect: '已有服务？看连接说明',
+    mobileTitle: 'Android App',
+    mobileDescription: '连接你自己的服务器，在手机上浏览、搜索与备份照片',
+    mobileClientOnly: '仅客户端',
+    mobileDownload: '下载 Android APK',
+    mobileBrowse: '查看最新版本文件',
+    mobilePending: '暂未找到当前版本的 APK，请在版本页面选择 Android 安装包',
+    mobileIos: 'iOS 暂无独立 App，可用 Safari 打开你的 TrailSnap 网页版，再「添加到主屏幕」当作 App 使用。',
+    mobileGuideHint: '第一次连接服务器？',
+    mobileGuide: '移动 App 使用指南',
+    mobileStepsTitle: '三步开始使用',
+    mobileStepsDescription: 'App 不连接任何公共云端，账号与照片始终留在你自己的设备上',
+    mobileSteps: [{ title: '部署服务', description: '在电脑或 NAS 上完成部署，并用同一局域网内的浏览器打开 TrailSnap' }, { title: '安装 App', description: '下载 APK 后按系统提示允许「安装未知应用」，请只从官方 GitHub 仓库获取安装包' }, { title: '连接服务器', description: '在 App 中填写 http://局域网IP:3180，或扫描「设置 → 连接手机 App」页面上的二维码' }],
+    mobileDeployAction: '先看部署指南',
+    mobileQrTitle: '扫码下载',
+    mobileQrHint: '用手机扫描二维码，直接下载 Android APK',
+    mobileQrAlt: 'Android APK 下载二维码'
   },
   en: {
     edition: '', installer: 'installer', chooseInstaller: 'Choose installer', dockerLabel: 'Docker deployment', releaseHint: 'See the latest release for available files', changelog: 'Changelog', showPrompt: 'View prompt', hidePrompt: 'Hide prompt', footer: 'Your photos and memories, always yours.',
@@ -191,23 +261,47 @@ const translations = {
     copyPrompt: 'Copy AI prompt', promptCopied: 'Copied, paste into your AI assistant', copyFailed: 'Copy failed. Expand the prompt and select the text to copy manually',
     aiTitle: 'Add AI features after installation',
     aiDescription: 'AI is included and updated with the app. Models for face recognition, OCR and semantic search are downloaded as needed',
-    aiGuide: 'About built-in AI and model preparation'
+    aiGuide: 'About built-in AI and model preparation',
+    mobileEntry: 'Mobile app',
+    mobileNoticeTitle: 'Deploy the server first',
+    mobileNoticeBody: 'The TrailSnap app is only a mobile client and does not include a photo library. Deploy TrailSnap on your computer or NAS first, then enter that address in the app. Without a deployment the app cannot be used.',
+    mobileNoticeDeploy: 'Read the deployment guide',
+    mobileNoticeConnect: 'Already deployed? Connection guide',
+    mobileTitle: 'Android app',
+    mobileDescription: 'Connect to your own server to browse, search and back up photos on your phone',
+    mobileClientOnly: 'client only',
+    mobileDownload: 'Download Android APK',
+    mobileBrowse: 'Browse the latest release',
+    mobilePending: 'No APK was found for this version. Pick the Android package on the release page',
+    mobileIos: 'There is no iOS app yet. Open your TrailSnap site in Safari and use "Add to Home Screen" instead.',
+    mobileGuideHint: 'Connecting for the first time?',
+    mobileGuide: 'Mobile app guide',
+    mobileStepsTitle: 'Three steps to get started',
+    mobileStepsDescription: 'The app never connects to a public cloud. Your account and photos stay on your own device',
+    mobileSteps: [{ title: 'Deploy the server', description: 'Deploy TrailSnap on your computer or NAS, then open it in a browser on the same local network' }, { title: 'Install the app', description: 'Download the APK and allow "Install unknown apps" when prompted. Only install packages from the official GitHub release' }, { title: 'Connect to the server', description: 'Enter http://LAN-IP:3180 in the app, or scan the QR code under Settings → Connect mobile app' }],
+    mobileDeployAction: 'Deploy first',
+    mobileQrTitle: 'Scan to download',
+    mobileQrHint: 'Scan with your phone to download the Android APK directly',
+    mobileQrAlt: 'QR code for the Android APK download'
   }
 }
 const copy = computed(() => isEnglish.value ? translations.en : translations.zh)
 const installModes = computed(() => [
   { key: 'desktop' as const, label: copy.value.desktopEntry },
+  { key: 'mobile' as const, label: copy.value.mobileEntry },
   { key: 'nas' as const, label: copy.value.nasEntry }
 ])
 
 function onTabKeydown(event: KeyboardEvent) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
-  const mode = event.key === 'Home' ? 'desktop'
-    : event.key === 'End' ? 'nas'
-      : activeMode.value === 'nas' ? 'desktop' : 'nas'
-  activeMode.value = mode
-  document.getElementById(`${mode}-tab`)?.focus()
+  const keys = installModes.value.map(mode => mode.key)
+  const current = keys.indexOf(activeMode.value)
+  const next = event.key === 'Home' ? 0
+    : event.key === 'End' ? keys.length - 1
+      : event.key === 'ArrowRight' ? (current + 1) % keys.length : (current - 1 + keys.length) % keys.length
+  activeMode.value = keys[next]
+  document.getElementById(`${keys[next]}-tab`)?.focus()
 }
 
 const platforms = computed(() => [
@@ -287,6 +381,32 @@ function fnosAssetUrl() {
 }
 const hasFnosAsset = computed(() => fnosAssetUrl() !== releaseUrl)
 
+// APK 只随标签发布产出；文件名与 build-mobile-app 工作流保持一致。
+function apkAssetUrl() {
+  return assets.value.find(asset => /-mobile-android-[a-z0-9]+.*\.apk$/.test(asset.name))?.browser_download_url || releaseUrl
+}
+const apkUrl = computed(() => apkAssetUrl())
+const hasApk = computed(() => apkAssetUrl() !== releaseUrl)
+
+// 只用到 toDataURL，本地声明类型避免引入额外的 @types 包。
+type QrEncoder = { toDataURL(text: string, options?: Record<string, unknown>): Promise<string> }
+
+// 二维码内容与下载按钮一致，直接指向 APK；取不到附件时退回版本页面。
+// 只在浏览器端加载二维码库，避免静态构建阶段执行 Node 版本。
+async function renderApkQr() {
+  try {
+    const { default: QRCode } = (await import('qrcode')) as unknown as { default: QrEncoder }
+    apkQr.value = await QRCode.toDataURL(apkAssetUrl(), {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 320,
+      color: { dark: '#17130d', light: '#ffffff' },
+    })
+  } catch {
+    apkQr.value = ''
+  }
+}
+
 // GitHub 直连在国内多数网络下不稳定，提供公共加速前缀作为备用下载线路。
 const accelPrefixes = ['https://gh-proxy.com/', 'https://gh-proxy.at9.net/']
 
@@ -329,6 +449,10 @@ const featuredAccels = computed<string[]>(() => {
 })
 const portableAccel = computed(() => accelLink('windows', 'portable'))
 const debAccel = computed(() => accelLink('linux', 'deb'))
+const mobileAccel = computed(() => {
+  const url = assets.value.find(asset => /-mobile-android-[a-z0-9]+.*\.apk$/.test(asset.name))?.browser_download_url
+  return url ? `${accelPrefixes[0]}${url}` : ''
+})
 
 async function fetchAssets(): Promise<boolean> {
   try {
@@ -347,6 +471,7 @@ async function fetchAssets(): Promise<boolean> {
       `TrailSnap-${version}-desktop-linux-x64.AppImage`,
       `TrailSnap-${version}-desktop-linux-x64.deb`,
       `TrailSnap-${version}-fnos-x86.fpk`,
+      `TrailSnap-${version}-mobile-android-universal-debug.apk`,
     ]
     releaseName.value = `v${version}`
     assets.value = names.map(name => ({
@@ -386,13 +511,31 @@ async function onFnosDownload(event: MouseEvent) {
   }
 }
 
+async function onApkDownload(event: MouseEvent) {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  if (loadingPlatform.value) return
+  loadingPlatform.value = 'mobile'
+  try {
+    if (assets.value.length === 0 && !(await fetchAssets())) apiUnavailable.value = true
+    window.location.assign(await preferredDownloadUrl(apkAssetUrl()))
+  } finally {
+    loadingPlatform.value = ''
+  }
+}
+
 onMounted(async () => {
   if (window.location.hash === '#nas') activeMode.value = 'nas'
+  if (window.location.hash === '#mobile') activeMode.value = 'mobile'
   const userAgent = navigator.userAgent.toLowerCase()
   // 手机浏览器可能包含 Mac/Linux 标识，不将其推荐为桌面设备。
   if (!/android|iphone|ipad|ipod/.test(userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
     detectedPlatform.value = userAgent.includes('windows') ? 'windows' : userAgent.includes('mac') ? 'macos' : userAgent.includes('linux') ? 'linux' : ''
+  } else if (userAgent.includes('android') && window.location.hash !== '#nas' && window.location.hash !== '#desktop') {
+    // Android 手机直接看移动端安装方式，桌面与 NAS 标签仍在标签栏可切换。
+    activeMode.value = 'mobile'
   }
   apiUnavailable.value = !(await fetchAssets())
+  await renderApkQr()
 })
 </script>

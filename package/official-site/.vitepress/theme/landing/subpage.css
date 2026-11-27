@@ -397,6 +397,10 @@
   font-weight: 500;
 }
 
+.trailsnap-subpage .accel-options > span {
+  margin-right: 4px;
+}
+
 .trailsnap-subpage .accel-options a + a::before {
   content: "·";
   margin: 0 6px;
@@ -600,6 +604,130 @@
 .trailsnap-subpage .preflight-link {
   margin-top: 12px;
   font-size: 11px;
+  color: var(--muted);
+}
+
+/* Mobile app tab ----------------------------------------------------- */
+
+.trailsnap-subpage #mobile {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 18px;
+}
+
+.trailsnap-subpage .mobile-card {
+  padding: clamp(24px, 3.4vw, 38px);
+}
+
+.trailsnap-subpage .mobile-notice {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px clamp(22px, 3vw, 30px);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 18px;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.trailsnap-subpage .mobile-notice .notice-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  margin-top: 4px;
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  border-radius: 50%;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.trailsnap-subpage .mobile-notice h2 {
+  font-family: var(--serif);
+  font-size: clamp(17px, 1.9vw, 21px);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.trailsnap-subpage .mobile-notice p {
+  margin-top: 6px;
+  max-width: 62em;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--ink-soft);
+}
+
+.trailsnap-subpage .mobile-notice .notice-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
+  font-size: 11px;
+}
+
+.trailsnap-subpage .notice-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+}
+
+.trailsnap-subpage .notice-links a:hover {
+  border-color: var(--accent);
+}
+
+.trailsnap-subpage .mobile-note {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.85;
+  color: var(--muted);
+  text-align: left;
+}
+
+.trailsnap-subpage .apk-qr {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--line);
+}
+
+.trailsnap-subpage .apk-qr img {
+  width: 112px;
+  height: 112px;
+  flex-shrink: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.trailsnap-subpage .apk-qr figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trailsnap-subpage .apk-qr strong {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.trailsnap-subpage .apk-qr span {
+  font-size: 11px;
+  line-height: 1.8;
   color: var(--muted);
 }
 
@@ -1192,6 +1320,11 @@
     padding-top: 96px;
   }
 
+  /* 手机屏幕无法给自己扫码，改为直接点下载按钮。 */
+  .trailsnap-subpage .apk-qr {
+    display: none;
+  }
+
   .trailsnap-subpage .subpage-title {
     font-size: clamp(34px, 8.2vw, 46px);
     line-height: 1.24;
@@ -1217,7 +1350,8 @@
   }
 
   .trailsnap-subpage .other-platforms,
-  .trailsnap-subpage #nas {
+  .trailsnap-subpage #nas,
+  .trailsnap-subpage #mobile {
     grid-template-columns: 1fr;
   }
 
@@ -1237,7 +1371,8 @@
   }
 
   .trailsnap-subpage .featured-card,
-  .trailsnap-subpage .nas-card {
+  .trailsnap-subpage .nas-card,
+  .trailsnap-subpage .mobile-card {
     padding: 20px;
   }
 
@@ -1304,6 +1439,11 @@
   }
 
   .trailsnap-subpage .install-prompt {
+    padding: 18px;
+  }
+
+  .trailsnap-subpage .mobile-notice {
+    gap: 12px;
     padding: 18px;
   }
 

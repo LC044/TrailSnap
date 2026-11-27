@@ -128,7 +128,7 @@ export default defineConfig({
           { text: '用户指南', link: '/docs/guide/install' },
           { text: '开发者文档', link: '/docs/dev/guide' },
           { text: '博客', link: '/docs/blog/' },
-          { text: '需求平台', link: 'https://feedback.trailsnap.cn/' }
+          { text: '帮助反馈', link: 'https://feedback.trailsnap.cn/' }
         ],
         sidebar: {
           '/docs/guide/': [

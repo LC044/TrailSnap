@@ -457,6 +457,41 @@ html {
   color: var(--ink);
 }
 
+.trailsnap-home .nav-feedback {
+  font-size: 12.5px;
+  color: var(--muted);
+  transition: color 0.3s var(--ease);
+}
+
+.trailsnap-home .nav-feedback span {
+  font-size: 10px;
+}
+
+.trailsnap-home .nav-feedback:hover {
+  color: var(--ink);
+}
+
+.trailsnap-home .nav-gh {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-inline-end: -4px;
+  border-radius: 50%;
+  color: var(--muted);
+  transition: color 0.3s var(--ease), background-color 0.3s var(--ease);
+}
+
+.trailsnap-home .nav-gh svg {
+  width: 17px;
+  height: 17px;
+}
+
+.trailsnap-home .nav-gh:hover {
+  color: var(--ink);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
 .trailsnap-home .theme-toggle {
   position: relative;
   display: grid;
@@ -617,6 +652,28 @@ html {
 
 .trailsnap-home .mobile-demo span {
   color: var(--accent);
+}
+
+.trailsnap-home .mobile-menu-links {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.trailsnap-home .mobile-menu-links a {
+  transition: color 0.3s var(--ease);
+}
+
+.trailsnap-home .mobile-menu-links a span {
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.trailsnap-home .mobile-menu-links a:hover {
+  color: var(--ink);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3195,6 +3252,11 @@ html {
   }
 
   .trailsnap-home .nav-doc {
+    display: none;
+  }
+
+  .trailsnap-home .nav-feedback,
+  .trailsnap-home .nav-gh {
     display: none;
   }
 
