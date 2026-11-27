@@ -313,6 +313,23 @@ def create_album(db: Session, album: album_schemas.AlbumCreate, query_embedding:
         users = db.query(User).filter(User.id.in_(album.shared_users)).all()
         db_album.shared_users = users
 
+    photo_ids = list(dict.fromkeys(getattr(album, "photo_ids", None) or []))
+    if photo_ids:
+        if album.type != "user" or user_id is None:
+            raise ValueError("只能将所选照片加入普通相册")
+        photos = {}
+        for offset in range(0, len(photo_ids), 500):
+            rows = db.query(Photo).filter(
+                Photo.owner_id == user_id, Photo.is_deleted.is_(False),
+                Photo.id.in_(photo_ids[offset:offset + 500]),
+            ).all()
+            photos.update((photo.id, photo) for photo in rows)
+        if len(photos) != len(photo_ids):
+            raise ValueError("部分照片已不可用，请重新选择")
+        db_album.photos = [photos[photo_id] for photo_id in photo_ids]
+        db_album.cover_id = photo_ids[0]
+        db_album.num_photos = len(photo_ids)
+
     db.add(db_album)
     db.commit()
     db.refresh(db_album)

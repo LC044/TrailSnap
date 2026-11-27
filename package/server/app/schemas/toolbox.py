@@ -6,6 +6,17 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 
+class PhotoScopeFilters(BaseModel):
+    years: list[int] = Field(default_factory=list)
+    cities: list[str] = Field(default_factory=list)
+    people: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    file_types: list[Literal["image", "video", "live_photo", "panorama"]] = Field(default_factory=list)
+    image_types: list[str] = Field(default_factory=list)
+    makes: list[str] = Field(default_factory=list)
+    models: list[str] = Field(default_factory=list)
+
+
 class MediaScope(BaseModel):
     source: Literal["albums", "folders", "filter", "selected", "all"]
     album_ids: list[UUID] = Field(default_factory=list, max_length=100)
@@ -17,6 +28,7 @@ class MediaScope(BaseModel):
     end_date: date | None = None
     upload_time_fallback: bool = False
     media_type: Literal["image", "video", "all"] = "image"
+    filters: PhotoScopeFilters | None = None
 
     @model_validator(mode="after")
     def validate_source(self):
@@ -33,7 +45,7 @@ class MediaScope(BaseModel):
 class OrganizeRule(BaseModel):
     strategy: Literal["time", "location", "person", "category"] = "time"
     granularity: Literal["year", "month", "day", "province", "city", "district",
-                         "province_city", "city_district", "province_city_district"] = "month"
+                         "province_city", "city_district", "province_city_district", "country_province_city"] = "month"
     nested: bool = True
     groups: list[str] | None = None
 

@@ -10,7 +10,7 @@
 
       <!-- Search & Add Album -->
       <div class="p-4 pb-0 flex gap-2 shrink-0">
-        <div class="relative flex-1">
+        <div class="relative min-w-0 flex-1">
           <input 
             v-model="searchQuery" 
             type="text" 
@@ -19,12 +19,10 @@
           />
           <Search class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
         </div>
-        <button v-if="mode === 'add'"
-          @click="showCreateDialog = true"
-          class="p-2 bg-primary-50 text-primary-600 hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-400 dark:hover:bg-primary-900/50 rounded-lg transition-colors flex items-center justify-center"
-          title="新建相册"
-        >
-          <Plus class="w-5 h-5" />
+        <button v-if="mode === 'add'" type="button" class="ts-button ts-button-secondary shrink-0"
+          :disabled="!!loadingAlbumId || !!successAlbumId" @click="openCreateDialog">
+          <Plus class="h-4 w-4" aria-hidden="true" />
+          <span>新建相册</span>
         </button>
       </div>
 
@@ -62,50 +60,29 @@
       </div>
     </div>
 
-    <!-- Create Album Dialog Overlay -->
-    <div v-if="showCreateDialog" class="absolute inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-[1px] animate-in fade-in duration-200" @click.self="showCreateDialog = false">
-      <div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-100 dark:border-gray-700">
-        <div class="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
-          <h3 class="text-base font-bold text-gray-900 dark:text-white">新建相册</h3>
-          <button @click="showCreateDialog = false" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-500">
-            <X class="w-4 h-4" />
-          </button>
-        </div>
-        <div class="p-4 space-y-4">
-          <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">相册名称</label>
-            <input 
-              v-model="newAlbumName" 
-              type="text" 
-              placeholder="请输入相册名称" 
-              class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-gray-900 dark:text-white"
-              @keyup.enter="handleCreateAlbum"
-            />
-          </div>
-          <div class="flex justify-end gap-2">
-            <button 
-              @click="showCreateDialog = false"
-              class="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              取消
-            </button>
-            <button 
-              @click="handleCreateAlbum"
-              :disabled="!newAlbumName.trim() || creatingAlbum"
-              class="px-3 py-1.5 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <Loader2 v-if="creatingAlbum" class="w-3 h-3 animate-spin" />
-              创建
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
+  <ResponsiveDialog v-model="showCreateDialog" title="新建相册" max-width="24rem"
+    :before-close="() => !creatingAlbum">
+    <form class="space-y-3" @submit.prevent="handleCreateAlbum">
+      <label class="block space-y-2 text-sm font-medium">
+        <span class="block">相册名称</span>
+        <input v-model="newAlbumName" type="text" maxlength="100" required
+          :disabled="creatingAlbum" class="ts-input w-full" placeholder="请输入相册名称" />
+      </label>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="ts-button ts-button-secondary" :disabled="creatingAlbum" @click="showCreateDialog = false">取消</button>
+        <button type="submit" class="ts-button ts-button-primary" :disabled="!newAlbumName.trim() || creatingAlbum">
+          <Loader2 v-if="creatingAlbum" class="h-4 w-4 animate-spin" aria-hidden="true" />
+          {{ photoIds?.length ? '创建并加入' : '创建' }}
+        </button>
+      </div>
+    </form>
+  </ResponsiveDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { X, Loader2, Check, Folder, Plus, Search } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { useAlbumStore } from '@/stores/albumStore'
@@ -113,14 +90,14 @@ import { useOverlayStack } from '@/composables/useOverlayStack'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 import type { ApiAlbum } from '@/types/album'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   visible: boolean
   photoIds?: string[]
   mode?: 'add' | 'select'
   selectionAlbums?: ApiAlbum[]
   selectedAlbumId?: string
   loading?: boolean
-}>()
+}>(), { mode: 'add' })
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
@@ -159,19 +136,24 @@ const showCreateDialog = ref(false)
 const newAlbumName = ref('')
 const creatingAlbum = ref(false)
 
+const openCreateDialog = () => {
+  newAlbumName.value = ''
+  showCreateDialog.value = true
+}
 const handleCreateAlbum = async () => {
-  if (!newAlbumName.value.trim()) return
-  
+  const name = newAlbumName.value.trim()
+  if (!name || creatingAlbum.value) return
+
   creatingAlbum.value = true
+  const photoIds = props.photoIds ?? []
   try {
-    const newAlbumId = await albumStore.createCustomAlbum(newAlbumName.value.trim())
-    ElMessage.success('相册创建成功')
-    newAlbumName.value = ''
+    const albumId = await albumStore.createCustomAlbum(name, undefined, photoIds)
     showCreateDialog.value = false
-    // Optionally auto-select or just refresh list (store updates automatically)
-  } catch (error) {
-    console.error('Failed to create album:', error)
-    ElMessage.error('创建相册失败')
+    close()
+    ElMessage.success(photoIds.length ? '已创建相册并加入所选照片' : '相册创建成功')
+    emit('success', albumId)
+  } catch {
+    // The request layer shows the failure. Keep the name and selected photos for retry.
   } finally {
     creatingAlbum.value = false
   }
@@ -186,7 +168,7 @@ const close = () => {
   emit('update:visible', false)
 }
 
-useOverlayStack(computed(() => props.visible), close)
+useOverlayStack(computed(() => props.visible && !showCreateDialog.value), close)
 
 const chooseAlbum = (albumId: string) => {
   if (props.mode === 'select') {

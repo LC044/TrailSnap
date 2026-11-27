@@ -31,8 +31,9 @@
         <Loader2 class="w-6 h-6 animate-spin text-primary-500" />
     </div>
 
-    <div v-else-if="metadata" class="metadata-content p-4 space-y-6">
-        <div class="metadata-summary-card md:hidden space-y-3 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4">
+    <div v-else-if="metadata || canRevealPhoto" class="metadata-content p-4 space-y-6">
+      <div class="space-y-1">
+        <div v-if="metadata" class="metadata-summary-card md:hidden space-y-3 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4">
             <div class="flex items-start gap-2">
                 <p class="flex-1 text-base font-semibold text-gray-900 dark:text-white">{{ formatTime(captureTimestamp) }}</p>
                 <button v-if="allowEdit" @click="openBasicEditDialog" class="text-primary-500 p-1" aria-label="编辑基本信息"><Pencil class="w-4 h-4" /></button>
@@ -48,7 +49,7 @@
             <button @click="showExifDialog = true" class="text-sm font-medium text-primary-500 bg-transparent p-0">查看完整 EXIF</button>
         </div>
         <!-- File Name & Info -->
-        <div class="hidden md:block space-y-1">
+        <div v-if="metadata" class="hidden md:block space-y-1">
             <div class="flex items-center justify-between text-gray-500 text-xs font-medium uppercase tracking-wider">
                 <div class="flex items-center gap-2">
                     <Info class="w-3.5 h-3.5" />
@@ -74,6 +75,18 @@
                 查看文件 EXIF 信息
             </button>
         </div>
+        <button
+            v-if="canRevealPhoto"
+            type="button"
+            :disabled="revealingPhoto"
+            class="inline-flex items-center gap-1.5 bg-transparent py-1 text-xs text-primary-500 dark:text-primary-400 hover:underline disabled:opacity-50"
+            @click="revealPhoto"
+        >
+            <FolderOpen class="h-3.5 w-3.5" aria-hidden="true" />
+            打开所在文件夹
+        </button>
+      </div>
+      <template v-if="metadata">
         <!-- Date & Time -->
         <div class="hidden md:block space-y-1">
             <div class="flex items-center justify-between text-gray-500 text-xs font-medium uppercase tracking-wider">
@@ -235,8 +248,9 @@
             </button>
          </div>
 
+      </template>
     </div>
-    <div v-else-if="!metadata">
+    <div v-if="!loading && !metadata">
          <span class="text-sm text-gray-400 italic">无元数据信息，请等待元数据处理完成之后再试</span>
          <RouterLink to="/settings#tasks"  class="text-sm text-primary-500 hover:underline">点击查看后台任务</RouterLink>
     </div>
@@ -378,10 +392,12 @@ import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import {
     X, CalendarDays, MapPin, Tags, PanelRightClose, PanelRightOpen,
-    Loader2, Trash2, Info, User, Camera, Pencil
+    Loader2, Trash2, Info, User, Camera, Pencil, FolderOpen
 } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import { albumService } from '@/api/album'
+import { revealDesktopPhoto } from '@/api/desktopDataDirectory'
+import { isTauriApp } from '@/config/server'
 import PersonAvatar from '@/components/PersonAvatar.vue'
 import type { PhotoMetadata, AlbumImage, CoverPhotoInfo, Tag } from '@/types/album'
 import { ElMessage } from 'element-plus'
@@ -418,6 +434,25 @@ const emit = defineEmits([
 const mobilePanelStyle = computed(() => ({
     '--mobile-details-translate': `${((1 - props.mobileProgress) * 100).toFixed(3)}%`,
 }))
+const canRevealPhoto = computed(() => isTauriApp() && !!props.image)
+const revealingPhoto = ref(false)
+
+const revealPhoto = async () => {
+    const photo = props.image
+    if (!photo || !canRevealPhoto.value || revealingPhoto.value) return
+    revealingPhoto.value = true
+    try {
+        const metadataPath = props.metadata?.photo_id === photo.id ? props.metadata.file_path : undefined
+        const path = metadataPath || photo.file_path || (await albumService.getMetadata(photo.id)).file_path
+        if (!path) throw new Error('无法获取照片原文件路径')
+        await revealDesktopPhoto(path)
+    } catch (error) {
+        ElMessage.error(error instanceof Error ? error.message : String(error))
+    } finally {
+        revealingPhoto.value = false
+    }
+}
+
 const hasPhotoCoordinates = computed(() => props.metadata?.latitude != null && props.metadata?.longitude != null
     && Number.isFinite(props.metadata.latitude) && Number.isFinite(props.metadata.longitude)
     && Math.abs(props.metadata.latitude) <= 90 && Math.abs(props.metadata.longitude) <= 180)

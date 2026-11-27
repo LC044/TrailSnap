@@ -23,9 +23,10 @@ from app.utils.path_validation import validate_filename, validate_target_path
 VARIABLES = {
     "date", "time", "year", "month", "day", "hour", "minute", "city", "location",
     "original", "index", "sequence3", "sequence4", "camera", "lens", "iso",
-    "province", "district", "extension", "second",
+    "country", "province", "district", "person", "category", "extension", "second",
 }
 TIME_VARIABLES = {"date", "time", "year", "month", "day", "hour", "minute", "second"}
+RENAME_METADATA_FIELDS = {"country", "person", "category"}
 
 
 def digest(value):
@@ -63,9 +64,31 @@ def photo_data(photo):
     }
 
 
-def fingerprint(photo):
+def rename_metadata(photo, fields):
+    values = {}
+    if "country" in fields:
+        values["country"] = (getattr(photo.metadata_info, "country", None) or "").strip()
+    if "person" in fields:
+        values["person"] = "+".join(sorted({
+            face.identity.identity_name.strip() for face in photo.faces
+            if face.identity and face.identity.identity_name and face.identity.identity_name.strip()
+            and not getattr(face, "is_deleted", False)
+            and not getattr(face.identity, "is_deleted", False) and not getattr(face.identity, "is_hidden", False)
+        }))
+    if "category" in fields:
+        values["category"] = "+".join(sorted({
+            tag.tag_name.strip() for tag in photo.tags
+            if tag.tag_name and tag.tag_name.strip() and not getattr(tag, "is_deleted", False)
+        }))
+    return values
+
+
+def fingerprint(photo, rename_fields=()):
     stat = os.stat(photo.file_path)
-    return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "data": digest(photo_data(photo))}
+    result = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "data": digest(photo_data(photo))}
+    if rename_fields:
+        result["rename_metadata"] = rename_metadata(photo, rename_fields)
+    return result
 
 
 def rule_groups(photo, rule, config):
@@ -139,11 +162,14 @@ def rename_path(photo, config, index):
     if variables & TIME_VARIABLES and not value:
         raise ValueError("缺少拍摄时间")
     metadata = photo.metadata_info
+    naming_metadata = rename_metadata(photo, variables & RENAME_METADATA_FIELDS)
     if config.missing == "skip":
         for key in variables & {"city", "location", "province", "district", "camera"}:
             field = {"location": "address", "camera": "make"}.get(key, key)
             if not getattr(metadata, field, None):
                 raise ValueError("缺少命名所需的地点或设备信息")
+        if not all(naming_metadata.values()):
+            raise ValueError("缺少命名所需的国家、人物或类别信息")
     template = config.template
     replacements = {
         "province": getattr(metadata, "province", None) or "未知省份",
@@ -151,6 +177,9 @@ def rename_path(photo, config, index):
         "extension": os.path.splitext(photo.filename)[1].lstrip("."),
         "second": value.strftime("%S") if value else "00",
     }
+    fallbacks = {"country": "未知国家", "person": "未命名人物", "category": "未分类"}
+    replacements.update({key: (replacement or fallbacks[key]).replace("{", "_").replace("}", "_")
+                         for key, replacement in naming_metadata.items()})
     for key, replacement in replacements.items():
         replacement = re.sub(r'[/\\:*?"<>|\x00-\x1f]', "_", replacement)
         template = template.replace("{" + key + "}", replacement)
@@ -293,7 +322,8 @@ def item_for_photo(db, user, photo, config, index, reserved, candidates, anchor)
                 allowed_directory(db, user, os.path.dirname(path))
             except ValueError as error:
                 raise ValueError(f"源文件所在位置未接入存储，无法处理（{error}）") from error
-        item.fingerprint = fingerprint(photo)
+        rename_fields = validate_template(config.template) & RENAME_METADATA_FIELDS if config.kind == "rename" else ()
+        item.fingerprint = fingerprint(photo, rename_fields) if rename_fields else fingerprint(photo)
         if config.kind == "cleanup":
             if photo.id not in candidates:
                 raise ValueError("不属于清理候选，或缺少已计算的哈希/特征/评分")

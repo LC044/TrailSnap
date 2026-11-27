@@ -16,18 +16,21 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
     { path: 'time-from-filename', title: '修正拍摄信息' },
   ]) {
     test(`${tool.path} 使用统一预览计划工作流而非旧任务轮询`, async ({ page }) => {
-      await page.goto(`/toolbox/${tool.path}`)
+      await page.goto(`/toolbox/${tool.path}?new=1`)
       await expect(page.locator('h1.ts-page-title', { hasText: tool.title })).toBeVisible({ timeout: 10_000 })
       await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
       await expect(page.getByRole('link', { name: '操作记录' })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: '查看', exact: true })).toBeDisabled()
-      await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
+      await expect(page.getByRole('button', { name: '查看', exact: true })).toBeEnabled()
+      const preview = page.getByRole('button', { name: /^(预览|查找)$/ })
+      if (tool.path === 'organize') await expect(preview).toBeDisabled()
+      else await expect(preview).toBeEnabled()
     })
   }
 
   test('相册命名与日期筛选只展示当前简化控件', async ({ page }) => {
-    await page.goto('/toolbox/albums')
+    await page.goto('/toolbox/albums?new=1')
     await expect(page.getByRole('heading', { name: '相册命名', exact: true })).toBeVisible()
+    await page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '相册', exact: true }).click()
     await expect(page.getByRole('combobox', { name: '搜索相册', exact: true })).toBeVisible()
     await page.locator('summary').filter({ hasText: /^日期与类型$/ }).click()
     await expect(page.getByText('拍摄日期', { exact: true })).toHaveCount(1)
@@ -37,7 +40,7 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
   })
 
   test('范围来源切换不会隐式带入目录，文件夹需显式选择', async ({ page }) => {
-    await page.goto('/toolbox/rename')
+    await page.goto('/toolbox/rename?new=1')
     const sources = page.getByRole('group', { name: '范围来源' })
 
     await sources.getByRole('button', { name: '文件夹' }).click()

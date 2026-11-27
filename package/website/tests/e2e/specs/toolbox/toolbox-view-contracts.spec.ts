@@ -30,16 +30,18 @@ test.describe('P1 - 照片与工具箱视图合同', () => {
 
     // 首页卡片改名「低质量照片」，并统一指向 kind=cleanup 的工作流页。
     await page.getByRole('link', { name: /低质量照片/ }).first().click()
-    await expect(page).toHaveURL(/\/toolbox\/cleanup$/)
+    await expect(page).toHaveURL(/\/toolbox\/cleanup(?:\?plan=[^&]+)?$/)
     await expect(page.locator('h1.ts-page-title', { hasText: '低质量照片' })).toBeVisible()
   })
 
-  test('CleanupPage 明确选择范围后才允许查找候选', async ({ page }) => {
-    await page.goto('/toolbox/cleanup')
+  test('CleanupPage 默认全部且允许缩小范围', async ({ page }) => {
+    await page.goto('/toolbox/cleanup?new=1')
     await expect(page.locator('h1.ts-page-title', { hasText: '低质量照片' })).toBeVisible()
 
     // 旧页的 sort_by=asc/desc 请求随直连列表页移除，候选改由预览计划生成。
     const next = page.getByRole('button', { name: /^(预览|查找)$/ })
+    await expect(next).toBeEnabled()
+    await page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '手动选' }).click()
     await expect(next).toBeDisabled()
     await page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '全部' }).click()
     await expect(next).toBeEnabled()
@@ -47,7 +49,7 @@ test.describe('P1 - 照片与工具箱视图合同', () => {
   })
 
   test('OrganizePage 使用范围与规则分离的工作流骨架', async ({ page }) => {
-    await page.goto('/toolbox/organize')
+    await page.goto('/toolbox/organize?new=1')
     await expect(page.locator('h1.ts-page-title', { hasText: '整理文件夹' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
     // 规则与范围同屏，无需点击下一步。
@@ -56,11 +58,11 @@ test.describe('P1 - 照片与工具箱视图合同', () => {
   })
 
   test('修正拍摄信息页同屏显示范围和设置', async ({ page }) => {
-    await page.goto('/toolbox/time-from-filename')
+    await page.goto('/toolbox/time-from-filename?new=1')
     await expect(page.locator('h1.ts-page-title', { hasText: '修正拍摄信息' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
     await expect(page.getByText('时间处理', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeEnabled()
     await expect(page.getByRole('button', { name: '开始修改拍摄信息' })).toHaveCount(0)
   })
 })

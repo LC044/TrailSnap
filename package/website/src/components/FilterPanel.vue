@@ -96,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { usePhotoStore, usePhotosPageStore } from '@/stores/photoStore'
+import { usePhotoStore } from '@/stores/photoStore'
 import { computed, nextTick, ref } from 'vue'
 import { Check, ChevronDown, Loader2, RotateCcw, Search, Settings2, SlidersHorizontal } from 'lucide-vue-next'
 import { useZIndex } from 'element-plus'
@@ -104,7 +104,8 @@ import { nextDialogZIndex } from '@/utils/pickerDate'
 import PersonAvatar from '@/components/PersonAvatar.vue'
 
 const props = defineProps<{
-  store?: ReturnType<typeof usePhotoStore> | ReturnType<typeof usePhotosPageStore>
+  store?: Pick<ReturnType<typeof usePhotoStore>, 'availableFilters' | 'selectedFilters' | 'loading' | 'error' | 'loadPhotos'>
+    & Partial<Pick<ReturnType<typeof usePhotoStore>, 'searchFilters'>>
 }>()
 const store = props.store || usePhotoStore()
 const availableFilters = computed(() => store.availableFilters)

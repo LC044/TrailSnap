@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.db.models import Album, AlbumPhoto, Photo, PhotoMetadata, Task, ToolboxPlanItem, User
+from app.db.models.face import Face, FaceIdentity
+from app.db.models.tag import PhotoTag
 from app.schemas.toolbox import ExecuteRequest, MediaScope, PlanRequest, ToolConfig
 from app.service.toolbox_scope import allowed_directory, scope_preview
 from app.service.toolbox_plans import create_plan, validate_template
@@ -102,6 +104,20 @@ def test_date_filters_all_strategies_and_folder_boundary(library):
     assert again.summary["ready"] == 0
 
 
+def test_organize_with_country_province_and_city_creates_preview_path(library):
+    photo = library.add("a.jpg")
+    photo.metadata_info.country = "中国"
+    library.db.commit()
+    plan = create_plan(library.db, library.user, PlanRequest(
+        scope=MediaScope(source="all"),
+        config=ToolConfig(kind="organize", action="copy", target=str(library.root),
+                          rules=[{"strategy": "location", "granularity": "country_province_city"}]),
+    ))
+    item = library.db.query(ToolboxPlanItem).filter_by(plan_id=plan.id).one()
+    assert item.status == "ready"
+    assert Path(item.target) == library.root / "中国/浙江省/杭州市/a.jpg"
+
+
 def test_album_scope_is_union_and_owned(library):
     photo = library.add("a.jpg")
     albums = [Album(id=uuid4(), owner_id=library.user.id, type="user", name=name) for name in ("A", "B")]
@@ -132,6 +148,53 @@ def test_scope_preview_paginates_with_sql_for_non_folder_sources(library):
     assert [len(page["items"]) for page in pages] == [2, 2, 1]
     ids = [item["id"] for page in pages for item in page["items"]]
     assert len(set(ids)) == 5
+
+
+def test_gallery_filters_apply_to_scope_preview_and_plan(library):
+    keep = library.add("keep.jpg")
+    wrong_city = library.add("wrong-city.jpg", city="上海市")
+    wrong_year = library.add("wrong-year.jpg", when=datetime(2024, 5, 2))
+    other = library.add("other-user.jpg", owner=library.other.id)
+    without_person = library.add("without-person.jpg")
+    without_category = library.add("without-category.jpg")
+    tag = PhotoTag(tag_name="风景")
+    identity = FaceIdentity(identity_name="小林", owner_id=library.user.id)
+    for photo in (keep, wrong_city, wrong_year, other, without_person):
+        photo.tags.append(tag)
+    for photo in (keep, wrong_city, wrong_year, other, without_category):
+        photo.faces.append(Face(identity=identity))
+    library.db.commit()
+
+    scope = MediaScope(source="all", filters={"years": [2026], "cities": ["杭州市"],
+        "people": [str(identity.id)], "categories": ["风景"]})
+    preview = scope_preview(library.db, library.user, scope)
+    assert [row["id"] for row in preview["items"]] == [str(keep.id)]
+    plan = create_plan(library.db, library.user, PlanRequest(scope=scope, config=ToolConfig(kind="rename")))
+    assert [row.photo_id for row in library.db.query(ToolboxPlanItem).filter_by(plan_id=plan.id)] == [keep.id]
+
+
+def test_rename_uses_locations_people_and_categories_and_rechecks_changed_metadata(library):
+    photo = library.add("one.jpg")
+    photo.metadata_info.country = "中国"
+    photo.metadata_info.district = "西湖区"
+    first = FaceIdentity(identity_name="Alice", owner_id=library.user.id)
+    second = FaceIdentity(identity_name="Bob", owner_id=library.user.id)
+    hidden = FaceIdentity(identity_name="Hidden", owner_id=library.user.id, is_hidden=True)
+    photo.faces.extend([Face(identity=first), Face(identity=second), Face(identity=first), Face(identity=hidden)])
+    photo.tags.extend([PhotoTag(tag_name="旅行"), PhotoTag(tag_name="风景")])
+    library.db.commit()
+
+    config = ToolConfig(kind="rename", template="{country}_{province}_{city}_{district}_{person}_{category}")
+    scope = MediaScope(source="selected", photo_ids=[photo.id])
+    plan = create_plan(library.db, library.user, PlanRequest(scope=scope, config=config))
+    row = library.db.query(ToolboxPlanItem).filter_by(plan_id=plan.id).one()
+    assert Path(row.target).name == "中国_浙江省_杭州市_西湖区_Alice+Bob_旅行+风景.jpg"
+    photo.metadata_info.country = "变化后"
+    library.db.commit()
+    run(library, plan)
+    library.db.refresh(row)
+    assert row.status == "failed"
+    assert Path(photo.file_path).name == "one.jpg"
 
 
 def test_rename_template_validation_collision_and_memory(library):

@@ -393,12 +393,12 @@ test.describe('P1 - DuplicatePhotoCleanup 重复照片清理 @views-coverage', (
   // /api/toolbox/duplicate 聚类结果，也不再直接 DELETE /api/photos/batch；
   // 删除候选改由持久化预览计划逐项确认后执行。
   test('重复照片入口加载预览计划工作流，首屏不触发删除', async ({ page }) => {
-    await page.goto('/toolbox/duplicate')
+    await page.goto('/toolbox/duplicate?new=1')
 
     await expect(page.locator('h1.ts-page-title', { hasText: '重复照片' })).toBeVisible({ timeout: 10_000 })
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
     await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /^(预览|查找)$/ })).toBeEnabled()
     await expect(page.getByRole('button', { name: '选择冗余项' })).toHaveCount(0)
   })
 })

@@ -1,6 +1,9 @@
 <template>
   <button v-bind="$attrs" type="button" class="block overflow-hidden p-0" :aria-label="`查看照片 ${alt}`" @click="open">
-    <img :src="thumbnailUrl(photoId)" :alt="alt" loading="lazy" class="h-full w-full object-cover" />
+    <span v-if="iconOnly" class="grid h-11 w-11 place-items-center rounded-full bg-black/65 text-white" title="查看照片">
+      <ZoomIn :size="20" aria-hidden="true" />
+    </span>
+    <img v-else :src="thumbnailUrl(photoId)" :alt="alt" loading="lazy" class="h-full w-full object-cover" />
   </button>
   <PhotoLightbox v-if="visible" :visible="visible" :image="images[index] || null" :images="images"
     :current-index="index" :has-prev="index > 0" :has-next="index < images.length - 1"
@@ -8,11 +11,12 @@
 </template>
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { ZoomIn } from 'lucide-vue-next'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import { thumbnailUrl, thumbnailToFileUrl } from '@/utils/mediaUrl'
 import type { AlbumImage } from '@/types/album'
 defineOptions({ inheritAttrs: false })
-const props = withDefaults(defineProps<{ photoId: string; alt?: string; photoIds?: string[] }>(), { alt: '', photoIds: () => [] })
+const props = withDefaults(defineProps<{ photoId: string; alt?: string; photoIds?: string[]; iconOnly?: boolean }>(), { alt: '', photoIds: () => [] })
 const visible = ref(false)
 const index = ref(0)
 const images = computed<AlbumImage[]>(() => (props.photoIds.length ? props.photoIds : [props.photoId]).map(id => ({
