@@ -7,9 +7,9 @@ Targeted coverage measured on 2026-11-27 showed these confirmed gaps:
   live photo silently lost its MOV companion during a scan.
 - ``app/service/tasks/scan.py`` (L197): a top-level folder matching the
   ``exclude_folders`` filter must be skipped instead of being descended into.
-- ``app/service/tasks/scan.py`` (L165-166): ``os.path.commonpath`` raises
-  ``ValueError`` for paths on different Windows drives; the local ``contains``
-  helper has to swallow it and answer ``False``.
+- ``app/service/tasks/scan.py`` (L165-166): a path that lives on another drive
+  must never be treated as contained by a root; the helper compares the drive
+  letters before it ever calls ``os.path.commonpath``.
 - ``app/service/cleanup_scan.py`` (L143-144): a file that changes size or
   mtime while it is being hashed must never keep a usable md5.
 - ``app/utils/video_meta.py`` (L254-255): ``parse_iso6709`` must return
@@ -18,6 +18,8 @@ Targeted coverage measured on 2026-11-27 showed these confirmed gaps:
 
 Everything here is offline: SQLite in-memory, tmp_path, no service process.
 """
+
+
 from __future__ import annotations
 
 import hashlib
@@ -163,9 +165,13 @@ async def test_scan_skips_an_excluded_top_level_folder(tmp_path):
 
 
 def test_scan_contains_helper_rejects_a_path_on_another_drive():
-    # os.path.commonpath raises ValueError for paths on different drives.
-    with patch("os.path.commonpath", side_effect=ValueError("different drives")):
-        assert scan_module._within_roots("C:/other/photo.jpg", ["D:/root"]) is False
+    # A path that lives on another drive is never contained: the helper compares
+    # the drive letters first, so commonpath is never reached for a different root.
+    assert scan_module._within_roots("C:/other/photo.jpg", ["D:/root"]) is False
+
+    same_drive_root = os.path.normpath("C:/root")
+    assert scan_module._within_roots(
+        os.path.join(same_drive_root, "photo.jpg"), [same_drive_root]) is True
 
 
 # ---------------------------------------------------------------------------
