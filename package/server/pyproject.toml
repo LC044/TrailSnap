@@ -41,6 +41,7 @@ dependencies = [
     "zeroconf>=0.147.0",
     "hnswlib==0.8.0",
     "rawpy>=0.28.0",
+    "watchdog>=6.0,<7",
 ]
 [dependency-groups]
 dev = [

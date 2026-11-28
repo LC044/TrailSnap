@@ -169,6 +169,8 @@ class SystemSettings(BaseModel):
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     task: TaskSettings = Field(default_factory=TaskSettings)
     scan_schedule: ScanScheduleSettings = Field(default_factory=ScanScheduleSettings)
+    scan_on_startup: bool = True
+    watch_external_galleries: bool = True
     moment_caption_schedule: MomentCaptionScheduleSettings = Field(default_factory=MomentCaptionScheduleSettings)
     proactive_memory_schedule: ProactiveMemoryScheduleSettings = Field(default_factory=ProactiveMemoryScheduleSettings)
     recycle_bin: RecycleBinSettings = Field(default_factory=RecycleBinSettings)

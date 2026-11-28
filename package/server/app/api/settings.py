@@ -582,14 +582,10 @@ def scan_all_directories(
     target_user = db.query(User).filter(User.id == user_id).first()
     if target_user is None:
         raise HTTPException(status_code=404, detail='User not found')
-    from app.service.gallery_sync import lock_user
-    lock_user(db, target_user.id)
     task = TaskManager.get_instance().add_task(
         db, TaskType.SCAN_FOLDER,
         {'user_id': str(target_user.id), 'reconcile': True}, owner_id=target_user.id,
     )
-    # Also releases the lock when add_task reuses an existing task.
-    db.commit()
     return BaseResponse.success(data={'task_id': str(task.id), 'message': '已创建全部文件夹扫描任务'})
 
 # ------------------------- 外部图库一键接入 ------------------------- #

@@ -224,7 +224,8 @@ class TestScanForUser:
 
     def _patch_filesystem(self, files_by_root):
         """Patch ``scan_directory_recursive`` to return ``files_by_root[root]``."""
-        def fake_scan(path, exts, filter_settings=None, exclude_folder_patterns=None, *, recursive=True, strict=False):
+        def fake_scan(path, exts, filter_settings=None, exclude_folder_patterns=None, *, recursive=True,
+                      strict=False, skip_mounts=frozenset()):
             return set(files_by_root.get(path, set()))
         return patch.object(scan_module, "scan_directory_recursive", side_effect=fake_scan)
 

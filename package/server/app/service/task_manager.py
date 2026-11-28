@@ -7,7 +7,7 @@ import time
 from typing import List, Dict, Set, Any, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, cast, String
+from sqlalchemy import or_
 
 from app.db.session import SessionLocal
 from app.db.models.task import Task, TaskType, TaskStatus
@@ -434,60 +434,72 @@ class TaskManager:
         return {"message": f"Retried {result} failed tasks", "count": result}
 
     def add_task(self, db: Session, type: str, payload: dict, priority: Optional[int] = None, owner_id: UUID = None):
-        # 防重复入队：SCAN_FOLDER 是幂等的全量扫描任务，若已有 PENDING/PROCESSING
-        # 的同类任务，则直接复用，避免并发扫描导致同一文件被入库多次。。
-        if type == TaskType.SCAN_FOLDER or type == TaskType.SCAN_FOLDER.value:
-            try:
-                target_user_id = None
-                if payload and isinstance(payload, dict):
-                    target_user_id = payload.get('user_id')
-                if not target_user_id and owner_id is not None:
-                    target_user_id = str(owner_id)
+        if type == TaskType.SCAN_FOLDER:
+            return self._enqueue_gallery_scan(db, payload, priority, owner_id)
+        return self._create_task(db, type, payload, priority, owner_id)
 
-                query = db.query(Task).filter(
-                    Task.type == TaskType.SCAN_FOLDER,
-                    Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING])
+    def try_enqueue_gallery_scan(self, db: Session, payload: dict) -> bool:
+        """Return whether the automatic scan was queued or is already covered."""
+        owner_id = UUID(payload["user_id"]) if payload.get("user_id") else None
+        return self._enqueue_gallery_scan(db, payload, None, owner_id, automatic=True)
+
+    def _enqueue_gallery_scan(self, db, payload, priority, owner_id, *, automatic=False):
+        crud_task.lock_gallery_scan_queue(db)
+        active = db.query(Task).filter(
+            Task.type == TaskType.SCAN_FOLDER,
+            Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+        ).order_by(Task.created_at.desc()).all()
+
+        if automatic:
+            if active:
+                covered = payload.get("import_only") and any(
+                    task.owner_id is None
+                    and not (task.payload or {}).get("user_id")
+                    and not (task.payload or {}).get("scan_roots")
+                    for task in active
                 )
-                if target_user_id:
-                    # 兼容两种情况：payload 里带 user_id，或 owner_id 列匹配
-                    query = query.filter(or_(
-                        cast(Task.owner_id, String) == str(target_user_id),
-                        Task.payload['user_id'].as_string() == str(target_user_id),
-                    ))
-                existing_scan = query.order_by(Task.created_at.desc()).first()
-                if existing_scan:
-                    existing_payload = existing_scan.payload or {}
-                    requested_payload = payload or {}
-                    # A per-folder scan cannot satisfy a full reconciliation.
-                    # Pending work can be widened; running work needs a follow-up.
-                    widen = requested_payload.get('reconcile') and not existing_payload.get('reconcile')
-                    old_roots = set(existing_payload.get('scan_roots') or [])
-                    new_roots = set(requested_payload.get('scan_roots') or [])
-                    widen = widen or (bool(old_roots) and (not new_roots or not new_roots.issubset(old_roots)))
-                    # A folder just added during a running full scan may not
-                    # have been in that scan's snapshot.
-                    widen = widen or (existing_scan.status == TaskStatus.PROCESSING and bool(new_roots) and not old_roots)
-                    if widen and existing_scan.status == TaskStatus.PENDING:
-                        merged = dict(existing_payload)
-                        if requested_payload.get('reconcile') or not new_roots:
-                            merged.pop('scan_roots', None)
-                        else:
-                            merged['scan_roots'] = sorted(old_roots | new_roots)
-                        if requested_payload.get('reconcile'):
-                            merged['reconcile'] = True
-                        existing_scan.payload = merged
-                        db.commit()
-                    elif widen:
-                        existing_scan = None
-                if existing_scan:
-                    logging.info(
-                        f"SCAN_FOLDER already {existing_scan.status} for user={target_user_id}, "
-                        f"skip creating duplicate. Reusing task={existing_scan.id}"
-                    )
-                    return existing_scan
-            except Exception as e:
-                logging.warning(f"SCAN_FOLDER dedup check failed, falling back to create: {e}")
+                db.commit()
+                return bool(covered)
+            self._create_task(db, TaskType.SCAN_FOLDER, payload, priority, owner_id)
+            return True
 
+        target_user = payload.get("user_id") or (str(owner_id) if owner_id else None)
+        new_roots = set(payload.get("scan_roots") or [])
+        for task in active:
+            current = task.payload or {}
+            current_user = current.get("user_id") or (str(task.owner_id) if task.owner_id else None)
+            if current_user != target_user:
+                # A user-specific request must preserve its scope and cleanup
+                # semantics when it follows an all-user startup import.
+                continue
+            if current.get("watch_scopes") and not payload.get("watch_scopes"):
+                # Keep the watcher's mount guards attached to its queued work.
+                continue
+            old_roots = set(current.get("scan_roots") or [])
+            widen = (
+                (payload.get("reconcile") and not current.get("reconcile"))
+                or (current.get("import_only") and not payload.get("import_only"))
+                or (old_roots and (not new_roots or not new_roots.issubset(old_roots)))
+                or (task.status == TaskStatus.PROCESSING and new_roots and not old_roots)
+            )
+            if widen and task.status != TaskStatus.PENDING:
+                continue
+            if widen:
+                merged = dict(current)
+                if not payload.get("import_only"):
+                    merged.pop("import_only", None)
+                if payload.get("reconcile") or not new_roots or not old_roots:
+                    merged.pop("scan_roots", None)
+                else:
+                    merged["scan_roots"] = sorted(old_roots | new_roots)
+                if payload.get("reconcile"):
+                    merged["reconcile"] = True
+                task.payload = merged
+            db.commit()
+            return task
+        return self._create_task(db, TaskType.SCAN_FOLDER, payload, priority, owner_id)
+
+    def _create_task(self, db, type, payload, priority, owner_id):
         task = crud_task.add_task(db, type, payload, priority, owner_id)
         logging.info(f"Added task: {task.type} with priority {task.priority}")
         self.start_worker_if_needed()

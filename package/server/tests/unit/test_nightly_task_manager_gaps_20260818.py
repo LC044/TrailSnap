@@ -572,10 +572,8 @@ def test_add_task_scan_folder_reuses_existing_pending_for_payload_user(monkeypat
 
     base_query = MagicMock()
     after_filter1 = MagicMock()
-    after_filter2 = MagicMock()
     base_query.filter.return_value = after_filter1
-    after_filter1.filter.return_value = after_filter2
-    after_filter2.order_by.return_value.first.return_value = existing
+    after_filter1.order_by.return_value.all.return_value = [existing]
 
     db = MagicMock()
     db.query.return_value = base_query
@@ -604,17 +602,17 @@ def test_add_task_scan_folder_falls_back_to_owner_id(monkeypatch):
     dedup must still find an existing task."""
     mgr = _make_manager()
 
+    from uuid import UUID
+    owner_id = UUID("00000000-0000-0000-0000-000000000001")
     existing = SimpleNamespace(
         id="existing-by-owner", status="processing", type="SCAN_FOLDER", priority=0,
-        payload={'scan_roots': ['/photos']},
+        payload={'scan_roots': ['/photos']}, owner_id=owner_id,
     )
 
     base_query = MagicMock()
     after_filter1 = MagicMock()
-    after_filter2 = MagicMock()
     base_query.filter.return_value = after_filter1
-    after_filter1.filter.return_value = after_filter2
-    after_filter2.order_by.return_value.first.return_value = existing
+    after_filter1.order_by.return_value.all.return_value = [existing]
 
     db = MagicMock()
     db.query.return_value = base_query
@@ -625,38 +623,28 @@ def test_add_task_scan_folder_falls_back_to_owner_id(monkeypatch):
     pub = MagicMock()
     monkeypatch.setattr(mgr, "publish_task_update", pub)
 
-    from uuid import UUID
     out = mgr.add_task(
         db,
         "SCAN_FOLDER",
         {"scan_roots": ["/photos"]},
         priority=0,
-        owner_id=UUID("00000000-0000-0000-0000-000000000001"),
+        owner_id=owner_id,
     )
     assert out is existing
     create.assert_not_called()
 
 
-def test_add_task_scan_folder_dedup_exception_falls_through_to_create(monkeypatch):
-    """If the dedup query blows up, we log a warning and create the
-    task anyway."""
+def test_add_task_scan_folder_dedup_failure_does_not_create_duplicate(monkeypatch):
     mgr = _make_manager()
 
     db = MagicMock()
     db.query.side_effect = RuntimeError("DB down")
 
-    created = SimpleNamespace(id="new-scan", type="SCAN_FOLDER", priority=5)
-    monkeypatch.setattr(
-        "app.service.task_manager.crud_task.add_task",
-        lambda *a, **kw: created,
-    )
-    monkeypatch.setattr(mgr, "start_worker_if_needed", MagicMock())
-    monkeypatch.setattr(mgr, "publish_task_update", MagicMock())
-
-    out = mgr.add_task(
-        db, "SCAN_FOLDER", {"user_id": "u1", "scan_roots": ["/p"]}, priority=5
-    )
-    assert out is created
+    create = MagicMock()
+    monkeypatch.setattr("app.service.task_manager.crud_task.add_task", create)
+    with pytest.raises(RuntimeError, match="DB down"):
+        mgr.add_task(db, "SCAN_FOLDER", {"user_id": "u1", "scan_roots": ["/p"]}, priority=5)
+    create.assert_not_called()
 
 
 def test_add_task_non_scan_folder_skips_dedup(monkeypatch):

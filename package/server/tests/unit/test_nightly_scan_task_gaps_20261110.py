@@ -102,6 +102,7 @@ def test_scan_without_user_id_processes_every_user(monkeypatch):
 
     task = MagicMock()
     task.payload = {"scan_roots": ["/data/photos"]}
+    task.owner_id = None
 
     result = asyncio.run(strategy.process(_worker(), task, db))
 

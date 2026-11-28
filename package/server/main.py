@@ -148,7 +148,7 @@ async def lifespan(app: FastAPI):
     # TaskManager._scheduler_loop 和 UpdateCheckScheduler 各自的守护线程。
     from app.core.system_config import system_config
     from app.service.scheduler import JobScheduler
-    from app.service.jobs.scan_folder import scan_folder_job
+    from app.service.jobs.scan_folder import scan_folder_job, schedule_startup_scan
     from app.service.jobs.recycle_bin_cleanup import recycle_bin_cleanup_job
     from app.service.jobs.update_check import update_check_job
     from app.service.jobs.moment_caption import moment_caption_job
@@ -186,6 +186,11 @@ async def lifespan(app: FastAPI):
     # 服务启动后立即跑一次版本检查（去重键保证同一版本不会重复推送），
     # 之后每 6 小时再触发一次。
     from datetime import datetime, timedelta
+    gallery_watcher = None
+    if os.getenv("TS_DESKTOP_VERIFY") != "1" and system_config.config.watch_external_galleries:
+        from app.service.gallery_watch import ExternalGalleryWatcher, WATCH_INTERVAL
+        gallery_watcher = ExternalGalleryWatcher()
+        job_scheduler.register_interval_job("external_gallery_watch", WATCH_INTERVAL, gallery_watcher.tick)
     job_scheduler.register_interval_job("update_check", 6 * 3600, update_check_job, next_run_time=datetime.now())
     # Refresh legacy colors once in the background; each batch commits before
     # the next one, and completed upgrades create no scheduler job on restart.
@@ -227,13 +232,16 @@ async def lifespan(app: FastAPI):
     _app_state.update(app.extra)
     from railway.initialization import start_background_initialization
     start_background_initialization()
+    schedule_startup_scan(job_scheduler)
     try:
         yield
     finally:
+        job_scheduler.stop()
+        if gallery_watcher is not None:
+            await asyncio.to_thread(gallery_watcher.close)
         await mcp_holder.shutdown()
 
     discovery_service.stop()
-    job_scheduler.stop()
 
     # Stop Worker Process
     mgr.stop_watchdog()

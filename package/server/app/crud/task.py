@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional, Any
 from uuid import UUID
 from datetime import datetime
-from sqlalchemy import or_
+from sqlalchemy import false, or_, text, update
 from sqlalchemy.orm import Session
 
 from app.db.models.task import Task, TaskStatus, TaskType, DEFAULT_PRIORITIES, CATEGORY_DESCRIPTION_MAP, \
@@ -19,6 +19,16 @@ DEFAULT_SCAN_STATUS = {
     'processed_files': 0,
     'classified': 0
 }
+
+def lock_gallery_scan_queue(db: Session) -> None:
+    """Serialize scan admission and claiming using the current transaction."""
+    dialect = db.get_bind().dialect.name
+    if dialect == "sqlite":
+        # A write statement acquires the writer lock even when the caller
+        # already has a transaction, in which case BEGIN IMMEDIATE is invalid.
+        db.execute(update(Task.__table__).where(false()).values(status=TaskStatus.PENDING))
+    elif dialect == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": 0x545347414C4C4552})
 
 
 def list_tasks(db: Session, status: Optional[str] = None, type: Optional[str] = None, limit: int = 50, updated_since: Optional[str] = None) -> List[Task]:
