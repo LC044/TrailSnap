@@ -1,11 +1,15 @@
 ---
-title: Docker 部署（通用）
-description: "Docker 通用部署指南：用 Compose 一次启动前端、后端、数据库与 AI 服务，并把照片目录挂载进容器。"
+title: NAS 相册部署指南：用 Docker 安装行影集
+description: 在支持 Docker Compose 的 NAS 或家庭服务器上安装开源自托管相册行影集，挂载已有照片目录，并用手机或电脑在局域网访问。
 ---
 
-# Docker 部署（通用）
+# NAS 相册部署指南：用 Docker 安装行影集
 
-本章面向 NAS/家庭服务器场景：用 Docker Compose 一次性启动 TrailSnap 的前端、后端、数据库与 AI 服务，并把你的照片目录挂载进来。
+如果照片已经存在 NAS 或家庭服务器上，可以用 Docker Compose 部署行影集（TrailSnap），将现有照片目录挂载到相册，不需要先把原图迁移到新目录。
+
+- **准备设备**：确认设备支持 Docker Compose，并按[部署前检查](/docs/guide/preflight)核对环境、可用空间和权限。飞牛 x86 NAS 也可以直接使用[飞牛 .fpk 安装教程](/docs/guide/fnos)。
+- **接入照片**：找到 NAS 上的实际目录，部署时把它挂载到容器内的 `/app/Photos`。只想读取原图时，可使用只读挂载。
+- **手机访问**：部署完成后，在同一局域网内用浏览器打开 `http://<NAS IP>:3180`，如果改了端口就使用实际端口。
 
 ## 一键安装脚本
 

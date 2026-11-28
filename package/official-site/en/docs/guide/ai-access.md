@@ -21,12 +21,12 @@ Besides the human-oriented website, TrailSnap publishes stable text entry points
 
 Every selected documentation page is published in both HTML and Markdown:
 
-- Human page: `/en/docs/guide/install.html`
+- Human page: `/en/docs/guide/install`
 - AI-friendly source: `/en/docs/guide/install.md`
 - Directory page: `/en/docs/guide/agent/` and `/en/docs/guide/agent/index.md`
-- Chinese documentation: `/docs/guide/install.html` and `/docs/guide/install.md`
+- Chinese documentation: `/docs/guide/install` and `/docs/guide/install.md`
 
-An agent can therefore replace `.html` with `.md` in a documentation URL and read the original Markdown directly.
+To read the original Markdown, append `.md` to a regular documentation URL or `index.md` to a directory URL that ends in `/`.
 
 ## Recommended reading order
 

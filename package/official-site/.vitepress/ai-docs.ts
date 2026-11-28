@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
+import { SITE_ORIGIN as siteUrl, sitePagePath } from './site-url'
 
 type Language = 'zh-CN' | 'en'
 
@@ -18,7 +19,6 @@ interface AiDocument {
   emitMarkdown: boolean
 }
 
-const siteUrl = 'https://trailsnap.cn'
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 const siteRoot = path.resolve(currentDir, '..')
 const today = new Date().toISOString().slice(0, 10)
@@ -141,14 +141,6 @@ function categoryForPath(relativePath: string): string {
   return 'developer'
 }
 
-function routesFromMarkdownPath(markdownPath: string): { htmlPath: string; markdownPath: string } {
-  const normalized = markdownPath.replace(/\\/g, '/')
-  if (normalized.endsWith('/index.md')) {
-    return { htmlPath: normalized.slice(0, -'index.md'.length), markdownPath: normalized }
-  }
-  return { htmlPath: `${normalized.slice(0, -'.md'.length)}.html`, markdownPath: normalized }
-}
-
 function createDocument(sourcePath: string, markdownPath: string, language: Language, emitMarkdown: boolean): AiDocument {
   const content = fs.readFileSync(sourcePath, 'utf8')
   const relativePath = path.relative(siteRoot, sourcePath)
@@ -160,7 +152,8 @@ function createDocument(sourcePath: string, markdownPath: string, language: Lang
     categoryKey,
     category: categoryLabels[categoryKey]?.[language] ?? 'Documentation',
     language,
-    ...routesFromMarkdownPath(markdownPath),
+    htmlPath: emitMarkdown ? sitePagePath(markdownPath) : markdownPath,
+    markdownPath,
     content,
     sourcePath: relativePath.replace(/\\/g, '/'),
     emitMarkdown,
@@ -281,20 +274,20 @@ function aiDocsJson(documents: AiDocument[]): string {
   )}\n`
 }
 
-function documentLastmod(document: AiDocument): string {
-  return frontmatterValue(document.content, 'updated') || frontmatterValue(document.content, 'date') || today
+function documentLastmod(content: string): string | undefined {
+  const date = frontmatterValue(content, 'updated') || frontmatterValue(content, 'date')
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined
 }
 
 function sitemap(documents: AiDocument[]): string {
   const urls = [
-    { path: '/', priority: '1.0', lastmod: today },
-    { path: '/download', priority: '0.9', lastmod: today },
-    { path: '/cli', priority: '0.8', lastmod: today },
-    { path: '/install.md', priority: '0.8', lastmod: today },
-    ...documents.map((document) => ({
+    ...['index.md', 'download.md', 'cli.md', 'en/index.md', 'en/download.md', 'en/cli.md'].map((file) => ({
+      path: sitePagePath(file),
+      lastmod: documentLastmod(fs.readFileSync(path.join(siteRoot, file), 'utf8')),
+    })),
+    ...documents.filter((document) => document.emitMarkdown).map((document) => ({
       path: document.htmlPath,
-      priority: document.categoryKey === 'agent' ? '0.9' : document.markdownPath.endsWith('/blog/index.md') ? '0.8' : '0.7',
-      lastmod: documentLastmod(document),
+      lastmod: documentLastmod(document.content),
     })),
   ]
 
@@ -304,8 +297,7 @@ function sitemap(documents: AiDocument[]): string {
     ...urls.map((url) => [
       '  <url>',
       `    <loc>${siteUrl}${url.path}</loc>`,
-      `    <lastmod>${url.lastmod}</lastmod>`,
-      `    <priority>${url.priority}</priority>`,
+      ...(url.lastmod ? [`    <lastmod>${url.lastmod}</lastmod>`] : []),
       '  </url>',
     ].join('\n')),
     '</urlset>',
