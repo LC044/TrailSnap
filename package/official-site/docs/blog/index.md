@@ -9,6 +9,8 @@ description: TrailSnap 行影集官方博客：AI 相册产品思路、功能演
 
 ## 产品与功能
 
+- [照片越存越多，越删越乱：行影集工具箱一次把图库理顺](/docs/blog/library-cleanup-toolbox)（2026-11-27）
+- [行影集 0.21.1 → 0.21.3：界面全部换新，相机 RAW 也能直接看了](/docs/blog/trailsnap-0-21-1-to-0-21-3-ui-and-raw)（2026-11-26）
 - [Immich、PhotoPrism 还是行影集？2026 自托管开源相册选型对比](/docs/blog/immich-photoprism-trailsnap-comparison)（2026-11-18）
 - [TrailSnap 0.21.0：智能 CLIP 分类与人物时光线，重塑影像管理体验](/docs/blog/trailsnap-0-21-0-clip-and-person-timeline)（2026-11-17）
 - [行影集 0.21.0：照片终于不再只能属于一个分类](/docs/blog/trailsnap-0-21-0-multi-category)（2026-11-17）
@@ -33,6 +35,7 @@ description: TrailSnap 行影集官方博客：AI 相册产品思路、功能演
 
 ## 部署与 NAS
 
+- [给飞牛 NAS 装个 AI 相册：行影集 TrailSnap 的 .fpk 安装实录](/docs/blog/fnos-fpk-install-guide)（2026-11-19）
 - [为什么我推荐你拥有一台 NAS：从私人云盘、家庭微服务器到个人 AI Agent 中枢](/docs/blog/why-own-a-nas)（2026-11-04）
 
 ## 火车票纪念工具

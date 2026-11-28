@@ -21,12 +21,12 @@ TrailSnap 官网在面向人类的页面之外，还提供了一组面向 AI Age
 
 官网教程会同时输出 HTML 与 Markdown 两种格式：
 
-- 人类阅读页面：`/docs/guide/install.html`
+- 人类阅读页面：`/docs/guide/install`
 - AI 阅读原文：`/docs/guide/install.md`
 - 目录页：`/docs/guide/agent/` 与 `/docs/guide/agent/index.md`
-- 英文文档：`/en/docs/guide/install.html` 与 `/en/docs/guide/install.md`
+- 英文文档：`/en/docs/guide/install` 与 `/en/docs/guide/install.md`
 
-因此，Agent 可以把文档 URL 中的 `.html` 替换为 `.md`，直接读取原始 Markdown。
+Agent 可以给普通文档路径加上 `.md`，或在以 `/` 结尾的目录路径后追加 `index.md`，直接读取原始 Markdown。
 
 ## 推荐读取顺序
 

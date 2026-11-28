@@ -2,9 +2,9 @@
 layout: page
 home_custom: true
 pageClass: custom-home-page
-title: 行影集 TrailSnap · 私人 AI 相册
+title: 行影集 TrailSnap｜开源自托管相册，支持 NAS 和 Docker 部署
 titleTemplate: false
-description: 在自己的电脑或服务器上整理照片，按人物与场景查找，在地图上回顾足迹，用日记珍藏生活与旅行。
+description: 行影集是一款开源自托管相册，可部署在 NAS 或家庭服务器上，接入已有照片目录，按人物、场景和地点整理与查找照片。提供飞牛 fnOS 安装包和 Docker 部署指南。
 favicon: /favicon.ico
 navbar: false
 sidebar: false

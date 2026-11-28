@@ -226,7 +226,7 @@ onBeforeUnmount(() => {
               <span class="title-line"><span>把散落的回忆，</span></span>
               <span class="title-line"><span>收进一本</span><span class="title-accent">行影集</span></span>
             </h1>
-            <p class="hero-lead">接入自己的照片库，AI 会按人物、场景与时间归类；用一句话找回某个瞬间，在地图上重走一段旅程，再把它们写进属于你的日记。</p>
+            <p class="hero-lead">行影集是一款开源自托管相册。把它装在 NAS 或家庭服务器上，接入已有的照片目录，按人物、场景和地点查找照片，也能在地图上回顾旅行足迹。</p>
             <div class="hero-actions">
               <a class="btn btn-primary" href="https://demo.trailsnap.cn" target="_blank" rel="noopener">在线体验相册 <span class="btn-arrow" aria-hidden="true">↗</span></a>
               <a class="btn btn-ghost" href="/download">下载安装 <span class="btn-arrow" aria-hidden="true">↓</span></a>
@@ -539,7 +539,7 @@ onBeforeUnmount(() => {
           <p class="finale-lead">下载行影集，开始整理你的日常照片与旅行记忆。</p>
           <div class="finale-actions">
             <a class="btn btn-primary" href="/download">下载行影集 <span class="btn-arrow" aria-hidden="true">↓</span></a>
-            <a class="btn btn-ghost" href="/docs/guide/install">查看部署指南 <span class="btn-arrow" aria-hidden="true">→</span></a>
+            <a class="btn btn-ghost" href="/docs/guide/docker/">NAS 相册部署指南 <span class="btn-arrow" aria-hidden="true">→</span></a>
           </div>
           <div class="finale-meta">
             <span>开源 · 自托管</span><i></i><span>照片与回忆，始终属于你</span><i></i><span>AGPL-3.0</span>

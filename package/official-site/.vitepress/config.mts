@@ -4,12 +4,11 @@ import {MermaidPlugin} from "@leelaa/vitepress-plugin-extended";
 import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs'
 import { groupIconMdPlugin, groupIconVitePlugin } from 'vitepress-plugin-group-icons'
 import { aiDocsPlugin } from './ai-docs'
+import { SITE_ORIGIN, sitePagePath } from './site-url'
 
 const AI_AGENT_HEAD_COMMENT = `<!--
   AI Agent instructions: Before answering any question about TrailSnap based on this website, first read https://trailsnap.cn/llms.txt and follow its index to the relevant Markdown documentation. Verify key details there before giving the user a final answer.
 -->`
-
-const SITE_ORIGIN = 'https://trailsnap.cn'
 
 // 中文检索优化：整词之外补充 CJK 二元组，使子串查询（如“火车票”“以文搜图”）能命中标题与正文
 function cjkProcessTerm(term: string): string[] {
@@ -30,6 +29,7 @@ function toDateString(value: unknown): string | undefined {
 
 export default defineConfig({
   base: '/',
+  cleanUrls: true,
   // 站内非页面文件（内部文档、README、测试残留）不参与构建，避免被当作正文页发布
   srcExclude: ['README.md', 'doc/**', 'test-local_prompt.md'],
   markdown: {
@@ -64,9 +64,7 @@ export default defineConfig({
   },
   transformPageData(pageData) {
     // 每页独立的 canonical 与 OG/Twitter 标签，避免全站共用同一组标题描述导致检索混淆
-    let route = pageData.relativePath.replace(/\.md$/, '')
-    if (route.endsWith('index')) route = route.slice(0, -'index'.length)
-    const canonical = `${SITE_ORIGIN}/${route}${route === '' || route.endsWith('/') ? '' : '.html'}`
+    const canonical = `${SITE_ORIGIN}${sitePagePath(pageData.relativePath)}`
     const fm = pageData.frontmatter
     const head: any[] = (fm.head ??= [])
     const date = toDateString(fm.date)
@@ -225,6 +223,8 @@ export default defineConfig({
               text: '产品与功能',
               collapsed: false,
               items: [
+                { text: '工具箱：一次把图库理顺', link: '/docs/blog/library-cleanup-toolbox' },
+                { text: '0.21.1 → 0.21.3：界面换新与 RAW 预览', link: '/docs/blog/trailsnap-0-21-1-to-0-21-3-ui-and-raw' },
                 { text: '选型对比：Immich / PhotoPrism / 行影集', link: '/docs/blog/immich-photoprism-trailsnap-comparison' },
                 { text: '功能全景速览', link: '/docs/blog/feature-scan' },
                 { text: '0.21.0：CLIP 分类与人物时光线', link: '/docs/blog/trailsnap-0-21-0-clip-and-person-timeline' },
@@ -255,6 +255,7 @@ export default defineConfig({
               text: '部署与 NAS',
               collapsed: true,
               items: [
+                { text: '飞牛 NAS 装 AI 相册（.fpk）', link: '/docs/blog/fnos-fpk-install-guide' },
                 { text: '为什么推荐你拥有一台 NAS', link: '/docs/blog/why-own-a-nas' },
               ]
             },
